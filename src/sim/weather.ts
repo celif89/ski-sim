@@ -89,6 +89,9 @@ const FILE = 'data/weather-generator.json';
 /** Fizyczne granice wilgotności względnej używane przy losowaniu [%]. */
 const MIN_HUMIDITY_PERCENT = 15;
 const POLAR_FALLBACK_MIN_HOUR = 6;
+/** Pamięć godzin wschodu Słońca (liczenie wschodu jest kosztowne, a dni się powtarzają). */
+const SUNRISE_CACHE = new Map<string, number>();
+const SUNRISE_CACHE_MAX = 20_000;
 
 export function parseWeatherParams(raw: unknown): WeatherParams {
   const s = readSection(raw, 'season', FILE);
@@ -363,6 +366,15 @@ export function hourlyAt(
   const yesterday = dailyAtElevation(prev, elevationM, profile, params);
   const tomorrow = dailyAtElevation(next, elevationM, profile, params);
   const sunriseHour = (d: DailyWeather) => {
+    const key = `${d.date.year}-${d.date.month}-${d.date.day}|${location.latDeg}|${location.lonDeg}`;
+    const cached = SUNRISE_CACHE.get(key);
+    if (cached !== undefined) return cached;
+    const value = computeSunriseHour(d);
+    if (SUNRISE_CACHE.size > SUNRISE_CACHE_MAX) SUNRISE_CACHE.clear();
+    SUNRISE_CACHE.set(key, value);
+    return value;
+  };
+  const computeSunriseHour = (d: DailyWeather) => {
     const sd = sunDay(d.date, location.latDeg, location.lonDeg, location.timeZone);
     const start = localToUtcMs({ ...d.date, hour: 0 }, location.timeZone);
     // Noc/dzień polarny (nie dotyczy Polski): minimum o północy słonecznej + 6 h.

@@ -221,3 +221,66 @@ export function dailyRadiationSum(
   for (let k = 0; k < grid.cellCount; k++) sumWh[k] = Number.isNaN(grid.elevationM[k]) ? Number.NaN : sumWh[k] / 1000;
   return sumWh;
 }
+
+/** Promieniowanie bezchmurnego nieba w oknie czasu – składowe do modelu śniegu. */
+export interface WindowRadiation {
+  /** Energia promieniowania bezpośredniego na powierzchnię stoku [Wh/m²] (z cieniami), dla każdej komórki. */
+  directWh: Float32Array;
+  /** Dla terenu płaskiego na dwóch wysokościach (zLow, zHigh): bezpośrednie na poziom, rozproszone, całkowite [Wh/m²]. */
+  flatLow: { directHorizWh: number; diffuseWh: number };
+  flatHigh: { directHorizWh: number; diffuseWh: number };
+}
+
+/**
+ * Całkuje promieniowanie bezchmurnego nieba w oknie [startUtcMs, endUtcMs): bezpośrednie na każdą
+ * komórkę (kąt padania + cienie terenu) i składowe dla terenu płaskiego na dwóch wysokościach
+ * (do przeliczenia rozproszonego i wpływu chmur).
+ */
+export function windowRadiation(
+  st: SolarTerrain,
+  startUtcMs: number,
+  endUtcMs: number,
+  latDeg: number,
+  lonDeg: number,
+  zLowM: number,
+  zHighM: number,
+  p: RadiationParams,
+  stepMinutes: number,
+): WindowRadiation {
+  const { grid, horizon, sinSlope, cosSlope, aspectRad } = st;
+  const directWh = new Float32Array(grid.cellCount);
+  const flatLow = { directHorizWh: 0, diffuseWh: 0 };
+  const flatHigh = { directHorizWh: 0, diffuseWh: 0 };
+  const stepMs = stepMinutes * 60000;
+  const steps = Math.max(1, Math.round((endUtcMs - startUtcMs) / stepMs));
+  const hours = (endUtcMs - startUtcMs) / steps / 3_600_000;
+  for (let s = 0; s < steps; s++) {
+    const t = startUtcMs + (s + 0.5) * ((endUtcMs - startUtcMs) / steps);
+    const sun = sunPosition(t, latDeg, lonDeg);
+    if (sun.elevationDeg <= 0) continue;
+    const sinE = Math.sin(sun.elevationDeg * DEG);
+    const cosE = Math.cos(sun.elevationDeg * DEG);
+    const az = sun.azimuthDeg * DEG;
+    const low = skyRadiation(sun.elevationDeg, zLowM, 0, sun.sunDistanceAu, p);
+    const high = skyRadiation(sun.elevationDeg, zHighM, 0, sun.sunDistanceAu, p);
+    flatLow.directHorizWh += low.directNormalWm2 * sinE * hours;
+    flatLow.diffuseWh += low.diffuseHorizontalWm2 * hours;
+    flatHigh.directHorizWh += high.directNormalWm2 * sinE * hours;
+    flatHigh.diffuseWh += high.diffuseHorizontalWm2 * hours;
+    const cache = new Map<number, number>();
+    for (let k = 0; k < grid.cellCount; k++) {
+      const z = grid.elevationM[k];
+      if (z !== z) continue;
+      const cosInc = cosSlope[k] * sinE + sinSlope[k] * cosE * Math.cos(az - aspectRad[k]);
+      if (cosInc <= 0 || sun.elevationDeg <= horizonAngleAt(horizon, k, sun.azimuthDeg)) continue;
+      const zKey = Math.round(z / 50);
+      let dni = cache.get(zKey);
+      if (dni === undefined) {
+        dni = skyRadiation(sun.elevationDeg, zKey * 50, 0, sun.sunDistanceAu, p).directNormalWm2;
+        cache.set(zKey, dni);
+      }
+      directWh[k] += dni * cosInc * hours;
+    }
+  }
+  return { directWh, flatLow, flatHigh };
+}
