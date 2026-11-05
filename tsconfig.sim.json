@@ -1,0 +1,19 @@
+{
+  "//": "Osobna kontrola symulacji: bez bibliotek przeglądarki (DOM) i bez Node. Jeśli kod w src/sim użyje window, document albo PixiJS, kompilacja się nie uda.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "types": [],
+    "strict": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/sim"]
+}

@@ -1,0 +1,121 @@
+{
+  "_opis": "TYMCZASOWY generator terenu (etap 0) – jedna łagodna góra z dolinami, żeby było co oglądać. W etapie 1 zastąpi go import NMT z Geoportalu. Każda liczba: value, unit, source.",
+  "elevation": {
+    "minElevationM": {
+      "value": 700,
+      "unit": "m n.p.m.",
+      "source": "zadanie etapu 0; dno doliny w Korbielowie ok. 700 m"
+    },
+    "maxElevationM": {
+      "value": 1500,
+      "unit": "m n.p.m.",
+      "source": "zadanie etapu 0; Hala Miziowa ok. 1330 m, kopuła Pilska po polskiej stronie ok. 1500 m"
+    }
+  },
+  "mountain": {
+    "summitXFraction": {
+      "value": 0.55,
+      "unit": "część szerokości mapy (0 = zachód, 1 = wschód)",
+      "source": "do kalibracji; szczyt nieco na wschód od środka"
+    },
+    "summitYFraction": {
+      "value": 0.68,
+      "unit": "część wysokości mapy (0 = północ, 1 = południe)",
+      "source": "do kalibracji; szczyt bliżej południowej krawędzi, przeważają stoki północne jak na Pilsku"
+    },
+    "radiusM": {
+      "value": 2000,
+      "unit": "m",
+      "source": "do kalibracji; promień, na którym kopuła góry traci ok. 63% wysokości względnej"
+    },
+    "reliefM": {
+      "value": 800,
+      "unit": "m",
+      "source": "do kalibracji; wysokość względna kopuły przed przeskalowaniem do zakresu min–max"
+    }
+  },
+  "valleys": {
+    "count": {
+      "value": 6,
+      "unit": "szt.",
+      "source": "do kalibracji; liczba dolin rozchodzących się promieniście od szczytu"
+    },
+    "depthM": {
+      "value": 170,
+      "unit": "m",
+      "source": "do kalibracji; największa głębokość doliny względem sąsiednich grzbietów"
+    },
+    "minDepthFraction": {
+      "value": 0.6,
+      "unit": "część depthM",
+      "source": "do kalibracji; każda dolina dostaje losową głębokość z zakresu minDepthFraction–1 × depthM"
+    },
+    "halfWidthM": {
+      "value": 260,
+      "unit": "m",
+      "source": "do kalibracji; połowa szerokości doliny u podnóża góry"
+    },
+    "topWidthFraction": {
+      "value": 0.4,
+      "unit": "część szerokości u podnóża",
+      "source": "do kalibracji; dolina przy szczycie jest węższa niż u podnóża"
+    },
+    "startDistanceM": {
+      "value": 300,
+      "unit": "m",
+      "source": "do kalibracji; odległość od szczytu, w której zaczyna się wcinać dolina"
+    },
+    "fullDepthDistanceM": {
+      "value": 1800,
+      "unit": "m",
+      "source": "do kalibracji; odległość od szczytu, w której dolina osiąga pełną głębokość"
+    },
+    "angleJitterFraction": {
+      "value": 0.35,
+      "unit": "część kąta między dolinami",
+      "source": "do kalibracji; losowe odchylenie kierunku doliny od równego rozstawu"
+    }
+  },
+  "noise": {
+    "warpAmplitudeM": {
+      "value": 260,
+      "unit": "m",
+      "source": "do kalibracji; jak mocno meandrują doliny i grzbiety"
+    },
+    "warpWavelengthM": {
+      "value": 1800,
+      "unit": "m",
+      "source": "do kalibracji; długość fali meandrowania"
+    },
+    "warpOctaves": {
+      "value": 2,
+      "unit": "szt.",
+      "source": "do kalibracji; liczba warstw szumu meandrowania"
+    },
+    "detailAmplitudeM": {
+      "value": 45,
+      "unit": "m",
+      "source": "do kalibracji; amplituda drobnych nierówności terenu"
+    },
+    "detailWavelengthM": {
+      "value": 1200,
+      "unit": "m",
+      "source": "do kalibracji; długość fali największych nierówności"
+    },
+    "detailOctaves": {
+      "value": 5,
+      "unit": "szt.",
+      "source": "do kalibracji; liczba nakładanych warstw szumu (coraz drobniejszych)"
+    },
+    "detailPersistence": {
+      "value": 0.5,
+      "unit": "-",
+      "source": "do kalibracji; ile razy słabsza jest każda kolejna warstwa szumu"
+    },
+    "detailLacunarity": {
+      "value": 2,
+      "unit": "-",
+      "source": "do kalibracji; ile razy krótsza jest fala każdej kolejnej warstwy szumu"
+    }
+  }
+}

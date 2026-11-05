@@ -1,0 +1,49 @@
+{
+  "_opis": "Główne ustawienia gry. Każda liczba: value (wartość), unit (jednostka), source (źródło lub „do kalibracji”).",
+  "world": {
+    "seed": {
+      "value": 20261105,
+      "unit": "-",
+      "source": "dowolna liczba całkowita; ten sam seed = ten sam teren i ta sama zima"
+    }
+  },
+  "map": {
+    "widthCells": {
+      "value": 400,
+      "unit": "komórki",
+      "source": "CLAUDE.md: mapa ok. 4 × 4 km przy komórce 10 m"
+    },
+    "heightCells": {
+      "value": 400,
+      "unit": "komórki",
+      "source": "CLAUDE.md: mapa ok. 4 × 4 km przy komórce 10 m"
+    },
+    "cellSizeM": {
+      "value": 10,
+      "unit": "m",
+      "source": "CLAUDE.md: rozdzielczość startowa siatki 10 m"
+    }
+  },
+  "view": {
+    "minMetersPerPixel": {
+      "value": 2,
+      "unit": "m/px",
+      "source": "zadanie etapu 0: największe przybliżenie ok. 2 m na piksel"
+    },
+    "wheelZoomFactorPerNotch": {
+      "value": 1.2,
+      "unit": "-",
+      "source": "krok zoomu na jeden ząbek kółka myszy; do wyczucia w grze"
+    },
+    "keyboardPanSpeedPxPerS": {
+      "value": 700,
+      "unit": "px/s",
+      "source": "prędkość przesuwania mapy klawiszami; do wyczucia w grze"
+    },
+    "scaleBarMaxWidthPx": {
+      "value": 160,
+      "unit": "px",
+      "source": "największa długość podziałki na ekranie; kwestia czytelności"
+    }
+  }
+}

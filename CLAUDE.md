@@ -43,6 +43,7 @@ wyciąg po wyciągu. Pełna koncepcja gry: dokument „Symulator ośrodka narcia
 ```
 src/sim/       model świata: teren, słońce, pogoda, śnieg, naśnieżanie, ratraki, goście, ekonomia
 src/render/    PixiJS: mapa, nakładki, interfejs
+src/worker/    Web Worker: uruchamia symulację w tle, wymiana wiadomości z widokiem
 src/tools/     narzędzia poza grą: konwerter NMT, symulacja bez grafiki z raportem
 data/          pliki JSON z parametrami; data/maps/ – mapy terenu
 tests/         testy Vitest
