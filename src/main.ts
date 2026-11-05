@@ -193,6 +193,10 @@ async function start(): Promise<void> {
     app.stage.addChild(world);
     const screenLayer = new Container(); // elementy w pikselach ekranu (np. profil)
     app.stage.addChild(screenLayer);
+    // Nad liniami tras i wyciągów (warstwa ekranu): postacie i nakładka ruchu – osobny kontener
+    // z przekształceniem świata.
+    const worldOver = new Container();
+    app.stage.addChild(worldOver);
 
     const camera = new Camera(grid.widthM, grid.heightM, viewSettings.minMetersPerPixel, app.screen.width, app.screen.height);
     camera.rotated = viewSettings.rotatedByDefault;
@@ -401,6 +405,9 @@ async function start(): Promise<void> {
     function setOverlay(kind: OverlayKind): void {
       overlay = kind;
       if (guestsRef.current) guestsRef.current.showWaits = kind === 'liftWait';
+      // Ruch na trasach – nad liniami tras (inaczej przy oddaleniu zakryty); pozostałe – pod nimi.
+      if (kind === 'traffic') worldOver.addChildAt(overlaySprite, 0);
+      else if (overlaySprite.parent !== world) world.addChild(overlaySprite);
       if (kind === 'none' || kind === 'liftWait') {
         overlaySprite.visible = false;
       } else if (isField(kind)) {
@@ -628,9 +635,6 @@ async function start(): Promise<void> {
     requestState({ date: timePanel.date, hour: timePanel.hour });
 
     // ---------------------------------------------------------------- goście (etap 5), pogoda na ekranie
-    // Postacie nad liniami tras i wyciągów (warstwa ekranu) – osobny kontener z przekształceniem świata.
-    const worldOver = new Container();
-    app.stage.addChild(worldOver);
     const movers = new MoverLayer(worldOver);
     const guestOverlay = new Container(); // ikony wypadków, kolejki – nad postaciami
     app.stage.addChild(guestOverlay);

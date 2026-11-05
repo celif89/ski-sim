@@ -66,6 +66,8 @@ const Q_THIN = 7;
 /** Okno do liczenia wykorzystania przepustowości [s] i stała zaniku natężenia ruchu [s]. */
 const UTIL_WINDOW_S = 1800;
 const RECENT_TRAFFIC_TAU_S = 1800;
+/** Co ile sekund gry liczyć potrzeby gości (zmieniają się w skali minut). */
+const NEEDS_STEP_S = 10;
 /** Okno tłoku wzdłuż trasy (± [m]). */
 const CROWD_HALF_WINDOW_M = 50;
 
@@ -346,6 +348,7 @@ export class GuestDay {
   readonly events: GuestEvent[] = [];
   /** Ile razy grupa zrezygnowała z kolejki na rzecz innego wyciągu (statystyka, testy). */
   queueSwitches = 0;
+  private needsAccS = 0;
   private eventsSent = 0;
   private readonly hourly: GuestDayReport['hourly'] = [];
   private nextHourT: number;
@@ -727,7 +730,12 @@ export class GuestDay {
       const list = this.pisteGroups[pi];
       for (let k = list.length - 1; k >= 0; k--) this.moveOnPiste(list[k], list, k, dt);
     }
-    this.updateNeeds(dt);
+    // Potrzeby (głód, zmęczenie, zimno, pogoda) zmieniają się powoli – liczone co NEEDS_STEP_S.
+    this.needsAccS += dt;
+    if (this.needsAccS >= NEEDS_STEP_S - 1e-9) {
+      this.updateNeeds(this.needsAccS);
+      this.needsAccS = 0;
+    }
     if (t1 >= this.nextDecayT) this.decayTraffic();
     if (t1 >= this.nextHourT) {
       const c = this.counts();

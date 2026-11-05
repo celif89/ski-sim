@@ -207,7 +207,7 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
   - ślady: osobna nakładka (`TRACKS_FRAGMENT`) z buforów 2 m/px (`TrackBuffer`): sztruks, muldy,
     ślady nart; zanik z czasem i opadem; wysyłka do karty tylko widocznego pasa wierszy;
   - obiekty ruchome: `movers.ts` (kontenery cząstek, atlas, cienie, światła ratraka nocą) – gotowe
-    na gości (etap 5) i ratraki (etap 7); `demoScene.ts` – scena demonstracyjna (menu `Dev`,
+    na gości (etap 5) i ratraki (etap 7); `demoScene.ts` – scena demonstracyjna (usunięta w etapie 5; menu `Dev`,
     klawisz `` ` ``, adres `?demo=N`);
   - wektory: `resortLayer.ts` – trasy (biała obwódka), wyciągi z podporami i krzesełkami (prędkość,
     `carrierSeats` w `lifts.json`), budynki/drogi/parkingi/szczyty z OSM (`osm-context.json`),
@@ -223,9 +223,53 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
     narciarzy, praca kodu gry na klatkę 3,8–5,4 ms (cała mapa 5,4 ms, 0,25 m/px 4,1 ms) – mieści się
     w 20 ms (50 kl./s); samych klatek na sekundę nie da się tu zmierzyć (5–7 kl./s, pusta scena
     PixiJS ok. 13–15 kl./s) – do sprawdzenia na Macu z kartą graficzną.
-- **Następny: etap 5 – goście (agenci).**
+- **Etap 5 – zrobiony** (listopad 2026): goście (agenci), bez ekonomii i popytu (etap 6):
+  - dane `data/guests.json`: scenariusz dnia (liczba gości – parametr, `?goscie=N` w adresie),
+    umiejętności (4 poziomy: najtrudniejsza i ulubiona klasa trasy, prędkość, nachylenie komfortowe,
+    lód/muldy/puch, ryzyko wypadku), typy grup (narciarz, snowboardzista, rodzina z dziećmi, grupa
+    szkolna), cierpliwość, potrzeby, wybory, ruch, zadowolenie, wypadki, wpływ na śnieg;
+  - `sim/guests.ts` (`GuestDay`): tablice liczb, stały krok 1 s (ten sam seed = ten sam dzień
+    niezależnie od prędkości zegara); grupa = jednostka ruchu (wspólne decyzje, prędkość
+    najsłabszego, na górze czeka na resztę); kolejka w kolejności przybycia, krzesełka w stałym
+    rytmie 3600·miejsca/przepustowość (nie da się przekroczyć), przejazd = długość/prędkość;
+    wybór (softmax): wartość zjazdu z programowania dynamicznego po grafie (klasa wobec
+    umiejętności, długość) + preferencje lidera (długie, puch, spokój) − tłok − zły śnieg −
+    przewidywana kolejka (kara za minutę, za przekroczenie cierpliwości); początkujący nie wjeżdża
+    tam, skąd nie ma zjazdu na jego poziom; rezygnacja z kolejki (inny wyciąg, potem spacer albo
+    do domu po 2,5 × cierpliwość); głód, zmęczenie, zimno (temperatura odczuwalna z wiatrem,
+    krzesełko ×1,8), przerwy w bazie/schronisku, wyjazd (plan, zmęczenie, zimno, pogoda, śnieg,
+    kolejki, brak tras na poziom, zamknięcie 16:00 – kolejka dowożona); wiatr ponad próg typu
+    zatrzymuje wyciąg; ruch po korytarzu trasy (oś + pas + slalom, odstęp od innych, zwalnianie);
+    wypadki (tłok, lód, zmęczenie, trasa za trudna) – zdarzenie i ikona (ratownicy – etap 8);
+    zadowolenie z 5 części (jazda/kolejki, śnieg, tłok, pogoda, dopasowanie) → ocena 1–5;
+  - `sim/guestNetwork.ts` (sieć dla gości: miejsca – stacje bliżej niż 90 m, odcinki tras, wyciągi),
+    `resort.ts`: `layoutFromOsm` – prawdziwy Pilsko z OSM jako układ do gry (przycisk w panelu
+    „Goście”), `closed` na wyciągach i trasach;
+  - wpływ na śnieg `sim/skierTraffic.ts`: przejazdy ubijają (gęstość → 420 kg/m³), zsuwają śnieg
+    w dół na stromiznach (przetarcia; masa zachowana), tworzą muldy (`SnowState.moguls`, zasypuje
+    świeży śnieg, niszczy odwilż); `SnowWorld.setTraffic` – ruch zapamiętany na każdy dzień
+    i doliczany także przy przeliczaniu sezonu; muldy w teksturze terenu (dolne 4 bity kanału G);
+  - wątek `worker/guestWorker.ts` (liczy bez przerwy do godziny zegara, ramki co ~25 ms;
+    przewijanie do godziny w kawałkach), widok `render/guestController.ts`, `guestPanels.ts`
+    (panel „Goście”, karta gościa, raport dnia), `movers.ts` (narty, deska, kolejka, krzesełko,
+    pieszo, dzieci mniejsze; warstwa nad liniami tras), nakładki 9 (ruch) i K (kolejki),
+    prędkość 1:1; scena demonstracyjna usunięta;
+  - testy `tests/guests.test.ts` (17): przepustowość, czas przejazdu, początkujący/eksperci,
+    kolejki a zadowolenie i przenoszenie się, grupy, zamknięte trasy, korytarz trasy, śnieg,
+    determinizm, prawdziwy Pilsko;
+  - pomiar: wątek gości przy ok. 2000 osób na stoku naraz – 7500 s gry na sekundę (×1 wymaga 144,
+    ×20 – 2880; zapas 2,6× przy ×20); ekran: praca kodu na klatkę 1,5–5,4 ms przy ok. 1700 postaciach
+    (limit 50 kl./s = 20 ms); samych kl./s w kontenerze bez karty graficznej nie da się zmierzyć (3–6);
+  - obserwacja: na prawdziwym Pilsku (nasza klasyfikacja tras) początkujący mają w zasięgu
+    praktycznie tylko Dinbo – kolejka ~25 min, wielu wyjeżdża „przez kolejki”; co druga grupa ma
+    w składzie początkującego (dzieci, grupy szkolne) – do kalibracji udziałów.
+- **Następny: etap 6 – sezon i ekonomia.**
 
 Uwagi techniczne:
+- Goście: wątek liczy kroki po 1 s do godziny zegara; zegar czeka, gdy wątek zostaje > 15 min gry
+  w tyle; jedna klatka przesuwa zegar najwyżej o 0,25 s realne (przy kilku kl./s gra zwalnia).
+  Postacie i nakładka ruchu są w kontenerze `worldOver` nad warstwą ekranu (linie tras).
+  Krzesełka: pozycja = (czas gry · prędkość) mod odstęp – tak samo jak odjazdy w symulacji.
 - PixiJS 8: `BufferImageSource.update(początek, koniec)` – zakres w tekselach, koniec wyłączny
   (nie liczba!). Shadery GLSL zaczynać od `#version 300 es`. Kafle terenu liczy shader raz
   (render do tekstury), co klatkę tylko lekkie nakładki – pełnoekranowy shader był za wolny.
@@ -278,6 +322,12 @@ Uwagi techniczne:
   od nowa); trasy obszarowe z OSM (area=yes) w porównaniu; mapa bazowa przerysowana po wycince
   (teraz przecinka to osobna warstwa nad mapą).
 
+- **Docelowa oprawa graficzna o szczegółowości w stylu The Settlers** – ręcznie rysowane lub gotowe
+  sprite'y i animacje (narciarze, ratraki, budynki, drzewa), do wymiany w warstwie rysowania
+  (`src/render`: atlas w `movers.ts`, drzewa w shaderze terenu, budynki w `resortLayer.ts`) po etapie 6.
+- Goście (5): udziały umiejętności i typów grup do kalibracji (ankiety, dane z bramek); jazda
+  w poprzek trasy tylko w jej korytarzu (bez skrótów między trasami); grupa jeździ na poziomie
+  najsłabszego (rodzice mogliby się rozdzielać); pogoda w trakcie przewijania do godziny – stała.
 - Oprawa (4b): pomiar klatek na sekundę na Macu z kartą graficzną (2000 obiektów, pełne oddalenie
   i 0,25 m/px); przy szybkim zegarze kafle terenu przeliczają się stopniowo (chwilowo widać
   stary odcień śniegu); pod lasem przy cienkiej pokrywie brązowe dno – mapa ciemnieje w słabe zimy.

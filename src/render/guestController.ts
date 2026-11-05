@@ -21,8 +21,8 @@ import { KIND_BOARD, KIND_SKI } from './movers';
 import type { MoverLayer } from './movers';
 import type { TrackBuffer } from './terrainRenderer';
 
-/** Ile czasu gry wątek może zostać w tyle, zanim zegar poczeka [s]. */
-const MAX_LAG_S = 120;
+/** Ile czasu gry wątek może zostać w tyle, zanim zegar poczeka [s] (przy ×20 i wolnym ekranie jedna klatka to kilka minut gry). */
+const MAX_LAG_S = 900;
 /** Budżet obliczeń wątku na jedną ramkę [ms]. */
 const ADVANCE_BUDGET_MS = 25;
 /** Ślad nart: szerokość [m], siła odcisku, najdłuższy odcinek między ramkami [m]. */

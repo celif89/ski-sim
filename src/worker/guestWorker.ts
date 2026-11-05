@@ -31,6 +31,31 @@ let catchingUp = false;
 let target = 0;
 
 const yieldToEvents = () => new Promise<void>((r) => setTimeout(r, 0));
+/** Liczenie do godziny zegara gry: wątek liczy bez przerwy (kawałkami, z ramką po każdym), aż dojdzie. */
+let advanceTarget = 0;
+let advancing = false;
+
+async function runAdvance(budgetMs: number): Promise<void> {
+  advancing = true;
+  const d = day;
+  let stepped = false;
+  try {
+    while (d && d === day && !catchingUp) {
+      const dt = d.p.operation.stepS;
+      if (d.t + dt > advanceTarget + 1e-9) break;
+      const start = performance.now();
+      while (d.t + dt <= advanceTarget + 1e-9 && performance.now() - start < budgetMs) {
+        for (let k = 0; k < 10 && d.t + dt <= advanceTarget + 1e-9; k++) d.step(dt);
+      }
+      stepped = true;
+      frame(null);
+      await yieldToEvents();
+    }
+  } finally {
+    advancing = false;
+  }
+  if (!stepped) frame(null);
+}
 
 function post(m: GuestResponse, transfer: Transferable[] = []): void {
   scope.postMessage(m, transfer);
@@ -112,15 +137,8 @@ function handle(r: GuestRequest): void {
         target = Math.max(target, r.timeS);
         return;
       }
-      const d = day;
-      if (d) {
-        const start = performance.now();
-        const dt = d.p.operation.stepS;
-        while (d.t + dt <= r.timeS + 1e-9 && performance.now() - start < r.budgetMs) {
-          for (let k = 0; k < 10 && d.t + dt <= r.timeS + 1e-9; k++) d.step(dt);
-        }
-      }
-      frame(null);
+      advanceTarget = r.timeS;
+      if (!advancing) void runAdvance(r.budgetMs);
       return;
     }
     case 'conditions':
