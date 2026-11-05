@@ -67,36 +67,36 @@
     },
     "dailyAnomalyStdC": {
       "value": [
-        5.01,
-        5.22,
-        4.44,
-        3.89,
+        4.94,
+        5.17,
+        4.43,
+        3.87,
         3.66,
         3.41,
         3.15,
         3.1,
         3.22,
-        4.01,
+        4,
         4.52,
-        4.79
+        4.77
       ],
       "unit": "°C",
       "source": "odchylenie standardowe dobowych odchyleń od normy (bez efektu dni z opadem) – ZAWOJA (697 m n.p.m., 16.5 km), lata 2001–2019; LALIKI (680 m n.p.m., 21.8 km), lata 2001–2021"
     },
     "anomalyAutocorrelation": {
       "value": [
-        0.833,
-        0.86,
-        0.818,
-        0.752,
-        0.733,
-        0.715,
+        0.823,
+        0.85,
+        0.815,
+        0.739,
+        0.732,
+        0.713,
         0.696,
-        0.709,
-        0.728,
-        0.763,
-        0.821,
-        0.808
+        0.71,
+        0.725,
+        0.764,
+        0.814,
+        0.809
       ],
       "unit": "-",
       "source": "autokorelacja tych odchyleń z dnia na dzień (pamięć pogody) – stacje odniesienia"
@@ -136,6 +136,24 @@
       ],
       "unit": "°C",
       "source": "średnie odchylenie temperatury w dni bez opadu – stacje odniesienia"
+    },
+    "wetDayAnomalyPerPercentileC": {
+      "value": [
+        3.75,
+        3.13,
+        1.83,
+        -2.27,
+        -0.77,
+        -0.45,
+        0.26,
+        0.22,
+        -0.65,
+        -0.53,
+        -1.32,
+        2.31
+      ],
+      "unit": "°C na cały zakres percentyla",
+      "source": "różnica odchylenia temperatury między dniem z najsilniejszym a najsłabszym opadem w miesiącu (regresja względem percentyla sumy dobowej) – stacje odniesienia; zimą dodatnia: silny opad przychodzi z cieplejszym powietrzem"
     },
     "observedMonthlyMeanStdC": {
       "value": [

@@ -30,6 +30,20 @@ const OUTPUT_FILE = 'data/climate/pilsko.json';
 const PARALLEL = 6;
 const MONTHS = 12;
 
+/** Nachylenie prostej regresji y względem x (pary [x, y]). */
+function regressionSlope(pairs: [number, number][]): number {
+  if (pairs.length < 3) return 0;
+  const mx = pairs.reduce((a, p) => a + p[0], 0) / pairs.length;
+  const my = pairs.reduce((a, p) => a + p[1], 0) / pairs.length;
+  let num = 0;
+  let den = 0;
+  for (const [x, y] of pairs) {
+    num += (x - mx) * (y - my);
+    den += (x - mx) ** 2;
+  }
+  return den > 0 ? num / den : 0;
+}
+
 function log(message: string): void {
   console.log(`[import-climate] ${message}`);
 }
@@ -243,6 +257,8 @@ async function main(): Promise<void> {
     lagPairs: Array.from({ length: MONTHS }, () => [] as [number, number][]),
     wetAnom: Array.from({ length: MONTHS }, () => [] as number[]),
     dryAnom: Array.from({ length: MONTHS }, () => [] as number[]),
+    /** Pary (percentyl sumy opadu wśród dni mokrych miesiąca, odchylenie temperatury). */
+    wetAmount: Array.from({ length: MONTHS }, () => [] as [number, number][]),
     dtrWet: Array.from({ length: MONTHS }, () => [] as number[]),
     dtrDry: Array.from({ length: MONTHS }, () => [] as number[]),
     rhWet: Array.from({ length: MONTHS }, () => [] as number[]),
@@ -284,6 +300,14 @@ async function main(): Promise<void> {
       if (wet === undefined) continue;
       (wet ? refStats.wetAnom : refStats.dryAnom)[monthOf(k)].push(a);
     }
+    // Percentyl sumy opadu wśród dni mokrych tego miesiąca (wszystkie lata) – do zależności
+    // temperatury od wielkości opadu (silny opad zimą przychodzi z cieplejszym powietrzem).
+    const percentileOf = new Map<number, number>();
+    for (let mo = 0; mo < MONTHS; mo++) {
+      const wetDays = [...anomalyOf.keys()].filter((k) => monthOf(k) === mo && wetState(days.get(k)!) === true).sort((x, y) => days.get(x)!.precipMm! - days.get(y)!.precipMm!);
+      wetDays.forEach((k, i) => percentileOf.set(k, (i + 0.5) / wetDays.length));
+    }
+    for (const [k, q] of percentileOf) refStats.wetAmount[monthOf(k)].push([q, anomalyOf.get(k)!]);
     for (const [k, r] of days) {
       if (!inPeriod(k)) continue;
       const mo = monthOf(k);
@@ -295,11 +319,13 @@ async function main(): Promise<void> {
     // Reszty po usunięciu efektu dnia mokrego/suchego: rozrzut i autokorelacja.
     const wetMeanPerMonth = refStats.wetAnom.map((a) => (a.length ? mean(a) : 0));
     const dryMeanPerMonth = refStats.dryAnom.map((a) => (a.length ? mean(a) : 0));
+    const amountSlope = refStats.wetAmount.map(regressionSlope);
     const residual = new Map<number, number>();
     for (const [k, a] of anomalyOf) {
       const wet = wetState(days.get(k)!);
       if (wet === undefined) continue;
-      residual.set(k, a - (wet ? wetMeanPerMonth[monthOf(k)] : dryMeanPerMonth[monthOf(k)]));
+      const mo = monthOf(k);
+      residual.set(k, a - (wet ? wetMeanPerMonth[mo] + amountSlope[mo] * (percentileOf.get(k)! - 0.5) : dryMeanPerMonth[mo]));
     }
     for (const [k, v] of residual) {
       refStats.anomaly[monthOf(k)].push(v);
@@ -478,6 +504,11 @@ async function main(): Promise<void> {
       anomalyAutocorrelation: arr(roundAll(autocorr, 3), '-', 'autokorelacja tych odchyleń z dnia na dzień (pamięć pogody) – stacje odniesienia'),
       wetDayAnomalyC: arr(roundAll(refStats.wetAnom.map(mean), 2), '°C', 'średnie odchylenie temperatury w dni z opadem – stacje odniesienia'),
       dryDayAnomalyC: arr(roundAll(refStats.dryAnom.map(mean), 2), '°C', 'średnie odchylenie temperatury w dni bez opadu – stacje odniesienia'),
+      wetDayAnomalyPerPercentileC: arr(
+        roundAll(refStats.wetAmount.map(regressionSlope), 2),
+        '°C na cały zakres percentyla',
+        'różnica odchylenia temperatury między dniem z najsilniejszym a najsłabszym opadem w miesiącu (regresja względem percentyla sumy dobowej) – stacje odniesienia; zimą dodatnia: silny opad przychodzi z cieplejszym powietrzem',
+      ),
       observedMonthlyMeanStdC: arr(roundAll(refMonthlyMeans.map(std), 2), '°C', 'odchylenie standardowe średniej miesięcznej z roku na rok – stacje odniesienia; do oceny zgodności w raporcie'),
       diurnalRangeDryC: arr(roundAll(refStats.dtrDry.map(mean), 2), '°C', 'średnia amplituda dobowa (Tmax − Tmin) w dni bez opadu – stacje odniesienia'),
       diurnalRangeWetC: arr(roundAll(refStats.dtrWet.map(mean), 2), '°C', 'średnia amplituda dobowa w dni z opadem – stacje odniesienia'),
