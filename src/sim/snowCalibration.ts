@@ -7,8 +7,10 @@ import type { RadiationParams } from './radiation';
 import type { SnowParams } from './snow';
 import type { ObservedDay } from './snowPoint';
 import { observedToDailyWeather, runPointSnow } from './snowPoint';
+import { snowFraction } from './snow';
 import { addDays, parseIsoDate } from './time';
-import type { CalendarDate, WeatherParams } from './weather';
+import type { CalendarDate, DailyWeather, Location, WeatherParams } from './weather';
+import { dailyAtElevation, hourlyAt } from './weather';
 
 export interface StationWinterData {
   start: string;
@@ -20,6 +22,8 @@ export interface StationWinterData {
   windMs: number[];
   humidityPercent: number[];
   snowDepthCm: (number | null)[];
+  /** Dni, w których temperatura pochodzi z dalszej stacji (Bielsko-Biała) – zima mniej pewna do kalibracji. */
+  temperatureFromBielskoDays?: number;
 }
 
 export interface StationData {
@@ -57,6 +61,21 @@ export interface CalibrationSummary {
   perStation: { station: string; maeCm: number; biasCm: number; coverDaysBias: number; winters: number }[];
 }
 
+/** Dni pogody zmierzonej na stacji (wejście dla modelu). */
+export function observedDays(w: StationWinterData): ObservedDay[] {
+  const start = parseIsoDate(w.start);
+  return w.tMeanC.map((_, d) => ({
+    date: addDays(start, d),
+    tMeanC: w.tMeanC[d],
+    tMaxC: w.tMaxC[d],
+    tMinC: w.tMinC[d],
+    precipMm: w.precipMm[d],
+    cloudFraction: w.cloudFraction[d],
+    windMs: w.windMs[d],
+    humidityPercent: w.humidityPercent[d],
+  }));
+}
+
 /** Okres oceny: od 1 listopada do 30 kwietnia (sezon). */
 const EVAL_FIRST_MONTH = 11;
 const EVAL_LAST_MONTH = 4;
@@ -80,17 +99,7 @@ export function compareStations(
       // Zimy bez żadnego pomiaru śniegu > 0 (brak obserwacji) – pomijamy.
       if (!w.snowDepthCm.some((v) => v !== null && v > 0)) continue;
       const start = parseIsoDate(w.start);
-      const obs: ObservedDay[] = w.tMeanC.map((_, d) => ({
-        date: addDays(start, d),
-        tMeanC: w.tMeanC[d],
-        tMaxC: w.tMaxC[d],
-        tMinC: w.tMinC[d],
-        precipMm: w.precipMm[d],
-        cloudFraction: w.cloudFraction[d],
-        windMs: w.windMs[d],
-        humidityPercent: w.humidityPercent[d],
-      }));
-      const weather = observedToDailyWeather(obs, profile, wp);
+      const weather = observedToDailyWeather(observedDays(w), profile, wp);
       const run = runPointSnow({ elevationM: st.elevationM, latDeg: st.latDeg, lonDeg: st.lonDeg, timeZone, weather, profile, weatherParams: wp, snowParams: sp, radiationParams: rp });
       // Pomiar o 6 UTC dnia d ≈ stan modelu na koniec dnia d − 1.
       const dates: CalendarDate[] = [];
@@ -153,4 +162,87 @@ export function compareStations(
     coverDaysMae: mean(winters.map((w) => Math.abs(w.modelCoverDays - w.observedCoverDays))),
     perStation,
   };
+}
+
+/** Stacje tylko z zimami, w których temperatura była mierzona na miejscu lub na sąsiedniej stacji. */
+export function withMeasuredTemperature(stations: StationData[], maxSubstitutedDays: number): StationData[] {
+  return stations.map((s) => ({ ...s, winters: s.winters.filter((w) => (w.temperatureFromBielskoDays ?? 0) <= maxSubstitutedDays) }));
+}
+
+/** Zima pełna: w okresie XI–IV brakuje najwyżej `maxMissingDays` pomiarów grubości śniegu. */
+export function hasCompleteSnowRecord(w: StationWinterData, maxMissingDays: number): boolean {
+  const start = parseIsoDate(w.start);
+  let missing = 0;
+  w.snowDepthCm.forEach((v, i) => {
+    if (v === null && inEvalPeriod(addDays(start, i))) missing++;
+  });
+  return missing <= maxMissingDays;
+}
+
+/** Charakterystyka jednej zimy: dni z pokrywą i maksimum w XI–IV, pierwszy i ostatni dzień z pokrywą. */
+export interface WinterSnowStats {
+  coverDays: number;
+  maxCm: number;
+  /** Indeks dnia (od początku serii) pierwszego i ostatniego dnia z pokrywą ≥ 1 cm; −1 – brak pokrywy. */
+  firstCoverDay: number;
+  lastCoverDay: number;
+}
+
+export function winterSnowStats(dates: CalendarDate[], depthCm: (number | null)[]): WinterSnowStats {
+  let coverDays = 0;
+  let maxCm = 0;
+  let firstCoverDay = -1;
+  let lastCoverDay = -1;
+  depthCm.forEach((v, i) => {
+    if (v === null || v < COVER_CM) {
+      if (v !== null && inEvalPeriod(dates[i]) && v > maxCm) maxCm = v;
+      return;
+    }
+    if (firstCoverDay < 0) firstCoverDay = i;
+    lastCoverDay = i;
+    if (inEvalPeriod(dates[i])) {
+      coverDays++;
+      if (v > maxCm) maxCm = v;
+    }
+  });
+  return { coverDays, maxCm, firstCoverDay, lastCoverDay };
+}
+
+/** Pogoda zimy (XI–IV) tak, jak „widzi” ją model śniegu – do porównania generatora z pomiarami. */
+export interface WinterWeatherStats {
+  tMeanC: number;
+  precipMm: number;
+  wetDays: number;
+  /** Średnia temperatura ważona opadem (w jakiej temperaturze pada) [°C]. */
+  precipWeightedTC: number;
+  /** Opad w postaci śniegu wg temperatury godzinowej (bez poprawki na deszczomierz) [mm]. */
+  snowfallMm: number;
+  /** Suma dodatnich temperatur godzinowych / 24 [°C·doba] – energia odwilży. */
+  positiveDegreeDays: number;
+  /** Dni XII–II ze średnią > 0 °C. */
+  thawDays: number;
+}
+
+export function winterWeatherStats(days: DailyWeather[], elevationM: number, profile: ClimateProfile, wp: WeatherParams, location: Location): WinterWeatherStats {
+  const out: WinterWeatherStats = { tMeanC: 0, precipMm: 0, wetDays: 0, precipWeightedTC: 0, snowfallMm: 0, positiveDegreeDays: 0, thawDays: 0 };
+  let n = 0;
+  for (let i = 1; i < days.length - 1; i++) {
+    const d = days[i];
+    if (!inEvalPeriod(d.date)) continue;
+    const a = dailyAtElevation(d, elevationM, profile, wp);
+    n++;
+    out.tMeanC += a.tMeanC;
+    out.precipMm += a.precipitationMm;
+    out.precipWeightedTC += a.precipitationMm * a.tMeanC;
+    if (d.wet) out.wetDays++;
+    if ((d.date.month === 12 || d.date.month <= 2) && a.tMeanC > 0) out.thawDays++;
+    for (let h = 0; h < 24; h++) {
+      const hw = hourlyAt(days[i - 1], d, days[i + 1], h + 0.5, elevationM, profile, wp, location);
+      out.snowfallMm += hw.precipitationMm * snowFraction(hw.temperatureC, wp.snowMaxTemperatureC, wp.rainMinTemperatureC);
+      if (hw.temperatureC > 0) out.positiveDegreeDays += hw.temperatureC / 24;
+    }
+  }
+  out.tMeanC /= Math.max(1, n);
+  out.precipWeightedTC /= Math.max(1e-9, out.precipMm);
+  return out;
 }

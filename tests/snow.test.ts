@@ -4,12 +4,13 @@ import radiationJson from '../data/radiation.json';
 import snowJson from '../data/snow.json';
 import stationsJson from '../data/calibration/imgw-stations.json';
 import wxJson from '../data/weather-generator.json';
+import reportJson from '../data/winter-report.json';
 import { parseClimateProfile } from '../src/sim/climate';
 import { computeHorizon, parseHorizonParams } from '../src/sim/horizon';
 import { parseRadiationParams, prepareSolarTerrain } from '../src/sim/radiation';
 import { SnowState, classifySnow, emptyBalance, parseSnowParams, redistributeSnowByWind, snowStep } from '../src/sim/snow';
 import type { SnowDomain, SnowStepForcing } from '../src/sim/snow';
-import { compareStations } from '../src/sim/snowCalibration';
+import { compareStations, withMeasuredTemperature } from '../src/sim/snowCalibration';
 import type { StationData } from '../src/sim/snowCalibration';
 import { SnowSeason, buildSolarCache, createSnowDomain } from '../src/sim/snowSeason';
 import { TerrainGrid } from '../src/sim/terrainGrid';
@@ -221,10 +222,11 @@ describe('Determinizm i wydajność', () => {
   });
 });
 
-describe('Kalibracja na pomiarach IMGW (Korbielów, Zawoja, Laliki 2009–2019)', () => {
-  const summary = compareStations((stationsJson as unknown as { stations: StationData[] }).stations, profile, wp, sp, rp);
+describe('Kalibracja na pomiarach IMGW (Korbielów, Zawoja, Laliki 2001–2021, zimy z mierzoną temperaturą)', () => {
+  const measured = withMeasuredTemperature((stationsJson as unknown as { stations: StationData[] }).stations, reportJson.calibration.maxSubstitutedTemperatureDays.value);
+  const summary = compareStations(measured, profile, wp, sp, rp);
   it('średni błąd grubości śniegu poniżej 6 cm, liczba dni z pokrywą w granicach ±10 dni', () => {
-    expect(summary.winters.length).toBeGreaterThanOrEqual(25);
+    expect(summary.winters.length).toBeGreaterThanOrEqual(45);
     expect(summary.maeCm).toBeLessThan(6);
     expect(Math.abs(summary.biasCm)).toBeLessThan(3);
     expect(Math.abs(summary.coverDaysBias)).toBeLessThan(10);

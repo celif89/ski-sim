@@ -31,16 +31,15 @@ export interface ObservedDay {
 const DEFAULT_WIND_FROM_DEG = 225;
 
 /**
- * Zamienia obserwacje na dni pogody modelu. Czas trwania opadu – jak w generatorze (rośnie z sumą),
- * bez losowości; opad wyśrodkowany na południe.
+ * Zamienia obserwacje na dni pogody modelu. Suma dobowa opadu rozłożona równo na całą dobę: godzin
+ * opadu nie znamy, a każde inne założenie przesuwa średnią temperaturę opadu (np. opad „w południe”
+ * padał w najcieplejszej porze, więc za często jako deszcz – w porównaniu z generatorem, w którym
+ * pora opadu jest losowa, model na prawdziwej pogodzie dostawał przez to za mało śniegu).
  */
 export function observedToDailyWeather(obs: ObservedDay[], profile: ClimateProfile, wp: WeatherParams): DailyWeather[] {
+  void wp;
   return obs.map((o) => {
     const wet = o.precipMm >= profile.precipitation.wetDayThresholdMm;
-    const scale = profile.precipitation.gammaScaleMm[o.date.month - 1];
-    const halfSat = wp.precipitationDurationHalfSaturationScales * scale;
-    const frac = wet ? o.precipMm / (o.precipMm + halfSat) : 0;
-    const duration = wet ? Math.round(wp.minPrecipitationDurationHours + frac * (wp.maxPrecipitationDurationHours - wp.minPrecipitationDurationHours)) : 0;
     return {
       date: o.date,
       wet,
@@ -52,10 +51,15 @@ export function observedToDailyWeather(obs: ObservedDay[], profile: ClimateProfi
       humidityPercent: o.humidityPercent,
       windMs: o.windMs,
       windFromDeg: DEFAULT_WIND_FROM_DEG,
-      precipitationStartHour: wet ? Math.max(0, Math.min(24 - duration, Math.round(12 - duration / 2))) : 0,
-      precipitationDurationHours: duration,
+      precipitationStartHour: 0,
+      precipitationDurationHours: wet ? 24 : 0,
     };
   });
+}
+
+/** Profil przestawiony tak, żeby pogoda podana „na wysokości odniesienia” była pogodą w punkcie (obserwacje stacji). */
+export function profileAtPoint(profile: ClimateProfile, elevationM: number): ClimateProfile {
+  return { ...profile, referenceElevationM: elevationM, precipitation: { ...profile.precipitation, referenceElevationM: elevationM } };
 }
 
 export interface PointRunResult {
@@ -97,10 +101,7 @@ export function runPointSnow(o: PointRunOptions): PointRunResult {
   const st = prepareSolarTerrain(grid, horizon);
   const location = { latDeg: o.latDeg, lonDeg: o.lonDeg, timeZone: o.timeZone };
   const days = o.weather.length - 1;
-  const profile: ClimateProfile =
-    o.weatherAtPointElevation === false
-      ? o.profile
-      : { ...o.profile, referenceElevationM: o.elevationM, precipitation: { ...o.profile.precipitation, referenceElevationM: o.elevationM } };
+  const profile: ClimateProfile = o.weatherAtPointElevation === false ? o.profile : profileAtPoint(o.profile, o.elevationM);
   const solar = buildSolarCache(st, o.weather[0].date, days, location, o.radiationParams, o.snowParams);
   const forest = new Float32Array(4).fill(o.forest ?? 0);
   const domain = createSnowDomain(grid, forest, new Float32Array(4), o.snowParams);

@@ -29,9 +29,9 @@
       "source": "górna granica gęstości świeżego śniegu (mokry śnieg przy dodatniej temperaturze)"
     },
     "snowfallCatchCorrection": {
-      "value": 1.3,
+      "value": 1.2,
       "unit": "×",
-      "source": "SKALIBROWANE (było 1,0): poprawka na niedobór łapania śniegu przez deszczomierz Hellmanna – literatura: zimą +10…+30 %, w górach i przy wietrze więcej (Chomicz 1976; WMO SPICE 2018); dopasowane do grubości śniegu Korbielów/Zawoja/Laliki 2009–2019"
+      "source": "SKALIBROWANE (było 1,0; w etapie 3 – 1,3, gdy opad z prawdziwych dni był ustawiany „w południe”): poprawka na niedobór łapania śniegu przez deszczomierz Hellmanna – literatura: zimą +10…+30 %, w górach i przy wietrze więcej (Chomicz 1976; WMO SPICE 2018); dopasowane do grubości śniegu Korbielów/Zawoja/Laliki, 49 zim 2001–2021 z mierzoną temperaturą"
     },
     "windDensityPerMs": {
       "value": 8,
