@@ -112,6 +112,29 @@ export class TimePanel {
     this.onChange({ date: this.date, hour: this.hour });
   }
 
+  /** Data i godzina naraz (zegar gry – przejście przez północ), jedno zgłoszenie zmiany. */
+  setDateTime(date: CalendarDate, hour: number): void {
+    this.date = date;
+    this.hour = Math.min(24 - 1e-6, Math.max(0, hour));
+    this.refresh();
+    this.onChange({ date: this.date, hour: this.hour });
+  }
+
+  /** Bieżący komunikat (np. „Liczę promieniowanie…”) – pokazywany też w zwiniętej karcie czasu. */
+  get statusText(): string {
+    return this.statusLabel.textContent ?? '';
+  }
+
+  /** Godziny wschodu i zachodu Słońca (z ostatniego stanu symulacji). */
+  get sunHours(): { sunrise: number | null; sunset: number | null } {
+    return { sunrise: this.sunrise, sunset: this.sunset };
+  }
+
+  /** Zatrzymuje „odtwórz dzień” (np. gdy rusza zegar gry). */
+  stopPlay(): void {
+    if (this.playing) this.stop();
+  }
+
   setHour(hour: number): void {
     this.hour = Math.min(24 - HOUR_STEP, Math.max(0, hour));
     this.refresh();

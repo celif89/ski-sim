@@ -1,0 +1,37 @@
+{
+ "_opis": "Etykiety mapy w oprawie graficznej (nazwy miejsc spoza OpenStreetMap lub w innym położeniu). Punkty: [E, N] w PUWG 1992 [m]; kind: area (hala, polana), village, hut.",
+ "labels": [
+  {
+   "text": "HALA MIZIOWA",
+   "kind": "area",
+   "point": [
+    522900,
+    186020
+   ]
+  },
+  {
+   "text": "Schronisko",
+   "kind": "hut",
+   "point": [
+    523050,
+    185905
+   ]
+  },
+  {
+   "text": "KORBIELÓW",
+   "kind": "village",
+   "point": [
+    525050,
+    189150
+   ]
+  },
+  {
+   "text": "HALA SZCZAWINA",
+   "kind": "area",
+   "point": [
+    521900,
+    187150
+   ]
+  }
+ ]
+}

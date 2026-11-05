@@ -17,6 +17,10 @@ export interface SimSettings {
   startDate: string;
   startHour: number;
   playDayDurationS: number;
+  /** Zegar gry przy ×1: długość doby [s czasu rzeczywistego]. */
+  gameDayDurationS: number;
+  /** Noc przewija się tyle razy szybciej. */
+  nightSpeedup: number;
   fallbackLocation: { latDeg: number; lonDeg: number };
 }
 
@@ -38,6 +42,8 @@ export function parseSimSettings(raw: unknown): SimSettings {
     startDate: time.startDate,
     startHour: readNumber(time, 'startHour', FILE, { min: 0, max: 24 }),
     playDayDurationS: readNumber(time, 'playDayDurationS', FILE, { min: 1 }),
+    gameDayDurationS: readNumber(time, 'gameDayDurationS', FILE, { min: 1 }),
+    nightSpeedup: readNumber(time, 'nightSpeedup', FILE, { min: 1 }),
     fallbackLocation: { latDeg: readNumber(loc, 'latDeg', FILE, { min: -90, max: 90 }), lonDeg: readNumber(loc, 'lonDeg', FILE, { min: -180, max: 180 }) },
   };
 }

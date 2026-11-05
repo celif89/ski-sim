@@ -146,6 +146,11 @@
         "value": 5,
         "unit": "%",
         "source": "taśma wymaga wyrównanego terenu; do kalibracji"
+      },
+      "carrierSeats": {
+        "value": 0,
+        "unit": "os./krzesełko",
+        "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
       }
     },
     {
@@ -246,6 +251,11 @@
         "value": 10,
         "unit": "%",
         "source": "przechył toru do ok. 10 %; do kalibracji"
+      },
+      "carrierSeats": {
+        "value": 1,
+        "unit": "os./krzesełko",
+        "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
       }
     },
     {
@@ -346,6 +356,11 @@
         "value": 10,
         "unit": "%",
         "source": "przechył toru do ok. 10 %; do kalibracji"
+      },
+      "carrierSeats": {
+        "value": 2,
+        "unit": "os./krzesełko",
+        "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
       }
     },
     {
@@ -436,6 +451,11 @@
         "value": 8,
         "unit": "dni/100 m",
         "source": "do kalibracji"
+      },
+      "carrierSeats": {
+        "value": 2,
+        "unit": "os./krzesełko",
+        "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
       }
     },
     {
@@ -526,6 +546,11 @@
         "value": 8,
         "unit": "dni/100 m",
         "source": "do kalibracji"
+      },
+      "carrierSeats": {
+        "value": 4,
+        "unit": "os./krzesełko",
+        "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
       }
     },
     {
@@ -616,6 +641,11 @@
         "value": 10,
         "unit": "dni/100 m",
         "source": "do kalibracji"
+      },
+      "carrierSeats": {
+        "value": 4,
+        "unit": "os./krzesełko",
+        "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
       }
     },
     {
@@ -706,6 +736,11 @@
         "value": 10,
         "unit": "dni/100 m",
         "source": "do kalibracji"
+      },
+      "carrierSeats": {
+        "value": 6,
+        "unit": "os./krzesełko",
+        "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
       }
     },
     {
@@ -796,6 +831,11 @@
         "value": 12,
         "unit": "dni/100 m",
         "source": "do kalibracji"
+      },
+      "carrierSeats": {
+        "value": 8,
+        "unit": "os./krzesełko",
+        "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
       }
     }
   ]

@@ -1,19 +1,45 @@
 /**
- * Rysowanie ośrodka na mapie: przecinki (wycięty las), obrysy tras w kolorach trudności, wyciągi
- * z podporami, strzałki kierunku i numery (nakładka sieci), podgląd w trakcie budowy, zaznaczenie
- * i nakładka „rzeczywistość” (wyciągi i trasy z OpenStreetMap).
+ * Warstwa wektorowa w stylu A (ilustrowana mapa narciarska):
+ *  – trasy: kolorowa linia z białą obwódką, numer w kółku,
+ *  – wyciągi: ciemna linia z białą poświatą, podpory jako poprzeczne kreski, stacje, krzesełka
+ *    jadące po linie zgodnie z prędkością wyciągu, etykieta,
+ *  – otoczenie z OSM: drogi, parkingi, budynki (z daleka małe prostokąty, z bliska dachy ze śniegiem),
+ *  – granica państwa, nazwy miejsc z białą obwódką,
+ *  – nakładka sieci (strzałki, węzły, ostrzeżenia), „rzeczywistość” (OSM), podgląd budowy.
  */
-import { CanvasSource, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
+import { Container, Graphics, Text } from 'pixi.js';
 import type { LiftAnalysis, LiftDesign } from '../sim/lifts';
+import { carrierSpacingM } from '../sim/lifts';
 import type { PisteAnalysis, PisteParams } from '../sim/pistes';
 import type { OsmResort, RealPisteComparison, ResortAnalysis, ResortLayout } from '../sim/resort';
 import type { TerrainGrid } from '../sim/terrainGrid';
 import type { Camera } from './camera';
+import type { LodThresholds } from './illustration';
+import { lodWeights } from './illustration';
 
-const CLEARING_RGB = [214, 208, 170];
+const INK = 0x1e293b;
+const SLATE = 0x334155;
 const SELECT_COLOR = 0xffd400;
-const ERROR_COLOR = 0xe03131;
+const ERROR_COLOR = 0xdc2626;
 const REAL_LIFT_COLOR = 0xc2255c;
+const BORDER_COLOR = 0xb91c1c;
+const CHAIR_FILL = 0xf59e0b;
+const CHAIR_STROKE = 0x7c2d12;
+const FONT = 'Barlow, system-ui, sans-serif';
+const FONT_COND = '"Barlow Condensed", Barlow, sans-serif';
+
+export interface MapContextData {
+  buildings: { name: string; kind: string; points: number[][] }[];
+  roads: { kind: string; name: string; points: number[][] }[];
+  parkings: { points: number[][] }[];
+  places: { name: string; kind: string; ele: string; point: number[] }[];
+}
+
+export interface MapLabel {
+  text: string;
+  kind: string;
+  point: number[];
+}
 
 export interface ResortDrawState {
   layout: ResortLayout;
@@ -23,31 +49,40 @@ export interface ResortDrawState {
   showReality: boolean;
   realLifts: OsmResort['lifts'] | null;
   realPistes: RealPisteComparison[] | null;
-  /** Podgląd budowanego wyciągu lub trasy. */
   draftLift: { design: LiftDesign; analysis: LiftAnalysis } | null;
   draftPiste: { points: { xM: number; yM: number; widthM: number }[]; analysis: PisteAnalysis | null } | null;
-  /** Punkt na mapie wskazany na wykresie profilu. */
   hoverPoint: { xM: number; yM: number } | null;
-  /** Wersja danych – zmienia się przy każdej zmianie układu (do odświeżania tekstur). */
   version: number;
-  /** Wersja rysunku – zmienia się także przy podglądzie budowy i zaznaczeniu. */
   drawVersion: number;
+  /** Czas rzeczywisty [s] – ruch krzesełek. */
+  timeS: number;
 }
 
 const hex = (c: string) => parseInt(c.slice(1), 16);
 
+/** Krótka nazwa typu wyciągu na etykiecie. */
+function shortType(typeId: string): string {
+  if (typeId.startsWith('kanapa')) return 'kanapa';
+  if (typeId === 'gondola') return 'gondola';
+  if (typeId === 'orczyk') return 'orczyk';
+  if (typeId === 'talerzyk') return 'talerzyk';
+  return 'taśma';
+}
+
+const ROAD_WIDTH_M: Record<string, number> = { primary: 7, secondary: 6, tertiary: 5.5, unclassified: 4.5, residential: 4.5, living_street: 4, service: 3.5, track: 3 };
+
 export class ResortLayer {
-  private readonly clearingCanvas: HTMLCanvasElement;
-  private readonly pisteCanvas: HTMLCanvasElement;
-  private readonly clearingSprite: Sprite;
-  private readonly pisteSprite: Sprite;
-  private readonly clearingSource: CanvasSource;
-  private readonly pisteSource: CanvasSource;
   private readonly g = new Graphics();
   private readonly labels = new Container();
   private readonly labelPool: Text[] = [];
-  private lastVersion = -1;
+  private readonly contextLayer = new Container();
+  private readonly roadsG = new Graphics();
+  private readonly buildingsFar = new Graphics();
+  private readonly buildingsNear = new Graphics();
   private lastKey = '';
+  private snowOnRoofs = true;
+  private contextRotated: boolean | null = null;
+  private readonly local: (p: number[]) => { xM: number; yM: number } | null;
 
   constructor(
     world: Container,
@@ -55,88 +90,214 @@ export class ResortLayer {
     private readonly grid: TerrainGrid,
     private readonly camera: Camera,
     private readonly pisteParams: PisteParams,
-    private readonly forest0: Float32Array | null,
+    private readonly lod: LodThresholds,
+    private readonly context: MapContextData | null,
+    private readonly mapLabels: MapLabel[],
+    private readonly borderLinesLocal: number[][][],
   ) {
-    const make = () => {
-      const c = document.createElement('canvas');
-      c.width = grid.widthCells;
-      c.height = grid.heightCells;
-      return c;
-    };
-    this.clearingCanvas = make();
-    this.pisteCanvas = make();
-    this.clearingSource = new CanvasSource({ resource: this.clearingCanvas, scaleMode: 'nearest' });
-    this.pisteSource = new CanvasSource({ resource: this.pisteCanvas, scaleMode: 'nearest' });
-    this.clearingSprite = new Sprite(new Texture({ source: this.clearingSource }));
-    this.pisteSprite = new Sprite(new Texture({ source: this.pisteSource }));
-    for (const s of [this.clearingSprite, this.pisteSprite]) {
-      s.width = grid.widthM;
-      s.height = grid.heightM;
-      world.addChild(s);
-    }
+    this.local = (p) => grid.puwg92ToLocal(p[0], p[1]);
+    this.contextLayer.addChild(this.roadsG, this.buildingsFar, this.buildingsNear);
+    world.addChild(this.contextLayer);
     screenLayer.addChild(this.g);
     screenLayer.addChild(this.labels);
+    this.drawContext();
   }
 
-  private updateTextures(st: ResortDrawState): void {
-    const n = this.grid.cellCount;
-    // Przecinki: wycięty las jako jasna łąka.
-    const cctx = this.clearingCanvas.getContext('2d')!;
-    const cimg = cctx.createImageData(this.grid.widthCells, this.grid.heightCells);
-    const mask = st.analysis.clearedMask;
-    for (let k = 0; k < n; k++) {
-      const f = this.forest0?.[k] ?? 0;
-      if (!mask[k] || f < 0.05) continue;
-      cimg.data.set([CLEARING_RGB[0], CLEARING_RGB[1], CLEARING_RGB[2], Math.round(235 * Math.min(1, f + 0.2))], k * 4);
-    }
-    cctx.putImageData(cimg, 0, 0);
-    this.clearingSource.update();
-    // Trasy: obrys w kolorze klasy trudności (półprzezroczysty).
-    const pctx = this.pisteCanvas.getContext('2d')!;
-    const pimg = pctx.createImageData(this.grid.widthCells, this.grid.heightCells);
-    const alpha = st.showNetwork ? 150 : 95;
-    for (const p of st.layout.pistes) {
-      const a = st.analysis.pistes.get(p.id);
-      if (!a) continue;
-      const c = this.pisteParams.classes[a.classIndex].color;
-      const rgb = [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
-      for (const k of a.cells) pimg.data.set([rgb[0], rgb[1], rgb[2], alpha], k * 4);
-    }
-    pctx.putImageData(pimg, 0, 0);
-    this.pisteSource.update();
+  /** Śnieg na dachach (z modelu śniegu przy budynkach). */
+  setRoofSnow(snowy: boolean): void {
+    if (snowy === this.snowOnRoofs) return;
+    this.snowOnRoofs = snowy;
+    this.drawContext();
   }
 
-  private label(i: number, text: string, xPx: number, yPx: number, fill: number, bg: number): void {
+  /** Drogi, parkingi i budynki – w metrach świata (rysowane raz). */
+  private drawContext(): void {
+    const c = this.context;
+    if (!c) return;
+    const r = this.roadsG.clear();
+    const onMap = (q: { xM: number; yM: number } | null): q is { xM: number; yM: number } => q !== null && !Number.isNaN(this.grid.sampleElevationM(q.xM, q.yM));
+    for (const road of [...c.roads].sort((a, b) => (ROAD_WIDTH_M[a.kind] ?? 3) - (ROAD_WIDTH_M[b.kind] ?? 3))) {
+      const w = ROAD_WIDTH_M[road.kind] ?? 3;
+      // Tylko odcinki na mapie (bez Słowacji i okolic poza siatką).
+      const pts = road.points.map(this.local);
+      let pen = false;
+      for (const q of pts) {
+        if (!onMap(q)) {
+          pen = false;
+          continue;
+        }
+        if (pen) r.lineTo(q.xM, q.yM);
+        else r.moveTo(q.xM, q.yM);
+        pen = true;
+      }
+      r.stroke({ width: w, color: road.kind === 'track' ? 0xb8c2cc : 0x9aa3ad, alpha: road.kind === 'track' ? 0.6 : 0.95, cap: 'round', join: 'round' });
+    }
+    for (const p of c.parkings) {
+      const pts = p.points.map(this.local).filter(onMap);
+      if (pts.length < 3) continue;
+      r.poly(pts.flatMap((q) => [q.xM, q.yM])).fill({ color: 0xdbe2ea }).stroke({ width: 0.6, color: 0x94a3b8 });
+    }
+    const far = this.buildingsFar.clear();
+    const near = this.buildingsNear.clear();
+    for (const b of c.buildings) {
+      const pts = b.points.map(this.local).filter(onMap);
+      if (pts.length < 3) continue;
+      const flat = pts.flatMap((q) => [q.xM, q.yM]);
+      // Z daleka: czerwono-brązowy prostokąt (jak na makiecie), powiększony do min. ok. 12 m.
+      const cx = pts.reduce((s, q) => s + q.xM, 0) / pts.length;
+      const cy = pts.reduce((s, q) => s + q.yM, 0) / pts.length;
+      const scale = 1.6;
+      far.poly(pts.flatMap((q) => [cx + (q.xM - cx) * scale, cy + (q.yM - cy) * scale])).fill({ color: 0x9a4a35 }).stroke({ width: 1.2, color: 0xffffff, alpha: 0.85 });
+      // Z bliska: dach – połać jasna i cienista, kalenica wzdłuż dłuższego boku.
+      const roof = this.snowOnRoofs ? 0xf8fafc : 0x9b4b3b;
+      const roofShade = this.snowOnRoofs ? 0xcbd6e4 : 0x7a3a2e;
+      // Cień budynku (w prawo w dół ekranu – jak drzewa).
+      const sx = this.camera.sign * 1.5;
+      near.poly(flat.map((v, i) => v + (i % 2 === 0 ? sx : sx))).fill({ color: 0x334155, alpha: 0.25 });
+      near.poly(flat).fill({ color: roof }).stroke({ width: 0.5, color: 0x64748b });
+      let best = 0;
+      let bi = 0;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const d = Math.hypot(pts[i + 1].xM - pts[i].xM, pts[i + 1].yM - pts[i].yM);
+        if (d > best) {
+          best = d;
+          bi = i;
+        }
+      }
+      const ax = pts[bi + 1].xM - pts[bi].xM;
+      const ay = pts[bi + 1].yM - pts[bi].yM;
+      const L = Math.hypot(ax, ay) || 1;
+      const ux = ax / L;
+      const uy = ay / L;
+      // Połowa dachu po jednej stronie kalenicy w cieniu.
+      const shadeHalf: number[] = [];
+      for (const q of pts) {
+        const side = (q.xM - cx) * -uy + (q.yM - cy) * ux;
+        shadeHalf.push(side > 0 ? q.xM : cx + (q.xM - cx) * 0.02, side > 0 ? q.yM : cy + (q.yM - cy) * 0.02);
+      }
+      near.poly(shadeHalf).fill({ color: roofShade, alpha: 0.75 });
+      near.moveTo(cx - ux * L * 0.45, cy - uy * L * 0.45).lineTo(cx + ux * L * 0.45, cy + uy * L * 0.45).stroke({ width: 0.4, color: 0x64748b });
+    }
+  }
+
+  private sortedPlaces: MapContextData['places'] | null = null;
+
+  /** Miejsca do opisania: najpierw Pilsko, potem szczyty od najwyższego, na końcu reszta. */
+  private get placesByImportance(): MapContextData['places'] {
+    if (!this.sortedPlaces) {
+      const rank = (pl: MapContextData['places'][number]) => (pl.name === 'Pilsko' ? 1e6 : pl.kind === 'peak' ? Number.parseFloat(pl.ele) || 0 : -1);
+      this.sortedPlaces = [...(this.context?.places ?? [])].sort((a, b) => rank(b) - rank(a));
+    }
+    return this.sortedPlaces;
+  }
+
+  private label(i: number, text: string, xPx: number, yPx: number, opts: { size?: number; cond?: boolean; fill?: number; stroke?: number; spacing?: number; anchorX?: number }): void {
     let t = this.labelPool[i];
     if (!t) {
-      t = new Text({ text, style: { fontFamily: '-apple-system, "Segoe UI", Roboto, sans-serif', fontSize: 12, fontWeight: '700', fill: 0xffffff, stroke: { color: 0x000000, width: 3 } } });
+      t = new Text({ text, style: { fontFamily: FONT, fontSize: 12, fontWeight: '700', fill: 0xffffff, stroke: { color: 0x000000, width: 3 } } });
       t.anchor.set(0.5);
       this.labelPool[i] = t;
       this.labels.addChild(t);
     }
-    t.text = text;
-    t.style.fill = fill;
-    t.style.stroke = { color: bg, width: 3 };
-    t.position.set(xPx, yPx);
+    if (t.text !== text) t.text = text;
+    const st = t.style;
+    st.fontFamily = opts.cond ? FONT_COND : FONT;
+    st.fontSize = opts.size ?? 12;
+    st.fill = opts.fill ?? 0xffffff;
+    st.stroke = { color: opts.stroke ?? 0x000000, width: opts.stroke === 0xffffff ? 4 : 3, join: 'round' };
+    st.letterSpacing = opts.spacing ?? 0;
+    t.anchor.set(opts.anchorX ?? 0.5, 0.5);
+    t.position.set(Math.round(xPx), Math.round(yPx));
     t.visible = true;
   }
 
-  /** Co klatkę: przerysowuje, gdy zmieniła się kamera albo dane. */
+  /** Co klatkę: przerysowuje, gdy zmieniła się kamera, dane albo jadą krzesełka. */
   update(st: ResortDrawState): void {
-    if (st.version !== this.lastVersion) {
-      this.updateTextures(st);
-      this.lastVersion = st.version;
-      this.lastKey = '';
-    }
     const cam = this.camera;
-    const key = [st.version, st.drawVersion, cam.centerXM, cam.centerYM, cam.metersPerPixel, cam.viewportWidthPx, cam.viewportHeightPx, st.showNetwork, st.showReality, st.hoverPoint?.xM, st.hoverPoint?.yM].join('|');
+    if (this.contextRotated !== cam.rotated) {
+      this.contextRotated = cam.rotated;
+      this.drawContext();
+    }
+    const mpp = cam.metersPerPixel;
+    const w = lodWeights(mpp, this.lod);
+    this.buildingsFar.alpha = w.w1;
+    this.buildingsNear.alpha = 1 - w.w1;
+    this.buildingsFar.visible = w.w1 > 0.01;
+    this.buildingsNear.visible = w.w1 < 0.99;
+    const chairsVisible = mpp < 5 && st.layout.lifts.length > 0;
+    const key = [st.version, st.drawVersion, cam.centerXM, cam.centerYM, mpp, cam.viewportWidthPx, cam.viewportHeightPx, cam.rotated, st.showNetwork, st.showReality, st.hoverPoint?.xM, st.hoverPoint?.yM, chairsVisible ? st.timeS : 0].join('|');
     if (key === this.lastKey) return;
     this.lastKey = key;
     const g = this.g;
     g.clear();
-    let labelIndex = 0;
+    let li = 0;
     const toS = (x: number, y: number) => cam.worldToScreen(x, y);
-    const pxPerM = 1 / cam.metersPerPixel;
+    const pxPerM = 1 / mpp;
+
+    // ---- granica państwa
+    for (const line of this.borderLinesLocal) {
+      const pts = line.map(([x, y]) => toS(x, y));
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i];
+        const b = pts[i + 1];
+        const len = Math.hypot(b.xPx - a.xPx, b.yPx - a.yPx);
+        for (let d = 0; d < len; d += 14) {
+          const t0 = d / len;
+          const t1 = Math.min(1, (d + 8) / len);
+          g.moveTo(a.xPx + t0 * (b.xPx - a.xPx), a.yPx + t0 * (b.yPx - a.yPx)).lineTo(a.xPx + t1 * (b.xPx - a.xPx), a.yPx + t1 * (b.yPx - a.yPx));
+        }
+      }
+      g.stroke({ width: 2, color: BORDER_COLOR, alpha: 0.85 });
+    }
+
+    // ---- nazwy miejsc (bez nakładania: etykieta kolidująca z już postawioną jest pomijana)
+    const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    const fits = (idx: number, marginPx = 3): boolean => {
+      const t = this.labelPool[idx];
+      const x0 = t.x - t.anchor.x * t.width - marginPx;
+      const y0 = t.y - t.anchor.y * t.height - marginPx;
+      const box = { x0, y0, x1: x0 + t.width + 2 * marginPx, y1: y0 + t.height + 2 * marginPx };
+      if (placed.some((b) => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0)) {
+        t.visible = false;
+        return false;
+      }
+      placed.push(box);
+      return true;
+    };
+    for (const l of this.mapLabels) {
+      const p = this.local(l.point);
+      if (!p) continue;
+      const s = toS(p.xM, p.yM);
+      if (l.kind === 'hut') {
+        if (mpp > 6) continue;
+        this.label(li, l.text, s.xPx, s.yPx, { size: 12, fill: 0x475569, stroke: 0xffffff });
+      } else this.label(li, l.text, s.xPx, s.yPx, { size: 17, cond: true, fill: SLATE, stroke: 0xffffff, spacing: 2 });
+      if (fits(li)) li++;
+    }
+    const seenNames = new Set<string>();
+    for (const pl of this.placesByImportance) {
+      if (pl.kind !== 'peak' && pl.kind !== 'hamlet' && pl.kind !== 'saddle') continue;
+      if (pl.kind !== 'peak' && mpp > 3) continue;
+      // Przy całej mapie tylko najważniejsze szczyty (Pilsko, ponad 1300 m).
+      if (pl.kind === 'peak' && mpp > 3.5 && pl.name !== 'Pilsko' && !(Number.parseFloat(pl.ele) >= 1300)) continue;
+      const p = this.local(pl.point);
+      if (!p) continue;
+      const s = toS(p.xM, p.yM);
+      if (s.xPx < -50 || s.yPx < -50 || s.xPx > cam.viewportWidthPx + 50 || s.yPx > cam.viewportHeightPx + 50) continue;
+      if (pl.kind === 'peak') {
+        // Ta sama nazwa drugi raz (OSM ma np. dwa punkty „Góra Pięciu Kopców”) – tylko wyższy.
+        if (seenNames.has(pl.name)) continue;
+        const ele = pl.ele ? ` ${Math.round(Number.parseFloat(pl.ele))} m` : '';
+        this.label(li, `${pl.name}${ele}`, s.xPx + 12, s.yPx, { size: pl.name === 'Pilsko' ? 18 : 14, cond: true, fill: INK, stroke: 0xffffff, anchorX: 0 });
+        if (!fits(li)) continue;
+        li++;
+        seenNames.add(pl.name);
+        g.moveTo(s.xPx, s.yPx - 6).lineTo(s.xPx + 7, s.yPx + 6).lineTo(s.xPx - 7, s.yPx + 6).closePath().fill({ color: INK }).stroke({ width: 1.5, color: 0xffffff });
+      } else {
+        this.label(li, pl.name, s.xPx, s.yPx, { size: 13, cond: true, fill: 0x475569, stroke: 0xffffff, spacing: 1 });
+        if (fits(li)) li++;
+      }
+    }
 
     // ---- rzeczywistość (OSM)
     if (st.showReality) {
@@ -145,15 +306,14 @@ export class ResortLayer {
         const color = hex(this.pisteParams.classes.find((c) => c.id === r.officialClass)?.color ?? '#888888');
         g.moveTo(pts[0].xPx, pts[0].yPx);
         for (const p of pts) g.lineTo(p.xPx, p.yPx);
-        g.stroke({ width: Math.max(3, this.pisteParams.osmPisteWidthM * pxPerM), color, alpha: 0.35, cap: 'round', join: 'round' });
+        g.stroke({ width: Math.max(4, this.pisteParams.osmPisteWidthM * pxPerM), color, alpha: 0.35, cap: 'round', join: 'round' });
         const mid = pts[Math.floor(pts.length / 2)];
-        this.label(labelIndex++, `${r.label}${r.agree ? '' : ' ≠'}`, mid.xPx, mid.yPx, 0xffffff, color);
+        this.label(li++, `${r.label}${r.agree ? '' : ' ≠'}`, mid.xPx, mid.yPx, { size: 12, fill: 0xffffff, stroke: color });
       }
       for (const l of st.realLifts ?? []) {
-        const pts = l.points.map(([e, n]) => this.grid.puwg92ToLocal(e, n)).filter((p): p is { xM: number; yM: number } => p !== null).map((p) => toS(p.xM, p.yM));
+        const pts = l.points.map(this.local).filter((p): p is { xM: number; yM: number } => p !== null).map((p) => toS(p.xM, p.yM));
         if (pts.length < 2) continue;
         for (let i = 0; i < pts.length - 1; i++) {
-          // linia przerywana
           const a = pts[i];
           const b = pts[i + 1];
           const len = Math.hypot(b.xPx - a.xPx, b.yPx - a.yPx);
@@ -165,82 +325,122 @@ export class ResortLayer {
         }
         g.stroke({ width: 3, color: REAL_LIFT_COLOR, alpha: 0.8 });
         const mid = pts[Math.floor(pts.length / 2)];
-        this.label(labelIndex++, l.ref || l.name || l.aerialway, mid.xPx, mid.yPx - 10, 0xffffff, REAL_LIFT_COLOR);
+        this.label(li++, l.ref || l.name || l.aerialway, mid.xPx, mid.yPx - 10, { size: 12, fill: 0xffffff, stroke: REAL_LIFT_COLOR });
       }
     }
 
-    // ---- trasy: oś, strzałki, numery
+    // ---- trasy: kolorowa linia z białą obwódką, numer w kółku
+    const pisteBadges: { x: number; y: number; color: number; text: string }[] = [];
     for (const p of st.layout.pistes) {
       const a = st.analysis.pistes.get(p.id);
       if (!a || a.axis.length < 2) continue;
       const color = hex(this.pisteParams.classes[a.classIndex].color);
       const selected = st.selection?.kind === 'piste' && st.selection.id === p.id;
-      const pts = a.axis.map((s) => toS(s.xM, s.yM));
+      const pts = a.axis.filter((x) => !Number.isNaN(x.elevationM)).map((s) => toS(s.xM, s.yM));
+      if (pts.length < 2) continue;
       if (selected) {
         g.moveTo(pts[0].xPx, pts[0].yPx);
         for (const q of pts) g.lineTo(q.xPx, q.yPx);
-        g.stroke({ width: Math.max(4, a.meanWidthM * pxPerM), color: SELECT_COLOR, alpha: 0.35, cap: 'round', join: 'round' });
+        g.stroke({ width: Math.max(16, a.meanWidthM * pxPerM), color: SELECT_COLOR, alpha: 0.4, cap: 'round', join: 'round' });
       }
+      g.moveTo(pts[0].xPx, pts[0].yPx);
+      for (const q of pts) g.lineTo(q.xPx, q.yPx);
+      g.stroke({ width: 10, color: 0xffffff, alpha: 0.95, cap: 'round', join: 'round' });
+      g.moveTo(pts[0].xPx, pts[0].yPx);
+      for (const q of pts) g.lineTo(q.xPx, q.yPx);
+      g.stroke({ width: 5, color, cap: 'round', join: 'round' });
       if (st.showNetwork || selected) {
-        g.moveTo(pts[0].xPx, pts[0].yPx);
-        for (const q of pts) g.lineTo(q.xPx, q.yPx);
-        g.stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
-        // Strzałki w dół co ~120 m.
-        const stepM = 120;
+        const stepM = 150;
         for (let d = stepM / 2; d < a.lengthM; d += stepM) {
-          const i = Math.min(a.axis.length - 2, Math.floor((d / a.lengthM) * (a.axis.length - 1)));
+          const i = Math.min(pts.length - 2, Math.floor((d / a.lengthM) * (pts.length - 1)));
           const s0 = pts[i];
           const s1 = pts[i + 1];
           const ang = Math.atan2(s1.yPx - s0.yPx, s1.xPx - s0.xPx);
-          const size = 7;
+          const size = 6;
           const cx = (s0.xPx + s1.xPx) / 2;
           const cy = (s0.yPx + s1.yPx) / 2;
           g.moveTo(cx + Math.cos(ang) * size, cy + Math.sin(ang) * size)
             .lineTo(cx + Math.cos(ang + 2.5) * size, cy + Math.sin(ang + 2.5) * size)
             .lineTo(cx + Math.cos(ang - 2.5) * size, cy + Math.sin(ang - 2.5) * size)
             .closePath()
-            .fill({ color })
-            .stroke({ width: 1.5, color: 0xffffff });
+            .fill({ color: 0xffffff });
         }
-        this.label(labelIndex++, p.name, pts[0].xPx, pts[0].yPx - 12, 0xffffff, color);
       }
+      const mid = pts[Math.floor(pts.length * 0.55)];
+      pisteBadges.push({ x: mid.xPx, y: mid.yPx, color, text: p.name });
     }
 
     // ---- wyciągi
     const drawLift = (design: LiftDesign, a: LiftAnalysis, opts: { selected: boolean; draft: boolean }) => {
       const b = toS(design.bottom.xM, design.bottom.yM);
       const t = toS(design.top.xM, design.top.yM);
+      const dx = t.xPx - b.xPx;
+      const dy = t.yPx - b.yPx;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len;
+      const ny = dx / len;
       const bad = !a.ok;
-      g.moveTo(b.xPx, b.yPx).lineTo(t.xPx, t.yPx).stroke({ width: opts.selected ? 8 : 6, color: opts.selected ? SELECT_COLOR : 0xffffff, alpha: 0.9, cap: 'round' });
-      g.moveTo(b.xPx, b.yPx)
-        .lineTo(t.xPx, t.yPx)
-        .stroke({ width: 3, color: bad ? ERROR_COLOR : a.type.kind === 'surface' ? 0x5c3d99 : 0x111111, cap: 'round' });
+      if (opts.selected) g.moveTo(b.xPx, b.yPx).lineTo(t.xPx, t.yPx).stroke({ width: 12, color: SELECT_COLOR, alpha: 0.5, cap: 'round' });
+      g.moveTo(b.xPx, b.yPx).lineTo(t.xPx, t.yPx).stroke({ width: 5, color: 0xffffff, alpha: 0.9, cap: 'round' });
+      g.moveTo(b.xPx, b.yPx).lineTo(t.xPx, t.yPx).stroke({ width: 2, color: bad ? ERROR_COLOR : INK });
       const L = a.horizontalLengthM || 1;
+      // Podpory: krótkie poprzeczne kreski.
       for (const s of a.supports) {
         if (s.kind !== 'tower') continue;
         const f = s.distanceM / L;
-        const x = b.xPx + f * (t.xPx - b.xPx);
-        const y = b.yPx + f * (t.yPx - b.yPx);
-        g.rect(x - 3, y - 3, 6, 6).fill({ color: 0xffffff }).stroke({ width: 1.5, color: 0x111111 });
+        const x = b.xPx + f * dx;
+        const y = b.yPx + f * dy;
+        const half = Math.max(4, Math.min(8, 3 * pxPerM));
+        g.moveTo(x - nx * half, y - ny * half).lineTo(x + nx * half, y + ny * half);
       }
-      g.circle(b.xPx, b.yPx, 7).fill({ color: 0xffffff }).stroke({ width: 2.5, color: 0x111111 });
-      g.circle(t.xPx, t.yPx, 7).fill({ color: 0x111111 }).stroke({ width: 2.5, color: 0xffffff });
+      g.stroke({ width: 2.5, color: bad ? ERROR_COLOR : INK, cap: 'round' });
+      // Krzesełka jadące po linie (w górę z jednej strony, w dół z drugiej).
+      const spacing = carrierSpacingM(a.type);
+      if (!opts.draft && mpp < 5 && spacing > 0 && a.type.towerMaxHeightM > 0) {
+        const offPx = Math.max(2.5, 2 * pxPerM);
+        const travel = (st.timeS * a.type.speedMs) % spacing;
+        const cw = Math.max(4, Math.min(10, 2.2 * pxPerM));
+        const ch = cw * 0.8;
+        for (let d = travel; d < L; d += spacing) {
+          for (const dir of [1, -1]) {
+            const dd = dir === 1 ? d : L - d;
+            const f = dd / L;
+            const x = b.xPx + f * dx + nx * offPx * dir;
+            const y = b.yPx + f * dy + ny * offPx * dir;
+            g.roundRect(x - cw / 2, y - ch / 2, cw, ch, 1).fill({ color: CHAIR_FILL }).stroke({ width: 0.8, color: CHAIR_STROKE });
+          }
+        }
+      }
+      // Stacje.
+      for (const p of [b, t]) g.roundRect(p.xPx - 11, p.yPx - 6.5, 22, 13, 3).fill({ color: SLATE }).stroke({ width: 2, color: 0xffffff });
       for (const issue of a.issues) {
         if (issue.severity !== 'error' || issue.distanceM === null) continue;
         const f = issue.distanceM / L;
-        g.circle(b.xPx + f * (t.xPx - b.xPx), b.yPx + f * (t.yPx - b.yPx), 6).stroke({ width: 3, color: ERROR_COLOR });
+        g.circle(b.xPx + f * dx, b.yPx + f * dy, 7).stroke({ width: 3, color: ERROR_COLOR });
       }
-      if (!opts.draft) this.label(labelIndex++, design.name, (b.xPx + t.xPx) / 2 + 14, (b.yPx + t.yPx) / 2, 0xffffff, 0x111111);
+      if (!opts.draft) {
+        const text = `${design.name} · ${shortType(design.typeId)}`;
+        const mx = (b.xPx + t.xPx) / 2 + nx * 26;
+        const my = (b.yPx + t.yPx) / 2 + ny * 26;
+        const wPx = 9 + text.length * 6.4;
+        g.roundRect(mx - wPx / 2, my - 11, wPx, 22, 11).fill({ color: INK }).stroke({ width: 1.5, color: 0xffffff });
+        this.label(li++, text, mx, my, { size: 12, fill: 0xffffff, stroke: INK });
+      }
     };
     for (const l of st.layout.lifts) {
       const a = st.analysis.lifts.get(l.id);
       if (a) drawLift(l, a, { selected: st.selection?.kind === 'lift' && st.selection.id === l.id, draft: false });
     }
+    // Numery tras na wierzchu.
+    for (const bdg of pisteBadges) {
+      g.circle(bdg.x, bdg.y, 12).fill({ color: bdg.color }).stroke({ width: 2.5, color: 0xffffff });
+      this.label(li++, bdg.text, bdg.x, bdg.y, { size: 14, fill: 0xffffff, stroke: bdg.color });
+    }
     for (const b of st.layout.bases) {
       const p = toS(b.xM, b.yM);
       const sel = st.selection?.kind === 'base' && st.selection.id === b.id;
-      g.roundRect(p.xPx - 9, p.yPx - 9, 18, 18, 3).fill({ color: 0x1c7ed6 }).stroke({ width: sel ? 3 : 2, color: sel ? SELECT_COLOR : 0xffffff });
-      this.label(labelIndex++, 'P', p.xPx, p.yPx, 0xffffff, 0x1c7ed6);
+      g.roundRect(p.xPx - 10, p.yPx - 10, 20, 20, 5).fill({ color: 0x2563eb }).stroke({ width: sel ? 3 : 2, color: sel ? SELECT_COLOR : 0xffffff });
+      this.label(li++, 'P', p.xPx, p.yPx, { size: 13, fill: 0xffffff, stroke: 0x2563eb });
     }
 
     // ---- sieć: węzły i ostrzeżenia
@@ -248,10 +448,10 @@ export class ResortLayer {
       for (const node of st.analysis.network.nodes) {
         if (node.kind !== 'junction' && node.kind !== 'pisteStart' && node.kind !== 'pisteEnd') continue;
         const p = toS(node.xM, node.yM);
-        if (node.kind === 'junction') g.circle(p.xPx, p.yPx, 4).fill({ color: 0xffffff }).stroke({ width: 1.5, color: 0x111111 });
+        if (node.kind === 'junction') g.circle(p.xPx, p.yPx, 4).fill({ color: 0xffffff }).stroke({ width: 1.5, color: INK });
         else {
           g.circle(p.xPx, p.yPx, 9).fill({ color: ERROR_COLOR }).stroke({ width: 2, color: 0xffffff });
-          this.label(labelIndex++, '!', p.xPx, p.yPx, 0xffffff, ERROR_COLOR);
+          this.label(li++, '!', p.xPx, p.yPx, { size: 13, fill: 0xffffff, stroke: ERROR_COLOR });
         }
       }
     }
@@ -259,20 +459,21 @@ export class ResortLayer {
     // ---- podgląd budowy
     if (st.draftPiste && st.draftPiste.points.length > 0) {
       const pts = st.draftPiste.points.map((q) => ({ ...toS(q.xM, q.yM), w: q.widthM * pxPerM }));
-      const color = st.draftPiste.analysis ? hex(this.pisteParams.classes[st.draftPiste.analysis.classIndex].color) : 0xffffff;
+      const color = st.draftPiste.analysis ? hex(this.pisteParams.classes[st.draftPiste.analysis.classIndex].color) : 0x64748b;
       g.moveTo(pts[0].xPx, pts[0].yPx);
       for (const q of pts) g.lineTo(q.xPx, q.yPx);
-      g.stroke({ width: Math.max(4, pts[pts.length - 1].w), color, alpha: 0.45, cap: 'round', join: 'round' });
+      g.stroke({ width: Math.max(10, pts[pts.length - 1].w), color: 0xffffff, alpha: 0.55, cap: 'round', join: 'round' });
       g.moveTo(pts[0].xPx, pts[0].yPx);
       for (const q of pts) g.lineTo(q.xPx, q.yPx);
-      g.stroke({ width: 2, color: 0xffffff, alpha: 0.95 });
-      for (const q of pts) g.circle(q.xPx, q.yPx, 3).fill({ color: 0xffffff });
+      g.stroke({ width: 5, color, cap: 'round', join: 'round' });
+      for (const q of pts) g.circle(q.xPx, q.yPx, 3).fill({ color: 0xffffff }).stroke({ width: 1, color: INK });
     }
     if (st.draftLift) drawLift(st.draftLift.design, st.draftLift.analysis, { selected: false, draft: true });
     if (st.hoverPoint) {
       const p = toS(st.hoverPoint.xM, st.hoverPoint.yM);
       g.circle(p.xPx, p.yPx, 6).fill({ color: SELECT_COLOR }).stroke({ width: 2, color: 0x000000 });
     }
-    for (let i = labelIndex; i < this.labelPool.length; i++) this.labelPool[i].visible = false;
+    for (let i = li; i < this.labelPool.length; i++) this.labelPool[i].visible = false;
+    void this.grid;
   }
 }

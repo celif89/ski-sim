@@ -16,6 +16,8 @@ import { BuildPanel } from './buildPanel';
 import { BuildProfile } from './buildProfile';
 import type { Camera } from './camera';
 import { ResortLayer } from './resortLayer';
+import type { MapContextData, MapLabel } from './resortLayer';
+import type { LodThresholds } from './illustration';
 
 export interface BuildControllerOptions {
   grid: TerrainGrid;
@@ -32,8 +34,15 @@ export interface BuildControllerOptions {
   shrub: Float32Array | null;
   osm: OsmResort | null;
   storageKey: string;
+  /** Oprawa graficzna: progi szczegółowości, otoczenie z OSM, etykiety, granica. */
+  lod: LodThresholds;
+  context: MapContextData | null;
+  labels: MapLabel[];
+  borderLinesLocal: number[][][];
   /** Nowe pokrycie po wycince (dla modelu śniegu). */
   onLandCover(forest: Float32Array, shrub: Float32Array): void;
+  /** Zmiana układu ośrodka (do rysowania przecinek i tras). */
+  onLayoutChange?(layout: ResortLayout, analysis: ResortAnalysis): void;
   /** Narzędzie budowy aktywne – kursor mapy. */
   onToolChange(tool: BuildTool): void;
 }
@@ -72,7 +81,7 @@ export class BuildController {
     this.liftTypeId = o.liftParams.types.find((t) => t.id === 'kanapa4d')?.id ?? o.liftParams.types[0].id;
     this.widthM = o.pisteParams.defaultWidthM;
     this.layout = this.loadSaved();
-    this.layer = new ResortLayer(o.world, o.screenLayer, o.grid, o.camera, o.pisteParams, o.forest);
+    this.layer = new ResortLayer(o.world, o.screenLayer, o.grid, o.camera, o.pisteParams, o.lod, o.context, o.labels, o.borderLinesLocal);
     this.panel = new BuildPanel(o.panelParent, o.liftParams, o.pisteParams, {
       onTool: (t) => this.setTool(t),
       onLiftType: (id) => {
@@ -123,6 +132,16 @@ export class BuildController {
     return applyClearing(this.o.forest, this.o.shrub, this.analysis.clearedMask);
   }
 
+  /** Śnieg na dachach budynków. */
+  setRoofSnow(snowy: boolean): void {
+    this.layer.setRoofSnow(snowy);
+  }
+
+  /** Układ ośrodka i jego analiza (dla innych warstw, np. sceny demonstracyjnej). */
+  get current(): { layout: ResortLayout; analysis: ResortAnalysis } {
+    return { layout: this.layout, analysis: this.analysis };
+  }
+
   get activeTool(): BuildTool {
     return this.tool;
   }
@@ -152,6 +171,7 @@ export class BuildController {
     this.version++;
     this.drawVersion++;
     if (this.selection && !this.findSelected()) this.selection = null;
+    this.o.onLayoutChange?.(this.layout, this.analysis);
     this.refreshPanel();
     this.refreshProfile();
   }
@@ -243,13 +263,21 @@ export class BuildController {
     else this.refreshProfile();
   }
 
-  private toggleNetwork(): void {
+  get networkShown(): boolean {
+    return this.showNetwork;
+  }
+
+  get realityShown(): boolean {
+    return this.showReality;
+  }
+
+  toggleNetwork(): void {
     this.showNetwork = !this.showNetwork;
     this.version++;
     this.refreshPanel();
   }
 
-  private toggleReality(): void {
+  toggleReality(): void {
     this.showReality = !this.showReality;
     if (this.showReality && !this.real && this.o.osm) {
       this.real = compareRealPistes(this.o.osm, this.o.grid, this.o.pisteParams, (e, n) => this.o.grid.puwg92ToLocal(e, n));
@@ -620,7 +648,7 @@ export class BuildController {
     });
   }
 
-  update(cursor: { xPx: number; yPx: number } | null): void {
+  update(cursor: { xPx: number; yPx: number } | null, timeS = performance.now() / 1000): void {
     // Podgląd: wyciąg do kursora, oś trasy do kursora.
     const key = cursor ? `${Math.round(cursor.xPx)}|${Math.round(cursor.yPx)}|${this.o.camera.centerXM}|${this.o.camera.centerYM}|${this.o.camera.metersPerPixel}` : '';
     if (key !== this.lastCursorKey && cursor) {
@@ -642,6 +670,7 @@ export class BuildController {
       hoverPoint: this.hoverPoint,
       version: this.version,
       drawVersion: this.drawVersion,
+      timeS,
     });
   }
 }

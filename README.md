@@ -34,7 +34,10 @@ zostaje poprzednia, sprawna wersja.
 | Przesuwanie mapy | przeciągnij myszą albo strzałki / klawisze W A S D |
 | Przybliżanie i oddalanie | kółko myszy (przybliża w miejscu kursora), na gładziku Maca: gest szczypania; klawisze `+` / `−` |
 | Cała mapa na ekranie | klawisz `0` lub `Home` |
-| Nakładka nachylenia | przycisk „Nachylenie” lub klawisz `1` |
+| Obrót mapy o 180° | róża kierunków w prawym dolnym rogu (strzałka **N**). Domyślnie widok od Korbielowa: szczyt u góry, północ na dole |
+| Upływ czasu gry | prawy górny róg: pauza, ×1 (dzień sezonu w ok. 10 minut, noc szybciej), ×5, ×20; spacja – pauza / ×1 |
+| Nakładki danych | przycisk **„Nakładki”** na dolnym pasku (tam też mapa topograficzna, sieć tras, prawdziwy ośrodek) albo klawisze `1`–`8` |
+| Nakładka nachylenia | „Nakładki” → „Nachylenie” lub klawisz `1` |
 | Nakładka ekspozycji | przycisk „Ekspozycja” lub klawisz `2` |
 | Sama mapa | przycisk „Bez nakładki” lub klawisz `3` |
 | Nasłonecznienie teraz (W/m²) | przycisk „Słońce teraz” lub klawisz `4` |
@@ -42,11 +45,16 @@ zostaje poprzednia, sprawna wersja.
 | Temperatura powietrza | przycisk „Temperatura” lub klawisz `6` |
 | Grubość śniegu (cm) | przycisk „Śnieg – grubość” lub klawisz `7` |
 | Stan śniegu (puch, przewiany, osiadły, firn, breja, zlodzony, przetarty) | przycisk „Śnieg – stan” lub klawisz `8` |
-| Przewijanie sezonu (śnieg zmienia się dzień po dniu do 30 kwietnia) | panel po lewej: „▶▶ Przewiń sezon”, prędkość 1 / 5 / 20 dni na sekundę |
-| Dzień i godzina | panel po lewej: data, strzałki ◀ ▶, suwak godziny, „▶ Odtwórz dzień” |
+| Przewijanie sezonu (śnieg zmienia się dzień po dniu do 30 kwietnia) | lewy górny róg: „Kalendarz i słońce” → „▶▶ Przewiń sezon”, prędkość 1 / 5 / 20 dni na sekundę |
+| Dzień i godzina | lewy górny róg: „Kalendarz i słońce” – data, strzałki ◀ ▶, suwak godziny, „▶ Odtwórz dzień” |
+| Pogoda | plakietka u góry na środku (temperatura, śnieg, wiatr); kliknięcie – szczegóły i prognoza na 7 dni |
+| Menu deweloperskie | przycisk „Dev” w lewym dolnym rogu lub klawisz `` ` `` – scena demonstracyjna (narciarze, ratrak), licznik klatek |
 | Profil terenu | przycisk „Profil terenu” lub klawisz `P`, potem kliknij punkt A i punkt B; `Esc` zamyka |
 
-### Budowa ośrodka (panel „Budowa ośrodka” po prawej)
+### Budowa ośrodka (dolny pasek i panel „Budowa ośrodka” po prawej)
+
+Dolny pasek: **Wyciąg**, **Trasa**, **Budynki** (baza), **Nakładki**. „Wycinka” i „Naśnieżanie”
+są wyszarzone – wycinka liczy się sama pod wyciągami i trasami, naśnieżanie to etap 7.
 
 | Czynność | Jak |
 |---|---|
@@ -69,14 +77,32 @@ wtedy sezon od nowa (na przecince więcej słońca i wiatru, brak zatrzymywania 
 
 ### Co widać
 
-- **Mapa bazowa:** cieniowanie rzeźby (światło z północnego zachodu, jak na mapach
+- **Mapa w stylu „ilustrowanej mapy narciarskiej”** (etap 4b): biały śnieg z niebieskawym
+  cieniowaniem rzeźby, las jako świerki rysowane z boku, trasy jako kolorowe linie z białą obwódką,
+  wyciągi jako ciemna linia z podporami, stacjami i jadącymi krzesełkami, budynki, drogi i parkingi
+  z OpenStreetMap, nazwy miejsc z białą obwódką. Wygląd zależy od przybliżenia (płynnie):
+  - **cały ośrodek** (powyżej ok. 4 m na piksel): śnieg według modelu (gruby – biały, cienki –
+    płaty, bez śniegu – trawa), las jako gęsta faktura świerków, kosodrzewina;
+  - **średnie przybliżenie** (ok. 1–4 m/px): pojedyncze świerki z cieniem (wielkość i odcień
+    losowane z ziarnem – zawsze te same drzewa), przecinki z ostrymi krawędziami, dachy ze śniegiem;
+  - **detal** (poniżej ok. 1 m/px, do 0,25 m/px): faktura śniegu według stanu – puch, przewiany,
+    firn, breja, lód z połyskiem, przetarcia z trawą i kamieniami, a za ratrakiem sztruks (prążki
+    w kierunku przejazdu, styki pasów), za narciarzami ślady na puchu i muldy. Ślady z czasem
+    znikają, przy opadzie szybciej.
+  Pora dnia zmienia światło (poranek chłodny, zmierzch ciepły, noc ciemna z oświetlonymi trasami
+  i światłami ratraków); gdy pada, na ekranie widać płatki śniegu lub deszcz.
+- **Scena demonstracyjna** (menu „Dev” albo adres `…/ski-sim/?demo=50`): kilkudziesięciu narciarzy
+  zjeżdża po trasach (zbudowanych albo prawdziwych z OpenStreetMap) i jeden ratrak wyrównuje trasę.
+  To tylko pokaz wyglądu – prawdziwi goście to etap 5. Sztruks i przetarcia najlepiej widać przy
+  przybliżeniu ok. 0,25–0,5 m/px (pasek stanu na dole pokazuje skalę).
+- **Mapa topograficzna** (dawna mapa bazowa, „Nakładki” → „Mapa topograficzna”): cieniowanie rzeźby (światło z północnego zachodu, jak na mapach
   topograficznych), barwy wysokości (zielonkawo w dolinach, jasny beż na grzbietach),
   warstwice co 10 m, pogrubione co 50 m z opisem wysokości, czerwona przerywana granica państwa.
   Teren po stronie słowackiej jest zakreskowany – to „poza mapą” (bez danych, nie do zabudowy).
 - **Nakładka nachylenia** w kolorach tras: zielony do 10 %, niebieski do 25 %, czerwony do 40 %,
   czarny powyżej (progi w pliku `data/slope-classes.json`).
 - **Nakładka ekspozycji:** stoki opadające na południe w ciepłych barwach, na północ w zimnych.
-- **Legenda** aktywnej nakładki w prawym górnym rogu.
+- **Legenda** aktywnej nakładki po prawej (bez nakładki – kolory tras i znaki mapy).
 - **Pasek na dole:** współrzędne kursora w układzie PUWG 1992 (X – północ, Y – wschód, jak
   w geodezji) i w stopniach, wysokość terenu, nachylenie (% i °), ekspozycja, skala.
 - **Profil terenu:** wykres przekroju A–B, odcinki pokolorowane jak nakładka nachyleń;
@@ -93,8 +119,8 @@ wtedy sezon od nowa (na przecince więcej słońca i wiatru, brak zatrzymywania 
   na dole pokazuje grubość, ilość wody w śniegu (SWE), gęstość i stan. Przy pierwszym włączeniu
   gra liczy sezon od 1 października do wybranego dnia (kilkanaście sekund, pasek postępu); potem
   przewijanie do przodu jest szybkie, a cofanie – z zapamiętanych stanów co 15 dni.
-  Las widać na mapie bazowej jako ciemniejszą zieleń.
-- **Pogoda** (panel po lewej): warunki teraz na dole i na górze ośrodka (temperatura, opad i jego
+  Las widać na mapie jako świerki (na mapie topograficznej – ciemniejsza zieleń).
+- **Pogoda** (plakietka u góry, po kliknięciu szczegóły): warunki teraz na dole i na górze ośrodka (temperatura, opad i jego
   rodzaj, wiatr, wilgotność, zachmurzenie) i prognoza na 7 dni. Prognoza jest niepewna – im dalej,
   tym bardziej może się mylić (±°C w ostatniej kolumnie).
 

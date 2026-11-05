@@ -37,6 +37,8 @@ export interface LiftType {
   towerCostPln: number;
   buildDaysBase: number;
   buildDaysPer100m: number;
+  /** Miejsca na krzesełku/wagoniku/orczyku (0 – ruch ciągły, np. taśma). */
+  carrierSeats: number;
 }
 
 export interface LiftCommonParams {
@@ -100,6 +102,7 @@ export function parseLiftParams(raw: unknown): LiftParams {
       towerCostPln: n(e, 'towerCostPln', { min: 0 }),
       buildDaysBase: n(e, 'buildDaysBase', { min: 0 }),
       buildDaysPer100m: n(e, 'buildDaysPer100m', { min: 0 }),
+      carrierSeats: n(e, 'carrierSeats', { min: 0 }),
     } satisfies LiftType;
   });
   for (const t of types) if (t.towerMaxHeightM < t.towerMinHeightM) throw new Error(`${FILE}: ${t.id} – towerMaxHeightM < towerMinHeightM`);
@@ -381,6 +384,11 @@ export interface LiftContext {
 }
 
 const fmt0 = (x: number) => Math.round(x).toLocaleString('pl-PL');
+
+/** Odstęp krzesełek na linie [m]: prędkość × miejsca / przepustowość (0 – ruch ciągły). */
+export function carrierSpacingM(type: LiftType): number {
+  return type.carrierSeats > 0 ? (type.speedMs * 3600 * type.carrierSeats) / type.capacityPerHour : 0;
+}
 
 /** Pełna analiza wyciągu: profil, lina, ostrzeżenia, liczby. */
 export function analyzeLift(design: LiftDesign, ctx: LiftContext): LiftAnalysis {
