@@ -66,9 +66,9 @@
       "source": "Kasten i Czeplak 1980: G = G_bezchm · (1 − 0,75·C^3,4)"
     },
     "kastenCzeplakB": {
-      "value": 3.4,
+      "value": 2.5,
       "unit": "-",
-      "source": "Kasten i Czeplak 1980"
+      "source": "SKALIBROWANE (było 3,4 – Kasten i Czeplak 1980): sprawdzone na pomiarach aktynometrycznych IMGW 2007–2014 (XI–IV): zawyżenie sum dobowych Kasprowy Wierch 11 % → 3 %, Bielsko-Biała 24 % → 16 % (tam także +11 % przy bezchmurnym niebie – zapylenie)"
     }
   },
   "dailySum": {
