@@ -69,6 +69,8 @@ export class Legend {
     parent: HTMLElement,
     private readonly slopeClasses: SlopeClass[],
     private readonly flatSlopePercent: number,
+    /** Klasy tras (kolory) – legenda mapy w stylu A. */
+    private readonly pisteClasses: { name: string; color: string }[] = [],
   ) {
     this.element = document.createElement('div');
     this.element.className = 'legend';
@@ -85,12 +87,16 @@ export class Legend {
   show(kind: OverlayKind): void {
     this.kind = kind;
     if (kind === 'none') {
+      const pistes = this.pisteClasses
+        .map((c) => `<div class="legend-cell"><span class="legend-piste" style="--c:${c.color}"></span>${c.name}</div>`)
+        .join('');
       this.element.innerHTML = `
         <div class="legend-title">Mapa</div>
-        <div class="legend-row"><span class="legend-line major"></span>warstwica co 50 m (z opisem)</div>
-        <div class="legend-row"><span class="legend-line minor"></span>warstwica co 10 m</div>
+        ${pistes ? `<div class="legend-grid legend-grid-2">${pistes}</div>` : ''}
+        <div class="legend-row"><span class="legend-lift"></span>wyciąg (podpory, stacje)</div>
         <div class="legend-row"><span class="legend-line border"></span>granica państwa</div>
-        <div class="legend-row"><span class="legend-swatch outside"></span>poza mapą (Słowacja)</div>`;
+        <div class="legend-row"><span class="legend-swatch outside"></span>poza mapą (Słowacja)</div>
+        <div class="legend-note">Warstwice i barwy wysokości: Nakładki → Mapa topograficzna</div>`;
       return;
     }
     if (kind === 'slope') {

@@ -22,6 +22,7 @@ import pistesJson from '../data/pistes.json';
 import constructionJson from '../data/construction.json';
 import {
   addDays,
+  advanceClock,
   createHorizonDem,
   parseHorizonParams,
   parseLandCover,
@@ -55,6 +56,8 @@ import type { FieldKind } from './render/fieldOverlay';
 import { Hud } from './render/hud';
 import { MapInput } from './render/input';
 import { parseMapStyle } from './render/mapStyle';
+import { TopBar, type GameSpeed, type SnowAtPoints } from './render/topBar';
+import { BuildBar, MapNav } from './render/buildBar';
 import { createAspectOverlayCanvas, createSlopeOverlayCanvas } from './render/overlays';
 import type { OverlayKind } from './render/overlays';
 import { Legend, OVERLAY_KEYS, Toolbar } from './render/panels';
@@ -127,7 +130,7 @@ async function start(): Promise<void> {
     const terrainPromise = sim.prepareTerrain(request);
     await app.init({
       resizeTo: root,
-      background: '#1b1d21',
+      background: '#d5dde6',
       antialias: false,
       autoDensity: true,
       resolution: window.devicePixelRatio || 1,
@@ -194,7 +197,7 @@ async function start(): Promise<void> {
     const rightColumn = document.createElement('div');
     rightColumn.className = 'right-column';
     document.body.appendChild(rightColumn);
-    const legend = new Legend(rightColumn, slopeClasses, style.flatSlopePercent);
+    const legend = new Legend(rightColumn, slopeClasses, style.flatSlopePercent, parsePisteParams(pistesJson).classes.map((c) => ({ name: c.name, color: c.color })));
 
     // ---------------------------------------------------------------- nakładki
     const staticTextures = new Map<OverlayKind, Texture>();
@@ -209,21 +212,69 @@ async function start(): Promise<void> {
     const fmtDate = (d: CalendarDate) => `${d.day}.${String(d.month).padStart(2, '0')}.${d.year}`;
     const sameDate = (a: CalendarDate, b: CalendarDate) => a.year === b.year && a.month === b.month && a.day === b.day;
 
-    const toolbar = new Toolbar(document.body, {
-      onOverlay: (kind) => setOverlay(kind),
-      onProfileTool: () => profile.toggle(),
+    // Interfejs w stylu A: górny pasek (czas, pogoda, prędkość), dolny pasek budowy, róża kierunków.
+    let gameSpeed: GameSpeed = 0;
+    const topBar = new TopBar(document.body, { onSpeed: (sp) => setGameSpeed(sp) });
+    const buildBar = new BuildBar(document.body, {
+      onTool: (tool) => {
+        if (tool !== 'select') profile.setActive(false);
+        build.setTool(tool);
+      },
+      onInfo: (text) => buildBar.showToast(text),
     });
-    const left = document.createElement('div');
-    left.className = 'left-column';
-    document.body.appendChild(left);
+    const mapNav = new MapNav(document.body, {
+      onRotate: () => {
+        camera.toggleRotation();
+        mapNav.setRotated(camera.rotated);
+      },
+      onZoom: (f) => camera.zoomAt(camera.viewportWidthPx / 2, camera.viewportHeightPx / 2, f),
+    });
+    mapNav.setRotated(camera.rotated);
+    const toolbar = new Toolbar(buildBar.layersPop, {
+      onOverlay: (kind) => setOverlay(kind),
+      onProfileTool: () => {
+        if (!profile.active) build.setTool('select');
+        profile.toggle();
+      },
+    });
+    let topoOn = false;
+    const layerExtras = document.createElement('div');
+    layerExtras.className = 'a-layers-extra';
+    layerExtras.innerHTML = `
+      <button type="button" data-l="topo" title="Dawna mapa topograficzna: warstwice co 10 m, barwy wysokości, opisy">Mapa topograficzna</button>
+      <button type="button" data-l="net" title="Strzałki kierunku zjazdu, numery, połączenia (klawisz N)"><kbd>N</kbd> Sieć tras</button>
+      <button type="button" data-l="real" title="Prawdziwe wyciągi i trasy Pilska z OpenStreetMap (klawisz R)"><kbd>R</kbd> Prawdziwy ośrodek</button>`;
+    buildBar.layersPop.prepend(Object.assign(document.createElement('div'), { className: 'a-pop-title', textContent: 'Nakładki' }));
+    buildBar.layersPop.appendChild(layerExtras);
+    const layerBtn = (k: string) => layerExtras.querySelector<HTMLButtonElement>(`[data-l="${k}"]`)!;
+    layerBtn('topo').addEventListener('click', () => {
+      topoOn = !topoOn;
+      showTopo(topoOn);
+    });
+    layerBtn('net').addEventListener('click', () => build.toggleNetwork());
+    layerBtn('real').addEventListener('click', () => build.toggleReality());
+    const refreshLayerButtons = () => {
+      layerBtn('topo').classList.toggle('active', topoOn);
+      layerBtn('net').classList.toggle('active', build.networkShown);
+      layerBtn('real').classList.toggle('active', build.realityShown);
+    };
 
     const timePanel = new TimePanel(
-      left,
+      topBar.details,
       { date: parseIsoDate(simSettings.startDate), hour: simSettings.startHour },
       simSettings.playDayDurationS,
       (t) => requestState(t),
     );
-    const weatherPanel = new WeatherPanel(left);
+    const weatherPanel = new WeatherPanel(topBar.weatherPop);
+    function setGameSpeed(sp: GameSpeed): void {
+      gameSpeed = sp;
+      topBar.setSpeed(sp);
+      if (sp > 0) {
+        timePanel.stopPlay();
+        timePanel.setSeasonPlaying(false);
+      }
+    }
+    setGameSpeed(0);
     const profile = new ProfileTool(screenLayer, document.body, grid, camera, slopeClasses, (active) => {
       toolbar.setProfileActive(active);
       app.canvas.classList.toggle('tool-profile', active);
@@ -254,6 +305,7 @@ async function start(): Promise<void> {
       onLayoutChange: (layout, analysis) =>
         terrain.setLayout(layout, new Map([...analysis.pistes].map(([id, a]) => [id, a.axis.filter((x) => !Number.isNaN(x.elevationM))])), liftParams),
       onToolChange: (tool) => {
+        buildBar.setTool(tool);
         app.canvas.classList.toggle('tool-build', tool !== 'select');
         if (tool !== 'select') profile.setActive(false);
       },
@@ -363,6 +415,7 @@ async function start(): Promise<void> {
           lastState = s;
           terrain.setSun(s.sun.elevationDeg, s.sun.azimuthDeg);
           weatherPanel.update(s);
+          topBar.setWeather(s, snowAtStations());
           timePanel.setSun({ ...s.sun, summerTime: s.summerTime });
           if (overlay === 'radiationSum' && radiationSum && !sameDate(radiationSum.date, t.date)) radiationSum = null;
           refreshField();
@@ -400,6 +453,7 @@ async function start(): Promise<void> {
           if (id !== latestSnowRequest) return;
           lastSnow = { date: m.date, depthCm: m.depthCm, sweMm: m.sweMm, densityKgM3: m.densityKgM3, quality: m.quality };
           terrain.setSnow(m.depthCm, m.quality);
+          if (lastState) topBar.setWeather(lastState, snowAtStations());
           // Śnieg na dachach: gdy w dolnych partiach (do ok. 750 m) zwykle leży śnieg.
           let low = 0;
           let snowy = 0;
@@ -423,6 +477,42 @@ async function start(): Promise<void> {
       if (p.phase === 'radiation') timePanel.setStatus(`Liczę promieniowanie na sezon (raz na sezon)… ${f0(p.fraction * 100)} %`);
       else if (p.date) timePanel.setStatus(`Liczę śnieg dzień po dniu… ${fmtDate(p.date)}`);
     };
+    /** Średnia grubość śniegu w komórkach na wysokości dolnej i górnej stacji pogody (±25 m). */
+    function snowAtStations(): SnowAtPoints | null {
+      if (!lastSnow || !lastState) return null;
+      const at = (elevM: number) => {
+        let sum = 0;
+        let n = 0;
+        for (let k = 0; k < grid.cellCount; k++) {
+          const d = lastSnow!.depthCm[k];
+          if (Math.abs(grid.elevationM[k] - elevM) <= 25 && !Number.isNaN(d)) {
+            sum += d;
+            n++;
+          }
+        }
+        return n ? sum / n : 0;
+      };
+      return { bottomCm: at(lastState.bottom.elevationM), topCm: at(lastState.top.elevationM) };
+    }
+
+    // Zegar gry (pauza, ×1, ×5, ×20): przesuwa godzinę, o północy – następny dzień (śnieg liczy się dalej).
+    const clockParams = { gameDayDurationS: simSettings.gameDayDurationS, nightSpeedup: simSettings.nightSpeedup };
+    function clockTick(dtS: number): void {
+      if (gameSpeed === 0 || timePanel.isPlaying || timePanel.seasonPlaying) return;
+      // Nowy dzień dopiero, gdy śnieg poprzedniego jest policzony (przy ×20 model nie nadąża za zegarem).
+      const { sunrise, sunset } = timePanel.sunHours;
+      const step = advanceClock(timePanel.hour, Math.min(dtS, 0.25), gameSpeed, clockParams, sunrise, sunset);
+      if (step.daysAdvanced > 0) {
+        if (snowReady && lastSnow && !sameDate(lastSnow.date, timePanel.date)) return;
+        timePanel.setDateTime(addDays(timePanel.date, step.daysAdvanced), step.hour);
+      } else if (Math.floor(step.hour * 12) !== Math.floor(timePanel.hour * 12)) {
+        // Stan pogody i słońca co 5 minut czasu gry (tańsze niż co klatkę).
+        timePanel.setDateTime(timePanel.date, step.hour);
+      } else {
+        timePanel.hour = step.hour;
+      }
+    }
+
     // Przewijanie sezonu: kolejny dzień, gdy poprzedni stan śniegu jest już policzony.
     let lastSeasonStepMs = 0;
     function seasonTick(nowMs: number): void {
@@ -542,6 +632,10 @@ async function start(): Promise<void> {
         devMenu.toggle();
         return true;
       }
+      if (code === 'Space') {
+        setGameSpeed(gameSpeed === 0 ? 1 : 0);
+        return true;
+      }
       const digit = /^(Digit|Numpad)([1-9])$/.exec(code);
       if (digit) {
         const o = OVERLAY_KEYS[Number(digit[2]) - 1];
@@ -562,6 +656,9 @@ async function start(): Promise<void> {
       const frameStart = performance.now();
       timePanel.tick(performance.now());
       seasonTick(performance.now());
+      clockTick(ticker.deltaMS / 1000);
+      topBar.setClock(timePanel.date, timePanel.hour, timePanel.statusText);
+      refreshLayerButtons();
       input.update(ticker.deltaMS / 1000);
       // Przeliczenie metrów na piksele: świat jest w metrach, kamera mówi, ile pikseli to metr.
       const scale = camera.pixelsPerMeter;

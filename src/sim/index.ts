@@ -46,3 +46,5 @@ export {
 } from './weather';
 export type { DailyWeather, HourlyWeather, ForecastDay, WeatherParams, Location, PrecipitationPhase, CalendarDate } from './weather';
 export { createHorizonDem, parseLandCover } from './mapFile';
+export { advanceClock, isNightHour } from './gameClock';
+export type { GameClockParams, ClockStep } from './gameClock';

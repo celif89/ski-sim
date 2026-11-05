@@ -27,6 +27,16 @@
       "value": 12,
       "unit": "s",
       "source": "„odtwórz dzień”: tyle sekund trwa przewinięcie od wschodu do zachodu Słońca; do wyczucia"
+    },
+    "gameDayDurationS": {
+      "value": 600,
+      "unit": "s",
+      "source": "zegar gry przy ×1: jeden dzień sezonu to ok. 10 minut realnych (ustalenia rozgrywki w CLAUDE.md); ×5 i ×20 – odpowiednio szybciej"
+    },
+    "nightSpeedup": {
+      "value": 12,
+      "unit": "×",
+      "source": "noc (od pół godziny po zachodzie do pół godziny przed wschodem Słońca) przewija się tyle razy szybciej; do wyczucia"
     }
   },
   "fallbackLocation": {

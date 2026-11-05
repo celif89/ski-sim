@@ -1,8 +1,8 @@
 :root {
-  --hud-bg: rgba(20, 22, 26, 0.82);
-  --hud-fg: #eef0f2;
-  --hud-muted: #a9b0b8;
-  --scale-bar-color: #ffffff;
+  --hud-bg: rgba(255, 255, 255, 0.94);
+  --hud-fg: #1f2a37;
+  --hud-muted: #64748b;
+  --scale-bar-color: #1f2a37;
   --status-bar-height: 28px;
 }
 
@@ -13,9 +13,9 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #1b1d21;
+  background: #dfe6ee;
   color: var(--hud-fg);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: Barlow, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -99,7 +99,7 @@ body {
 }
 
 .message.error {
-  color: #ff8a80;
+  color: #e03131;
   padding: 24px;
   text-align: center;
 }
@@ -142,14 +142,14 @@ body {
   font-size: 13px;
   color: var(--hud-fg);
   background: var(--hud-bg);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(15, 23, 42, 0.14);
   border-radius: 6px;
   padding: 6px 10px;
   cursor: pointer;
 }
 
 .toolbar button:hover {
-  border-color: rgba(255, 255, 255, 0.4);
+  border-color: rgba(15, 23, 42, 0.36);
 }
 
 .toolbar button.active {
@@ -162,7 +162,7 @@ body {
   font-size: 11px;
   padding: 0 4px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(15, 23, 42, 0.14);
 }
 
 .toolbar-sep {
@@ -207,7 +207,7 @@ body {
   height: 14px;
   border-radius: 3px;
   flex: none;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(15, 23, 42, 0.23);
 }
 
 .legend-swatch.outside {
@@ -241,7 +241,7 @@ body {
   bottom: calc(var(--status-bar-height) + 12px);
   width: min(760px, calc(100vw - 24px));
   box-sizing: border-box;
-  background: rgba(20, 22, 26, 0.92);
+  background: rgba(15, 23, 42, 0.50);
   border-radius: 8px;
   padding: 10px 12px;
   font-size: 12px;
@@ -343,25 +343,25 @@ body {
 .weather-toggle {
   font: inherit;
   color: var(--hud-fg);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(15, 23, 42, 0.14);
   border-radius: 5px;
   padding: 3px 8px;
   cursor: pointer;
 }
 
 .time-panel button:hover {
-  border-color: rgba(255, 255, 255, 0.4);
+  border-color: rgba(15, 23, 42, 0.36);
 }
 
 .time-date {
   font: inherit;
   color: var(--hud-fg);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(15, 23, 42, 0.14);
   border-radius: 5px;
   padding: 2px 4px;
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 .time-label {
@@ -415,7 +415,7 @@ body {
   padding: 2px 4px;
   text-align: left;
   font-weight: normal;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
 }
 
 .wx-now thead th {
@@ -489,7 +489,7 @@ body {
 .wx-report {
   display: block;
   margin-top: 8px;
-  color: #8fb8ff;
+  color: #1c64d8;
 }
 
 .time-season {
@@ -499,13 +499,13 @@ body {
 .time-season select {
   font: inherit;
   color: var(--hud-fg);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(15, 23, 42, 0.14);
   border-radius: 5px;
 }
 
 .status-snow {
-  color: #cfe3ff;
+  color: #1c64d8;
 }
 
 /* ---------------------------------------------------------------- budowa ośrodka (etap 4) */
@@ -569,9 +569,9 @@ body {
 .build-panel button,
 .build-panel .file-button,
 .build-profile button {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.07);
   color: inherit;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(15, 23, 42, 0.16);
   border-radius: 4px;
   padding: 3px 7px;
   font: inherit;
@@ -580,7 +580,7 @@ body {
 
 .build-panel button:hover:not(:disabled),
 .build-panel .file-button:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(15, 23, 42, 0.14);
 }
 
 .build-panel button.active {
@@ -619,7 +619,7 @@ body {
 
 .build-message {
   margin-top: 6px;
-  color: #ffd43b;
+  color: #b45309;
 }
 
 .build-message.empty {
@@ -629,7 +629,7 @@ body {
 .build-section {
   margin-top: 8px;
   font-weight: 600;
-  color: #c9d1d9;
+  color: #475569;
 }
 
 .build-list {
@@ -641,7 +641,7 @@ body {
 .build-list td,
 .build-list th {
   padding: 2px 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.07);
 }
 
 .build-list tr[data-kind] {
@@ -649,16 +649,16 @@ body {
 }
 
 .build-list tr[data-kind]:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.07);
 }
 
 .build-list tr.selected {
-  background: rgba(255, 212, 0, 0.18);
+  background: rgba(250, 176, 5, 0.22);
 }
 
 .build-list tr.bad td:first-child::after {
   content: ' ✗';
-  color: #ff6b6b;
+  color: #e03131;
 }
 
 .piste-class {
@@ -667,12 +667,12 @@ body {
   border-radius: 3px;
   color: #fff;
   font-size: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(15, 23, 42, 0.32);
 }
 
 .build-total {
   margin-top: 6px;
-  color: #c9d1d9;
+  color: #475569;
 }
 
 .build-issues {
@@ -681,20 +681,20 @@ body {
 }
 
 .build-issues li.error {
-  color: #ff8787;
+  color: #e03131;
 }
 
 .build-issues li.warning {
-  color: #ffd43b;
+  color: #b45309;
 }
 
 .build-ok {
   margin-top: 6px;
-  color: #69db7c;
+  color: #2f9e44;
 }
 
 .muted {
-  color: #98a2ad;
+  color: #64748b;
 }
 
 .build-profile .build-title {
@@ -721,5 +721,522 @@ body {
 }
 
 .build-list td b {
+  color: #0f172a;
+}
+
+/* ======================================================================
+   Etap 4b – interfejs w stylu A („ilustrowana mapa narciarska”):
+   jasne zaokrąglone karty, czcionka Barlow / Barlow Condensed.
+   ====================================================================== */
+:root {
+  --a-card: rgba(255, 255, 255, 0.95);
+  --a-line: rgba(15, 23, 42, 0.1);
+  --a-shadow: 0 4px 16px rgba(30, 41, 59, 0.16), 0 1px 3px rgba(30, 41, 59, 0.12);
+  --a-accent: #1c64d8;
+  --a-radius: 14px;
+  --a-cond: 'Barlow Condensed', Barlow, sans-serif;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.a-card {
+  background: var(--a-card);
+  border: 1px solid var(--a-line);
+  border-radius: var(--a-radius);
+  box-shadow: var(--a-shadow);
+  color: var(--hud-fg);
+}
+
+/* Dotychczasowe panele – jasne, zaokrąglone. */
+.legend,
+.build-panel,
+.profile-panel,
+.scale-bar {
+  border: 1px solid var(--a-line);
+  border-radius: var(--a-radius);
+  box-shadow: var(--a-shadow);
+}
+
+.toolbar button.active,
+.build-panel button.active,
+.a-layers-extra button.active {
   color: #ffffff;
+  background: var(--a-accent);
+  border-color: var(--a-accent);
+}
+
+.legend-title,
+.build-toggle,
+.weather-toggle {
+  font-family: var(--a-cond);
+  font-size: 15px !important;
+  letter-spacing: 0.02em;
+}
+
+/* ---------------- górny pasek ---------------- */
+.a-top-left {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  width: min(330px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100vh - var(--status-bar-height) - 120px);
+  overflow-y: auto;
+  z-index: 3;
+}
+
+.a-clock {
+  padding: 10px 14px 8px;
+}
+
+.a-clock-main {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.a-clock-time {
+  font-family: var(--a-cond);
+  font-weight: 700;
+  font-size: 34px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.a-clock-date {
+  font-family: var(--a-cond);
+  font-weight: 600;
+  font-size: 17px;
+  color: #334155;
+}
+
+.a-clock-status {
+  font-size: 12px;
+  color: var(--hud-muted);
+  margin-top: 4px;
+}
+
+.a-clock-status:empty {
+  display: none;
+}
+
+.a-link {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--a-accent);
+  background: none;
+  border: none;
+  padding: 4px 0 0;
+  cursor: pointer;
+}
+
+.a-clock-details {
+  padding: 8px 10px;
+}
+
+.a-clock-details .time-panel {
+  background: none;
+  padding: 0;
+}
+
+.a-top-center {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 3;
+  max-width: calc(100vw - 24px);
+}
+
+.a-weather-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: inherit;
+  font-size: 14px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.a-weather-chip b {
+  font-family: var(--a-cond);
+  font-weight: 700;
+  font-size: 17px;
+}
+
+.a-weather-chip small {
+  color: var(--hud-muted);
+  font-size: 12px;
+}
+
+.a-wx-sym {
+  font-size: 18px;
+}
+
+.a-wx-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.a-wx-item svg {
+  color: #4a7bd0;
+}
+
+.a-wx-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--a-line);
+}
+
+.a-weather-pop {
+  width: min(400px, calc(100vw - 24px));
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+
+.a-weather-pop .weather-panel {
+  background: none;
+  padding: 0;
+}
+
+.a-speed {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  z-index: 3;
+}
+
+.a-speed-btn {
+  font-family: var(--a-cond);
+  font-weight: 700;
+  font-size: 16px;
+  min-width: 42px;
+  height: 32px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.a-speed-btn svg {
+  fill: currentColor;
+}
+
+.a-speed-btn:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.a-speed-btn.active {
+  background: var(--a-accent);
+  color: #ffffff;
+}
+
+/* Prawa kolumna (legenda, budowa) pod przyciskami czasu. */
+.right-column {
+  top: 60px;
+  width: 360px;
+  max-height: calc(100vh - var(--status-bar-height) - 160px);
+}
+
+/* ---------------- dolny pasek budowy ---------------- */
+.a-build-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--status-bar-height) + 12px);
+  display: flex;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 18px;
+  z-index: 3;
+}
+
+.a-bar-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 76px;
+  padding: 7px 8px 5px;
+  border: none;
+  border-radius: 12px;
+  background: none;
+  color: #1f2a37;
+  font-family: var(--a-cond);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.a-bar-btn:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.a-bar-btn.active {
+  background: var(--a-accent);
+  color: #ffffff;
+}
+
+.a-bar-btn.soon {
+  color: #94a3b8;
+}
+
+.a-bar-btn kbd {
+  position: absolute;
+  top: 3px;
+  right: 6px;
+  font: 600 10px Barlow, sans-serif;
+  opacity: 0.55;
+}
+
+.a-layers-pop {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--status-bar-height) + 96px);
+  width: min(560px, calc(100vw - 24px));
+  padding: 10px 12px 12px;
+  z-index: 4;
+}
+
+.a-pop-title {
+  font-family: var(--a-cond);
+  font-weight: 700;
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.a-layers-pop .toolbar {
+  position: static;
+  max-width: none;
+}
+
+.a-layers-pop .toolbar button,
+.a-layers-extra button {
+  font: inherit;
+  font-size: 13px;
+  color: var(--hud-fg);
+  background: #f1f5f9;
+  border: 1px solid var(--a-line);
+  border-radius: 999px;
+  padding: 5px 11px;
+  cursor: pointer;
+}
+
+.a-layers-extra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--a-line);
+}
+
+.a-layers-extra kbd,
+.a-layers-pop .toolbar kbd {
+  font: inherit;
+  font-size: 11px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.a-toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--status-bar-height) + 96px);
+  max-width: min(520px, calc(100vw - 24px));
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: #1f2a37;
+  color: #ffffff;
+  font-size: 13px;
+  box-shadow: var(--a-shadow);
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* ---------------- róża kierunków i zoom ---------------- */
+.a-map-nav {
+  position: fixed;
+  right: 12px;
+  bottom: calc(var(--status-bar-height) + 12px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 3;
+}
+
+.a-compass {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 6px 3px;
+  border-radius: 14px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.a-compass-rot {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--hud-muted);
+}
+
+.a-zoom {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.a-zoom button {
+  width: 38px;
+  height: 34px;
+  border: none;
+  background: none;
+  font: 600 20px Barlow, sans-serif;
+  color: #1f2a37;
+  cursor: pointer;
+}
+
+.a-zoom button + button {
+  border-top: 1px solid var(--a-line);
+}
+
+.a-zoom button:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+/* Podziałka i pasek stanu – jasne. */
+.scale-bar {
+  bottom: calc(var(--status-bar-height) + 12px);
+}
+
+.status-bar {
+  background: rgba(255, 255, 255, 0.92);
+  border-top: 1px solid var(--a-line);
+  color: #334155;
+}
+
+/* ---------------- menu deweloperskie ---------------- */
+.dev-menu {
+  position: fixed;
+  left: 12px;
+  bottom: calc(var(--status-bar-height) + 62px);
+  z-index: 6;
+  font-size: 12px;
+}
+
+.dev-toggle {
+  font: 600 11px Barlow, sans-serif;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--a-line);
+  border-radius: 8px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.dev-panel {
+  position: absolute;
+  bottom: 28px;
+  left: 0;
+  width: 290px;
+  padding: 10px 12px;
+  background: var(--a-card);
+  border: 1px solid var(--a-line);
+  border-radius: var(--a-radius);
+  box-shadow: var(--a-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dev-title {
+  font-family: var(--a-cond);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.dev-hint {
+  color: var(--hud-muted);
+}
+
+.dev-stats {
+  font-variant-numeric: tabular-nums;
+  color: #334155;
+}
+
+@media (max-width: 860px) {
+  .a-top-center {
+    top: 64px;
+  }
+  .right-column {
+    top: 110px;
+  }
+  .a-bar-btn {
+    min-width: 54px;
+    font-size: 12px;
+  }
+  .a-bar-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+.legend-grid-2 {
+  grid-template-columns: repeat(2, auto);
+}
+
+.legend-piste {
+  width: 24px;
+  height: 6px;
+  flex: none;
+  border-radius: 3px;
+  background: var(--c);
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px rgba(15, 23, 42, 0.15);
+}
+
+.legend-lift {
+  width: 24px;
+  height: 10px;
+  flex: none;
+  background: linear-gradient(#1f2a37, #1f2a37) center / 100% 2px no-repeat, linear-gradient(#1f2a37, #1f2a37) 30% center / 2px 10px no-repeat,
+    linear-gradient(#1f2a37, #1f2a37) 75% center / 2px 10px no-repeat;
+}
+
+/* Profil terenu i podgląd budowy – nad dolnym paskiem. */
+.profile-panel {
+  bottom: calc(var(--status-bar-height) + 92px);
+}
+
+.build-panel .build-toggle {
+  background: none;
+  border: none;
+  padding: 2px 0 6px;
 }

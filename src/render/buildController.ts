@@ -263,13 +263,21 @@ export class BuildController {
     else this.refreshProfile();
   }
 
-  private toggleNetwork(): void {
+  get networkShown(): boolean {
+    return this.showNetwork;
+  }
+
+  get realityShown(): boolean {
+    return this.showReality;
+  }
+
+  toggleNetwork(): void {
     this.showNetwork = !this.showNetwork;
     this.version++;
     this.refreshPanel();
   }
 
-  private toggleReality(): void {
+  toggleReality(): void {
     this.showReality = !this.showReality;
     if (this.showReality && !this.real && this.o.osm) {
       this.real = compareRealPistes(this.o.osm, this.o.grid, this.o.pisteParams, (e, n) => this.o.grid.puwg92ToLocal(e, n));

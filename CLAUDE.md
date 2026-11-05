@@ -195,9 +195,42 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
     nasza klasyfikacja 6 z 10 tras zgodna z oficjalnym kolorem, pozostałe różnią się o jedną klasę
     (4 i Dinbo: zielone → niebieskie, 6: niebieska → czerwona przez odcinek 100 m o nachyleniu 30 %
     w przebiegu OSM, 5a: czerwona → czarna – średnio 37 %, 50 m po 49 %).
+- **Etap 4b – zrobiony** (listopad 2026): oprawa graficzna w stylu A („ilustrowana mapa narciarska”),
+  tylko warstwa rysowania (`src/render`), symulacja bez zmian (siatka 10 m):
+  - teren: `terrainRenderer.ts` + `terrainShader.ts` – piramida kafli 256 px (8, 4, 2, 1, 0,5,
+    0,25 m/px) liczonych shaderem na żądanie (budżet na klatkę, pamięć LRU, unieważnianie przy
+    zmianie śniegu, wycinki, obrotu); śnieg z modelu (grubość, stan), cieniowanie niebieskawe,
+    las – świerki z boku (skrót PCG identyczny w TS i GLSL: `illustration.ts`), kosodrzewina,
+    przecinki i trasy z maski 2 m/px; parametry w `data/map-style.json` (sekcja `illustrated`);
+  - poziomy szczegółowości (`lodWeights`, płynne przejścia): > ~4 m/px cały ośrodek, ~1–4 m/px
+    pojedyncze drzewa z cieniem, < ~1 m/px faktura śniegu wg stanu (`surfaceKind`); zoom do 0,25 m/px;
+  - ślady: osobna nakładka (`TRACKS_FRAGMENT`) z buforów 2 m/px (`TrackBuffer`): sztruks, muldy,
+    ślady nart; zanik z czasem i opadem; wysyłka do karty tylko widocznego pasa wierszy;
+  - obiekty ruchome: `movers.ts` (kontenery cząstek, atlas, cienie, światła ratraka nocą) – gotowe
+    na gości (etap 5) i ratraki (etap 7); `demoScene.ts` – scena demonstracyjna (menu `Dev`,
+    klawisz `` ` ``, adres `?demo=N`);
+  - wektory: `resortLayer.ts` – trasy (biała obwódka), wyciągi z podporami i krzesełkami (prędkość,
+    `carrierSeats` w `lifts.json`), budynki/drogi/parkingi/szczyty z OSM (`osm-context.json`),
+    etykiety Barlow Condensed bez nakładania, `labels.json`;
+  - światło pory dnia ze Słońca (`lightingForSun`), noc z oświetleniem tras; opad na ekranie
+    (`weatherFx.ts`);
+  - widok domyślny od Korbielowa (mapa obrócona o 180°, `view.rotatedByDefault`), róża kierunków;
+  - interfejs w stylu A (`topBar.ts`, `buildBar.ts`, `style.css`): karta czasu z kalendarzem,
+    plakietka pogody, prędkość czasu (pauza, ×1, ×5, ×20 – zegar gry `sim/gameClock.ts`, parametry
+    `time.gameDayDurationS` i `time.nightSpeedup`), dolny pasek budowy z ikonami, „Nakładki”;
+  - testy `tests/illustration.test.ts` (LOD, determinizm drzew, faktury, światło, zegar);
+  - pomiar (kontener bez karty graficznej, grafika liczona przez procesor – SwiftShader): 2000
+    narciarzy, praca kodu gry na klatkę 3,8–5,4 ms (cała mapa 5,4 ms, 0,25 m/px 4,1 ms) – mieści się
+    w 20 ms (50 kl./s); samych klatek na sekundę nie da się tu zmierzyć (5–7 kl./s, pusta scena
+    PixiJS ok. 13–15 kl./s) – do sprawdzenia na Macu z kartą graficzną.
 - **Następny: etap 5 – goście (agenci).**
 
 Uwagi techniczne:
+- PixiJS 8: `BufferImageSource.update(początek, koniec)` – zakres w tekselach, koniec wyłączny
+  (nie liczba!). Shadery GLSL zaczynać od `#version 300 es`. Kafle terenu liczy shader raz
+  (render do tekstury), co klatkę tylko lekkie nakładki – pełnoekranowy shader był za wolny.
+- Wzory o okresie mniejszym niż ~2 px migoczą – `detailAmp` w shaderze wygasza je przy oddaleniu;
+  sztruks na rysunku ma stylizowany okres 1 m (w naturze 2–3 cm).
 - Usługa WCS Geoportalu przy pobieraniu w obniżonej rozdzielczości (SCALESIZE) zwraca mapę
   z dziurami (brakujące arkusze w podglądach) – dlatego konwerter pobiera pełne 1 m kaflami.
 - Pokrycie `DTM_PL-KRON86-NH_TIFF` (format TIFF) jest szybsze, ale w starym układzie wysokości
@@ -245,10 +278,20 @@ Uwagi techniczne:
   od nowa); trasy obszarowe z OSM (area=yes) w porównaniu; mapa bazowa przerysowana po wycince
   (teraz przecinka to osobna warstwa nad mapą).
 
+- Oprawa (4b): pomiar klatek na sekundę na Macu z kartą graficzną (2000 obiektów, pełne oddalenie
+  i 0,25 m/px); przy szybkim zegarze kafle terenu przeliczają się stopniowo (chwilowo widać
+  stary odcień śniegu); pod lasem przy cienkiej pokrywie brązowe dno – mapa ciemnieje w słabe zimy.
+
 ## Ustalenia rozgrywki
 
 - Jeden dzień sezonu przy ×1 to ok. 10 minut realnych; dostępne ×5 i ×20, noc przewija się sama.
 - Jeden ośrodek naraz; nowa lokalizacja = nowa rozgrywka.
 - Pozwolenia środowiskowe pomijamy. Wycinka kosztuje i trwa.
 - Sezon letni – później.
-- Grafika 2D z góry, cieniowanie rzeźby jak na mapach topograficznych.
+- Grafika 2D z góry. **Styl obowiązujący: A – „ilustrowana mapa narciarska”** (od etapu 4b):
+  biały śnieg z niebieskawym cieniowaniem rzeźby, świerki rysowane z boku, trasy jako kolorowe
+  linie z białą obwódką, wyciąg jako ciemna linia z podporami i stacjami, etykiety z białą obwódką,
+  jasne zaokrąglone panele, czcionka Barlow / Barlow Condensed. Nowe elementy (goście, ratraki,
+  armatki, budynki) rysować w tym stylu: widok z góry z cieniem w prawo w dół ekranu, ikony
+  z boku tylko dla drzew; obiekty ruchome przez `MoverLayer`. Mapa topograficzna zostaje jako
+  nakładka.

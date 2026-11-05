@@ -180,6 +180,17 @@ export class ResortLayer {
     }
   }
 
+  private sortedPlaces: MapContextData['places'] | null = null;
+
+  /** Miejsca do opisania: najpierw Pilsko, potem szczyty od najwyższego, na końcu reszta. */
+  private get placesByImportance(): MapContextData['places'] {
+    if (!this.sortedPlaces) {
+      const rank = (pl: MapContextData['places'][number]) => (pl.name === 'Pilsko' ? 1e6 : pl.kind === 'peak' ? Number.parseFloat(pl.ele) || 0 : -1);
+      this.sortedPlaces = [...(this.context?.places ?? [])].sort((a, b) => rank(b) - rank(a));
+    }
+    return this.sortedPlaces;
+  }
+
   private label(i: number, text: string, xPx: number, yPx: number, opts: { size?: number; cond?: boolean; fill?: number; stroke?: number; spacing?: number; anchorX?: number }): void {
     let t = this.labelPool[i];
     if (!t) {
@@ -239,17 +250,32 @@ export class ResortLayer {
       g.stroke({ width: 2, color: BORDER_COLOR, alpha: 0.85 });
     }
 
-    // ---- nazwy miejsc
+    // ---- nazwy miejsc (bez nakładania: etykieta kolidująca z już postawioną jest pomijana)
+    const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    const fits = (idx: number, marginPx = 3): boolean => {
+      const t = this.labelPool[idx];
+      const x0 = t.x - t.anchor.x * t.width - marginPx;
+      const y0 = t.y - t.anchor.y * t.height - marginPx;
+      const box = { x0, y0, x1: x0 + t.width + 2 * marginPx, y1: y0 + t.height + 2 * marginPx };
+      if (placed.some((b) => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0)) {
+        t.visible = false;
+        return false;
+      }
+      placed.push(box);
+      return true;
+    };
     for (const l of this.mapLabels) {
       const p = this.local(l.point);
       if (!p) continue;
       const s = toS(p.xM, p.yM);
       if (l.kind === 'hut') {
         if (mpp > 6) continue;
-        this.label(li++, l.text, s.xPx, s.yPx, { size: 12, fill: 0x475569, stroke: 0xffffff });
-      } else this.label(li++, l.text, s.xPx, s.yPx, { size: 17, cond: true, fill: SLATE, stroke: 0xffffff, spacing: 2 });
+        this.label(li, l.text, s.xPx, s.yPx, { size: 12, fill: 0x475569, stroke: 0xffffff });
+      } else this.label(li, l.text, s.xPx, s.yPx, { size: 17, cond: true, fill: SLATE, stroke: 0xffffff, spacing: 2 });
+      if (fits(li)) li++;
     }
-    for (const pl of this.context?.places ?? []) {
+    const seenNames = new Set<string>();
+    for (const pl of this.placesByImportance) {
       if (pl.kind !== 'peak' && pl.kind !== 'hamlet' && pl.kind !== 'saddle') continue;
       if (pl.kind !== 'peak' && mpp > 3) continue;
       // Przy całej mapie tylko najważniejsze szczyty (Pilsko, ponad 1300 m).
@@ -259,10 +285,18 @@ export class ResortLayer {
       const s = toS(p.xM, p.yM);
       if (s.xPx < -50 || s.yPx < -50 || s.xPx > cam.viewportWidthPx + 50 || s.yPx > cam.viewportHeightPx + 50) continue;
       if (pl.kind === 'peak') {
-        g.moveTo(s.xPx, s.yPx - 6).lineTo(s.xPx + 7, s.yPx + 6).lineTo(s.xPx - 7, s.yPx + 6).closePath().fill({ color: INK }).stroke({ width: 1.5, color: 0xffffff });
+        // Ta sama nazwa drugi raz (OSM ma np. dwa punkty „Góra Pięciu Kopców”) – tylko wyższy.
+        if (seenNames.has(pl.name)) continue;
         const ele = pl.ele ? ` ${Math.round(Number.parseFloat(pl.ele))} m` : '';
-        this.label(li++, `${pl.name}${ele}`, s.xPx + 12, s.yPx, { size: pl.name === 'Pilsko' ? 18 : 14, cond: true, fill: INK, stroke: 0xffffff, anchorX: 0 });
-      } else this.label(li++, pl.name, s.xPx, s.yPx, { size: 13, cond: true, fill: 0x475569, stroke: 0xffffff, spacing: 1 });
+        this.label(li, `${pl.name}${ele}`, s.xPx + 12, s.yPx, { size: pl.name === 'Pilsko' ? 18 : 14, cond: true, fill: INK, stroke: 0xffffff, anchorX: 0 });
+        if (!fits(li)) continue;
+        li++;
+        seenNames.add(pl.name);
+        g.moveTo(s.xPx, s.yPx - 6).lineTo(s.xPx + 7, s.yPx + 6).lineTo(s.xPx - 7, s.yPx + 6).closePath().fill({ color: INK }).stroke({ width: 1.5, color: 0xffffff });
+      } else {
+        this.label(li, pl.name, s.xPx, s.yPx, { size: 13, cond: true, fill: 0x475569, stroke: 0xffffff, spacing: 1 });
+        if (fits(li)) li++;
+      }
     }
 
     // ---- rzeczywistość (OSM)

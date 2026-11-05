@@ -20,7 +20,7 @@ const PHASE_NAME: Record<PrecipitationPhase, string> = { none: 'bez opadu', snow
 const CLEAR_SKY_MAX = 0.3;
 const PARTLY_CLOUDY_MAX = 0.7;
 
-function symbol(phase: PrecipitationPhase, cloud: number): string {
+export function weatherSymbol(phase: PrecipitationPhase, cloud: number): string {
   if (phase === 'snow') return '❄';
   if (phase === 'rain') return '☂';
   if (phase === 'sleet') return '❄☂';
@@ -69,7 +69,7 @@ export class WeatherPanel {
       .map((f) => {
         const d = `${weekdayShort(f.date)} ${f.date.day}.${String(f.date.month).padStart(2, '0')}`;
         const precip = f.precipitationProbability >= 0.5 ? `${f0(f.precipitationProbability * 100)} %, ${mm(f.precipitationMm)} mm` : `${f0(f.precipitationProbability * 100)} %`;
-        return `<tr><td>${d}</td><td class="wx-sym" title="dół: ${PHASE_NAME[f.bottomPhase]}, góra: ${PHASE_NAME[f.topPhase]}">${symbol(f.topPhase, f.cloudFraction)}</td><td>${precip}</td><td>${signed(f.bottomTMeanC)}° / ${signed(f.topTMeanC)}°</td><td class="wx-unc">±${f1(f.temperatureUncertaintyC)}</td></tr>`;
+        return `<tr><td>${d}</td><td class="wx-sym" title="dół: ${PHASE_NAME[f.bottomPhase]}, góra: ${PHASE_NAME[f.topPhase]}">${weatherSymbol(f.topPhase, f.cloudFraction)}</td><td>${precip}</td><td>${signed(f.bottomTMeanC)}° / ${signed(f.topTMeanC)}°</td><td class="wx-unc">±${f1(f.temperatureUncertaintyC)}</td></tr>`;
       })
       .join('');
     this.body.innerHTML = `
@@ -84,7 +84,7 @@ export class WeatherPanel {
           ${row('wilgotność', 'rh')}
         </tbody>
       </table>
-      <div class="wx-cloud">Zachmurzenie: ${f0(s.cloudFraction * 100)} % ${symbol(s.top.now.phase, s.cloudFraction)}</div>
+      <div class="wx-cloud">Zachmurzenie: ${f0(s.cloudFraction * 100)} % ${weatherSymbol(s.top.now.phase, s.cloudFraction)}</div>
       <div class="wx-forecast-title">Prognoza na 7 dni <span class="legend-note">(średnia temp. dół / góra, niepewność rośnie z każdym dniem)</span></div>
       <table class="wx-forecast"><tbody>${forecastRows}</tbody></table>
       <a class="wx-report" href="${import.meta.env.BASE_URL}raport-klimatu.html" target="_blank" rel="noopener">Raport klimatu: 30 zim z generatora obok danych IMGW →</a>
