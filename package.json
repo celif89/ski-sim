@@ -18,7 +18,9 @@
     "import-landcover": "tsx src/tools/importLandCover.ts",
     "snow-calibration-data": "tsx src/tools/snowCalibrationData.ts",
     "radiation-validation-data": "tsx src/tools/radiationValidationData.ts",
-    "winter-report": "tsx src/tools/winterReport.ts"
+    "winter-report": "tsx src/tools/winterReport.ts",
+    "import-osm-resort": "tsx src/tools/importOsmResort.ts",
+    "piste-check": "tsx src/tools/pisteCheck.ts"
   },
   "engines": {
     "node": ">=22"

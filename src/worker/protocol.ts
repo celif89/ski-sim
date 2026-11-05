@@ -64,6 +64,13 @@ export interface InitSnowRequest {
 }
 
 /** Stan śniegu na koniec dnia `date` (wątek doliczy brakujące dni sezonu). */
+/** Zmiana pokrycia terenu (wycinka) – model śniegu liczy sezon od nowa. */
+export interface SetLandCoverRequest {
+  type: 'setLandCover';
+  forest: Float32Array;
+  shrub: Float32Array;
+}
+
 export interface SnowStateRequest {
   type: 'snowState';
   requestId: number;
@@ -149,6 +156,7 @@ export type WorkerRequest =
   | EnvironmentStateRequest
   | DailyRadiationRequest
   | InitSnowRequest
+  | SetLandCoverRequest
   | SnowStateRequest;
 export type WorkerResponse =
   | TerrainReadyMessage

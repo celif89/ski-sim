@@ -167,7 +167,35 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
   - raport zimy: rozkład zim z generatora (100 zim) obok prawdziwych 2001–2025 i modelu na prawdziwej
     pogodzie (dni z pokrywą, maksimum, pojawienie się, zanik; kropka = zima) i tabela pogody „jak
     widzi ją model” (temperatura opadu, śnieg, odwilże); testy `tests/snowClimate.test.ts`.
-- **Następny: etap 4 – budowa wyciągów i tras.**
+- **Etap 4 – zrobiony** (listopad 2026): budowa wyciągów i tras (bez pieniędzy i czasu – etap 6).
+  - dane: `data/lifts.json` (8 typów: taśma, talerzyk, orczyk, kanapa 2s/4s, 4d/6d, gondola 8),
+    `data/pistes.json` (klasy, odcinek 50 m, ostrzeżenia, koszty, sieć, OSM), `data/construction.json`
+    (wycinka); wartości orientacyjne „do kalibracji” – zastąpić danymi producentów;
+  - `lifts.ts`: profil pod linią co 5 m, automatyczne podpory (przęsło ≤ maxSpanM, prześwit ≥
+    minClearanceM poza strefą stacji 25 m; najpierw podnoszenie podpór, potem dzielenie przęsła),
+    lina = cięciwa − zwis paraboliczny 4·f·t(1−t), f = 0,04·rozpiętość; wyciągi powierzchniowe:
+    nachylenie i przechył toru średnio na 20 m; błędy: poza mapą, krzyżowanie, za długi, w dół,
+    za mały prześwit; moc = Q·m·g·Δh/η + bieg jałowy + opory; koszt (stacje, linia, podpory,
+    wycinka), czas budowy;
+  - `pistes.ts`: oś z szerokością w punktach → obrys na siatce; wysokość osi = średnia w poprzek
+    (5 punktów); kolor = najtrudniejszy odcinek 50 m, czyli nachylenie utrzymujące się na całym
+    odcinku (minimum z kawałków 10 m) – krótszy stromy fragment nie zmienia koloru; ostrzeżenia:
+    spadek poprzeczny > 20 %, podejście;
+  - `resort.ts`: układ (`ResortLayout`, zapis JSON, `LayoutHistory` cofnij/ponów), maska wycinki
+    i `applyClearing`, graf sieci (`buildNetwork`: węzły – stacje, bazy, połączenia tras; krawędzie –
+    wyciągi w górę, odcinki tras w dół; ostrzeżenia „donikąd” i „bez zjazdu”) – podstawa etapu 5,
+    `compareRealPistes` (OSM);
+  - śnieg: `SnowWorld.setLandCover` (worker `setLandCover`) – nowe pokrycie po wycince, sezon od nowa
+    (promieniowanie zostaje);
+  - widok: `buildController.ts`, `buildPanel.ts`, `buildProfile.ts`, `resortLayer.ts`; klawisze
+    V L T O B N R, `[` `]`, Delete, Ctrl+Z/Y; zapis w localStorage (`ski-sim:osrodek:pilsko`);
+    `MapInput` ma przechwytywanie przeciągania dla narzędzi;
+  - OSM: `npm run import-osm-resort` (API 0.6 kaflami – Overpass z chmury nie działał) →
+    `data/maps/pilsko/osm-resort.json` (12 wyciągów, 29 odcinków tras); `npm run piste-check`:
+    nasza klasyfikacja 6 z 10 tras zgodna z oficjalnym kolorem, pozostałe różnią się o jedną klasę
+    (4 i Dinbo: zielone → niebieskie, 6: niebieska → czerwona przez odcinek 100 m o nachyleniu 30 %
+    w przebiegu OSM, 5a: czerwona → czarna – średnio 37 %, 50 m po 49 %).
+- **Następny: etap 5 – goście (agenci).**
 
 Uwagi techniczne:
 - Usługa WCS Geoportalu przy pobieraniu w obniżonej rozdzielczości (SCALESIZE) zwraca mapę
@@ -213,6 +241,9 @@ Uwagi techniczne:
 - Dopracowanie przewiewania śniegu na podstawie zdjęć Sentinel-2 (mapy pokrywy śnieżnej
   po zamieciach – gdzie śnieg znika z grzbietów i gdzie zalega w zagłębieniach).
 - Generator pogody: wielodniowe epizody silnego opadu (śnieżyce) – za niskie maksima grubości.
+- Budowa: przesuwanie stacji gotowego wyciągu i edycja punktów osi trasy (teraz – usuń i narysuj
+  od nowa); trasy obszarowe z OSM (area=yes) w porównaniu; mapa bazowa przerysowana po wycince
+  (teraz przecinka to osobna warstwa nad mapą).
 
 ## Ustalenia rozgrywki
 

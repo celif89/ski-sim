@@ -52,18 +52,22 @@ async function runSnowJobs(): Promise<void> {
       pendingSnow = null;
       let last = performance.now();
       let superseded = false;
-      for (const progress of snowWorld.advanceTo(job.date)) {
+      const world = snowWorld;
+      const version = world.version;
+      for (const progress of world.advanceTo(job.date)) {
         const now = performance.now();
         if (now - last > SNOW_YIELD_MS) {
           scope.postMessage({ type: 'snowProgress', ...progress });
           await yieldToEvents();
           last = performance.now();
+          if (world.version !== version && !pendingSnow) pendingSnow = job; // pokrycie zmienione – liczymy od nowa
           if (pendingSnow) {
-            superseded = true;
+            superseded = pendingSnow !== job;
             break;
           }
         }
       }
+      if (pendingSnow === job) continue;
       if (superseded) {
         scope.postMessage({ type: 'error', requestId: job.requestId, message: SUPERSEDED });
         continue;
@@ -162,6 +166,11 @@ async function handle(request: WorkerRequest): Promise<void> {
       snowWorld = new SnowWorld(environment, request.forest, request.shrub, parseSnowParams(request.snowJson));
       scope.postMessage({ type: 'snowReady' });
       return;
+    }
+    case 'setLandCover': {
+      if (!snowWorld) throw new Error('Model śniegu nie jest gotowy');
+      snowWorld.setLandCover(request.forest, request.shrub);
+      return; // bez odpowiedzi – kolejne pytania o śnieg liczą się już na nowym pokryciu
     }
     case 'snowState': {
       if (!snowWorld) throw new Error('Model śniegu nie jest gotowy');
