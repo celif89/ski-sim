@@ -87,6 +87,7 @@ export class WeatherPanel {
       <div class="wx-cloud">Zachmurzenie: ${f0(s.cloudFraction * 100)} % ${symbol(s.top.now.phase, s.cloudFraction)}</div>
       <div class="wx-forecast-title">Prognoza na 7 dni <span class="legend-note">(średnia temp. dół / góra, niepewność rośnie z każdym dniem)</span></div>
       <table class="wx-forecast"><tbody>${forecastRows}</tbody></table>
-      <a class="wx-report" href="${import.meta.env.BASE_URL}raport-klimatu.html" target="_blank" rel="noopener">Raport klimatu: 30 zim z generatora obok danych IMGW →</a>`;
+      <a class="wx-report" href="${import.meta.env.BASE_URL}raport-klimatu.html" target="_blank" rel="noopener">Raport klimatu: 30 zim z generatora obok danych IMGW →</a>
+      <a class="wx-report" href="${import.meta.env.BASE_URL}raport-zimy.html" target="_blank" rel="noopener">Raport zimy: śnieg – kalibracja na pomiarach IMGW, 30 zim →</a>`;
   }
 }

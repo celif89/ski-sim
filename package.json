@@ -17,7 +17,8 @@
     "climate-report": "tsx src/tools/climateReport.ts",
     "import-landcover": "tsx src/tools/importLandCover.ts",
     "snow-calibration-data": "tsx src/tools/snowCalibrationData.ts",
-    "radiation-validation-data": "tsx src/tools/radiationValidationData.ts"
+    "radiation-validation-data": "tsx src/tools/radiationValidationData.ts",
+    "winter-report": "tsx src/tools/winterReport.ts"
   },
   "engines": {
     "node": ">=22"

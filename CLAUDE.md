@@ -121,7 +121,33 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
   - `Environment` (`environment.ts`) łączy wszystko dla wątku obliczeń;
   - raport `npm run climate-report` (publikowany jako `raport-klimatu.html`);
   - widok: panel daty/godziny z „odtwórz dzień”, nakładki 4–6, panel pogody.
-- **Następny: etap 3 – model śniegu + raport „przewiń zimę” (grubość śniegu).**
+- **Etap 3 – zrobiony** (listopad 2026):
+  - pokrycie terenu: `npm run import-landcover` → `data/maps/pilsko/landcover.u8` (3 pasma: % lasu,
+    kosodrzewiny/zarośli, zabudowy; ESA WorldCover 2021, 10 m, CC BY 4.0); las na mapie bazowej;
+  - model śniegu (`snow.ts`, parametry `data/snow.json`): w każdej komórce 2 warstwy (SWE, woda
+    ciekła, gęstość, temperatura, lód), krok 6 h; opad z poprawką na niedobór deszczomierza,
+    gęstość świeżego śniegu Hedstrom–Pomeroy, gęstnienie Verseghy, albedo malejące z wiekiem,
+    bilans energii z temperaturą powierzchni (krótkofalowe z cieniami, Brutsaert, turbulencja,
+    sublimacja, ciepło z gruntu), deszcz wsiąka i zamarza (skorupa → „zlodzony”), las (korony
+    zatrzymują 30 % opadu, 25 % promieniowania, wiatr × 0,3), przewiewanie (Winstral Sx w 8
+    kierunkach, raz na dobę), 7 stanów jakości; `addSnow`/`removeSnow` – miejsce na naśnieżanie
+    i ratraki (etap 7), bilans wody `SnowBalance`;
+  - `snowSeason.ts` (sezon na mapie, promieniowanie bezchmurne co 14 dni i interpolowane),
+    `snowWorld.ts` (w wątku obliczeń gry, stany zapamiętywane co 15 dni), `snowPoint.ts`
+    i `snowCalibration.ts` (model w punkcie stacji na prawdziwej pogodzie),
+    `radiationValidation.ts` (promieniowanie vs pomiary aktynometryczne);
+  - dane kalibracyjne: `npm run snow-calibration-data` → `data/calibration/imgw-stations.json`
+    (Korbielów 8 zim, Zawoja 10, Laliki 10; 2009/10–2018/19), `npm run radiation-validation-data`
+    → `data/calibration/radiation-stations.json` (Bielsko-Biała, Kasprowy 2007–2014),
+    `data/calibration/lajczak-1996.json` (Pilsko 1993/94);
+  - kalibracja (4 parametry): poprawka opadu śniegu 1,0 → 1,3; gęstość graniczna mokrego śniegu
+    700 → 500 kg/m³; tempo gęstnienia suchego 0,0025 → 0,001 1/h; wykładnik chmur Kastena–Czeplaka
+    3,4 → 2,5. Wynik: średni błąd 6,3 → 4,5 cm, zaniżenie −5,9 → −1,3 cm, długość zalegania
+    −13,6 → +0,2 dnia;
+  - widok: nakładki 7 (grubość) i 8 (stan), „Przewiń sezon” (1/5/20 dni/s), odczyt pod kursorem;
+  - raport `npm run winter-report` (`winter-report.ts`, sezony w wątkach `winterWorker.ts`),
+    ustawienia `data/winter-report.json`, publikowany jako `raport-zimy.html` (ok. 8–10 min w CI).
+- **Następny: etap 4 – budowa wyciągów i tras.**
 
 Uwagi techniczne:
 - Usługa WCS Geoportalu przy pobieraniu w obniżonej rozdzielczości (SCALESIZE) zwraca mapę
@@ -141,6 +167,17 @@ Uwagi techniczne:
   były zawyżone o ~20 %.
 - `npm run climate-report` liczy horyzont w Node (ok. 10 s); test zgodności 30 zim używa tolerancji
   3 × błąd średniej z 30 lat (z rzeczywistej zmienności z roku na rok).
+- Model śniegu: jeden dzień na pełnej mapie ok. 100–170 ms (1 wątek). Przyspieszenia: kroki liczone
+  w pasach wysokości co 5 m (pogoda wspólna dla pasa), tablica ciśnienia pary nasyconej, pamięć
+  wschodów Słońca w `hourlyAt` (bez niej kalibracja trwała 43 s zamiast 2 s).
+- Pomiar grubości IMGW (godz. 7 UTC dnia d) porównujemy ze stanem modelu na koniec dnia d − 1.
+- Posterunek Korbielów nie mierzy temperatury – w danych kalibracji temperatura z Zawoi i Lalik
+  przeniesiona gradientem na 650 m.
+- Słabe strony (do poprawy później): przewiewanie nie odtwarza kontrastu „zagłębienia ~2× więcej
+  niż wypukłości” (Łajczak) – śnieg wywiany odkłada się głównie na skraju lasu; parametry wiatru
+  i lasu z literatury, bez kalibracji; gradient opadu z wysokością słabo określony (R² 0,09);
+  stan „zlodzony” częsty (ok. 1/4 dni I–II na 1250 m) – skorupa znika dopiero po ≥ 5 mm świeżego
+  śniegu.
 
 ## Ustalenia rozgrywki
 

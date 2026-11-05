@@ -51,6 +51,14 @@ export interface EnvironmentState {
   temperatureC: Float32Array;
 }
 
+/**
+ * Pogoda sezonu gry (od początku sezonu przez rok + zapas na prognozę) – ta sama w grze
+ * i w raportach.
+ */
+export function seasonWeather(profile: ClimateProfile, wp: WeatherParams, seed: number, startYear: number): DailyWeather[] {
+  return generateSeason(profile, wp, seed, startYear, YEAR_DAYS + FORECAST_MARGIN_DAYS);
+}
+
 export class Environment {
   readonly solar: SolarTerrain;
   readonly bottomElevationM: number;
@@ -82,7 +90,7 @@ export class Environment {
     const startYear = this.seasonStartYear(date);
     let series = this.seasons.get(startYear);
     if (!series) {
-      series = generateSeason(this.profile, this.weatherParams, this.seed, startYear, YEAR_DAYS + FORECAST_MARGIN_DAYS);
+      series = seasonWeather(this.profile, this.weatherParams, this.seed, startYear);
       this.seasons.set(startYear, series);
     }
     const index = daysBetween(series[0].date, date);

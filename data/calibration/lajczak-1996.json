@@ -1,0 +1,50 @@
+{
+  "_opis": "Wartości odniesienia z pracy: A. Łajczak, „Wybrane elementy pogody północnego stoku Pilska w okresie maj 1993 – kwiecień 1994…”, Studia Ośr. Dok. Fizjogr. PAN, 1996 (rcin.org.pl). Sezon 1993/94 był wg autora cieplejszy i uboższy w śnieg niż średnia z wielolecia; normy w nawiasach – z prac Hessa (1967) i Leśniak (1980, 1983) przytoczonych przez autora.",
+  "sites": [
+    {
+      "name": "Korbielów-Kamienna",
+      "elevationM": 640,
+      "meltOut1994": "03-15",
+      "meltOutNormal": "03-29",
+      "coverDays1994": 89,
+      "coverDaysNormal": 100,
+      "source": "s. 70–71: zanik ciągłej pokrywy w połowie marca (2 tygodnie wcześniej niż średnio); 89 dni z ciągłą pokrywą (11 mniej niż średnio)"
+    },
+    {
+      "name": "Hala Szczawina",
+      "elevationM": 1040,
+      "meltOut1994": "04-20",
+      "meltOutNormal": "05-11",
+      "coverDays1994": 109,
+      "coverDaysNormal": 115,
+      "source": "s. 70–71: zanik 20 IV (3 tygodnie wcześniej); 109 dni (6 mniej)"
+    },
+    {
+      "name": "Hala Miziowa",
+      "elevationM": 1275,
+      "meltOut1994": "05-10",
+      "meltOutNormal": "05-24",
+      "coverDays1994": 181,
+      "coverDaysNormal": 181,
+      "maxDepthNormalCm": 80,
+      "maxDepth1993Cm": 100,
+      "maxDepth1994Cm": 70,
+      "source": "s. 70–77: zanik 10 V (2 tygodnie wcześniej); 181 dni (w normie); średnia z wielolecia grubość w marcu 80 cm na wale morenowym (Hess i in. 1967), w III–IV 1993 ok. 100 cm, 1994 ok. 70 cm"
+    },
+    {
+      "name": "Wierzchowina grzbietowa Pilska",
+      "elevationM": 1500,
+      "meltOut1994": "04-15",
+      "meltOutNormal": "05-20",
+      "coverDays1994": 156,
+      "coverDaysNormal": 186,
+      "source": "s. 70–71: zanik w połowie kwietnia (ponad miesiąc wcześniej); 156 dni (30 mniej); silne wywiewanie"
+    }
+  ],
+  "qualitative": [
+    "Grubość pokrywy rośnie z wysokością aż do górnej granicy lasu (górny regiel) lub dolnej strefy kosodrzewiny; wyżej, na formach wypukłych, maleje przez wywiewanie.",
+    "W formach wklęsłych śniegu jest więcej niż na wypukłych – nawet dwukrotnie; różnica rośnie z wysokością.",
+    "Maksimum grubości u podnóża stoku – połowa lutego, pod szczytem – koniec marca.",
+    "Poniżej ok. 1100 m pokrywa była w sezonie 1993/94 niestabilna (przerwy po odwilżach), powyżej – trwała."
+  ]
+}
