@@ -125,6 +125,15 @@ export const TEMPERATURE_STOPS: Stop[] = [
 export const FOREST_COLOR: Rgb = [92, 128, 82];
 
 /** Grubość śniegu: od cienkiej (jasnoszary błękit) przez biel do głębokiego niebieskiego i fioletu. */
+/** Natężenie ruchu na trasach (przejazdy/h): od jasnożółtego przez pomarańczowy do czerwieni i fioletu. */
+export const TRAFFIC_STOPS: Stop[] = [
+  { t: 0, color: [255, 245, 200] },
+  { t: 0.25, color: [254, 196, 79] },
+  { t: 0.5, color: [245, 124, 31] },
+  { t: 0.75, color: [214, 40, 40] },
+  { t: 1, color: [110, 20, 110] },
+];
+
 export const SNOW_DEPTH_STOPS: Stop[] = [
   { t: 0, color: [214, 205, 186] },
   { t: 0.1, color: [236, 240, 245] },

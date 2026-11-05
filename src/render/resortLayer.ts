@@ -398,13 +398,16 @@ export class ResortLayer {
       const spacing = carrierSpacingM(a.type);
       if (!opts.draft && mpp < 5 && spacing > 0 && a.type.towerMaxHeightM > 0) {
         const offPx = Math.max(2.5, 2 * pxPerM);
-        const travel = (st.timeS * a.type.speedMs) % spacing;
+        // Odległość po linie (po skosie) – tak samo liczy wątek gości: krzesełko k odjeżdża w chwili
+        // k · odstęp, więc jest w odległości (czas · prędkość) mod odstęp (goście siedzą na krzesełkach).
+        const Ls = a.slopeLengthM || L;
+        const travel = (((st.timeS * a.type.speedMs) % spacing) + spacing) % spacing;
         const cw = Math.max(4, Math.min(10, 2.2 * pxPerM));
         const ch = cw * 0.8;
-        for (let d = travel; d < L; d += spacing) {
+        for (let d = travel; d < Ls; d += spacing) {
           for (const dir of [1, -1]) {
-            const dd = dir === 1 ? d : L - d;
-            const f = dd / L;
+            const dd = dir === 1 ? d : Ls - d;
+            const f = dd / Ls;
             const x = b.xPx + f * dx + nx * offPx * dir;
             const y = b.yPx + f * dy + ny * offPx * dir;
             g.roundRect(x - cw / 2, y - ch / 2, cw, ch, 1).fill({ color: CHAIR_FILL }).stroke({ width: 0.8, color: CHAIR_STROKE });

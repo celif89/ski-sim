@@ -277,6 +277,8 @@ export class SnowState {
   readonly topRain: Uint8Array;
   /** Woda zamarznięta w warstwie powierzchniowej od ostatniego opadu śniegu [mm]. */
   readonly topRefrozenMm: Float32Array;
+  /** Muldy od narciarzy 0–1 (etap 5; ratraki je wyrównają – etap 7). */
+  readonly moguls: Float32Array;
 
   constructor(n: number) {
     this.n = n;
@@ -297,6 +299,7 @@ export class SnowState {
     this.windPacked = new Uint8Array(n);
     this.topRain = new Uint8Array(n);
     this.topRefrozenMm = new Float32Array(n);
+    this.moguls = new Float32Array(n);
   }
 
   /** Całkowity zapas wody w śniegu (lód + woda ciekła) [mm]. */
@@ -336,6 +339,7 @@ export class SnowState {
     this.windPacked[k] = 0;
     this.topRain[k] = 0;
     this.topRefrozenMm[k] = 0;
+    this.moguls[k] = 0;
   }
 
   /** Kopia stanu (do zapamiętywania punktów kontrolnych przewijania). */

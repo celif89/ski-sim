@@ -1,0 +1,198 @@
+{
+  "_opis": "Goście ośrodka (etap 5). Każda liczba: value, unit, source. Wartości orientacyjne – do kalibracji (obserwacje w ośrodkach, ankiety, dane z bramek). Liczba gości danego dnia to na razie parametr scenariusza – popyt i ceny dojdą w etapie 6.",
+  "scenario": {
+    "guestsPerDay": { "value": 1500, "unit": "os.", "source": "scenariusz testowy: liczba gości w ciągu dnia (popyt – etap 6); Pilsko w weekend ok. 2–4 tys. (do kalibracji)" },
+    "arrivalMeanH": { "value": 9.6, "unit": "h", "source": "średnia godzina przyjazdu; większość gości przyjeżdża na otwarcie i do 11:00; do kalibracji" },
+    "arrivalSdH": { "value": 0.9, "unit": "h", "source": "rozrzut godziny przyjazdu; do kalibracji" },
+    "arrivalMinH": { "value": 8.2, "unit": "h", "source": "najwcześniejszy przyjazd (przed otwarciem wyciągów – zakup karnetu)" },
+    "arrivalMaxH": { "value": 13.5, "unit": "h", "source": "najpóźniejszy przyjazd (karnety popołudniowe); do kalibracji" },
+    "stayMeanH": { "value": 5.0, "unit": "h", "source": "planowany czas pobytu na stoku; karnet całodzienny, typowo 4–6 h jazdy; do kalibracji" },
+    "staySdH": { "value": 1.3, "unit": "h", "source": "rozrzut czasu pobytu; do kalibracji" },
+    "stayMinH": { "value": 1.5, "unit": "h", "source": "najkrótszy planowany pobyt" }
+  },
+  "operation": {
+    "liftsOpenH": { "value": 8.5, "unit": "h", "source": "otwarcie wyciągów (typowo 8:30 w Beskidach)" },
+    "liftsCloseH": { "value": 16.0, "unit": "h", "source": "zamknięcie wyciągów w sezonie zimowym (bez jazdy wieczornej)" },
+    "stepS": { "value": 1, "unit": "s", "source": "krok symulacji gości (stały – determinizm: ten sam seed = ten sam dzień niezależnie od prędkości zegara)" },
+    "stationWalkRadiusM": { "value": 90, "unit": "m", "source": "stacje i początki tras bliżej niż tyle traktujemy jako jedno miejsce (gość podejdzie pieszo); do wyczucia" },
+    "walkSpeedMs": { "value": 1.0, "unit": "m/s", "source": "chód w butach narciarskich z nartami; do kalibracji" },
+    "maxWalkM": { "value": 400, "unit": "m", "source": "najdalsze dojście z bazy (parkingu) do dolnej stacji" },
+    "windHoldMarginMs": { "value": 0, "unit": "m/s", "source": "wyciąg staje, gdy wiatr na górze przekroczy próg typu (lifts.json: windLimitMs) + ten zapas" }
+  },
+  "skills": [
+    {
+      "id": "beginner", "name": "początkujący",
+      "share": { "value": 0.22, "unit": "-", "source": "udział wśród dorosłych gości; do kalibracji (ankiety ośrodków)" },
+      "maxClass": { "value": 1, "unit": "klasa (0 zielona … 3 czarna)", "source": "najtrudniejsza trasa, na którą wjedzie: niebieska" },
+      "preferredClass": { "value": 0, "unit": "klasa", "source": "ulubiona: zielona" },
+      "cruiseMs": { "value": 4.5, "unit": "m/s", "source": "prędkość jazdy na wygodnym stoku (ok. 16 km/h, pług, łuki); do kalibracji" },
+      "comfortSlopePercent": { "value": 14, "unit": "%", "source": "nachylenie, przy którym jedzie swobodnie; bardziej stromo – zwalnia" },
+      "icyFactor": { "value": 0.55, "unit": "×", "source": "mnożnik prędkości na lodzie; do kalibracji" },
+      "mogulFactor": { "value": 0.6, "unit": "×", "source": "mnożnik prędkości na muldach; do kalibracji" },
+      "powderFactor": { "value": 0.75, "unit": "×", "source": "mnożnik prędkości w głębokim puchu; do kalibracji" },
+      "accidentFactor": { "value": 2.0, "unit": "×", "source": "względne ryzyko wypadku; początkujący częściej (statystyki TOPR/GOPR); do kalibracji" },
+      "fatiguePerKm": { "value": 0.06, "unit": "1/km", "source": "przyrost zmęczenia (0–1) na kilometr zjazdu; do kalibracji" }
+    },
+    {
+      "id": "intermediate", "name": "średni",
+      "share": { "value": 0.43, "unit": "-", "source": "udział wśród dorosłych gości; do kalibracji" },
+      "maxClass": { "value": 2, "unit": "klasa", "source": "najtrudniejsza: czerwona" },
+      "preferredClass": { "value": 1, "unit": "klasa", "source": "ulubiona: niebieska" },
+      "cruiseMs": { "value": 8, "unit": "m/s", "source": "ok. 29 km/h; do kalibracji" },
+      "comfortSlopePercent": { "value": 25, "unit": "%", "source": "do kalibracji" },
+      "icyFactor": { "value": 0.75, "unit": "×", "source": "do kalibracji" },
+      "mogulFactor": { "value": 0.75, "unit": "×", "source": "do kalibracji" },
+      "powderFactor": { "value": 0.85, "unit": "×", "source": "do kalibracji" },
+      "accidentFactor": { "value": 1.0, "unit": "×", "source": "odniesienie" },
+      "fatiguePerKm": { "value": 0.045, "unit": "1/km", "source": "do kalibracji" }
+    },
+    {
+      "id": "advanced", "name": "dobry",
+      "share": { "value": 0.26, "unit": "-", "source": "do kalibracji" },
+      "maxClass": { "value": 3, "unit": "klasa", "source": "wszystkie trasy" },
+      "preferredClass": { "value": 2, "unit": "klasa", "source": "ulubiona: czerwona" },
+      "cruiseMs": { "value": 11, "unit": "m/s", "source": "ok. 40 km/h; do kalibracji" },
+      "comfortSlopePercent": { "value": 38, "unit": "%", "source": "do kalibracji" },
+      "icyFactor": { "value": 0.88, "unit": "×", "source": "do kalibracji" },
+      "mogulFactor": { "value": 0.9, "unit": "×", "source": "do kalibracji" },
+      "powderFactor": { "value": 0.95, "unit": "×", "source": "do kalibracji" },
+      "accidentFactor": { "value": 0.8, "unit": "×", "source": "do kalibracji" },
+      "fatiguePerKm": { "value": 0.035, "unit": "1/km", "source": "do kalibracji" }
+    },
+    {
+      "id": "expert", "name": "ekspert",
+      "share": { "value": 0.09, "unit": "-", "source": "do kalibracji" },
+      "maxClass": { "value": 3, "unit": "klasa", "source": "wszystkie trasy" },
+      "preferredClass": { "value": 3, "unit": "klasa", "source": "ulubiona: czarna – woli trudniejsze, gdy są dostępne" },
+      "cruiseMs": { "value": 14, "unit": "m/s", "source": "ok. 50 km/h; do kalibracji" },
+      "comfortSlopePercent": { "value": 55, "unit": "%", "source": "do kalibracji" },
+      "icyFactor": { "value": 0.95, "unit": "×", "source": "do kalibracji" },
+      "mogulFactor": { "value": 1.0, "unit": "×", "source": "do kalibracji" },
+      "powderFactor": { "value": 1.05, "unit": "×", "source": "eksperci w puchu jadą chętnie" },
+      "accidentFactor": { "value": 0.7, "unit": "×", "source": "do kalibracji" },
+      "fatiguePerKm": { "value": 0.03, "unit": "1/km", "source": "do kalibracji" }
+    }
+  ],
+  "types": [
+    {
+      "id": "skier", "name": "narciarz",
+      "share": { "value": 0.5, "unit": "-", "source": "udział grup tego typu wśród gości; do kalibracji" },
+      "groupMin": { "value": 1, "unit": "os.", "source": "sami albo we dwoje" },
+      "groupMax": { "value": 2, "unit": "os.", "source": "do kalibracji" },
+      "snowboard": { "value": 0, "unit": "-", "source": "narty" }
+    },
+    {
+      "id": "snowboarder", "name": "snowboardzista",
+      "share": { "value": 0.15, "unit": "-", "source": "udział snowboardu w Polsce ok. 10–20 %; do kalibracji" },
+      "groupMin": { "value": 1, "unit": "os.", "source": "do kalibracji" },
+      "groupMax": { "value": 3, "unit": "os.", "source": "do kalibracji" },
+      "snowboard": { "value": 1, "unit": "-", "source": "deska" }
+    },
+    {
+      "id": "family", "name": "rodzina z dziećmi",
+      "share": { "value": 0.25, "unit": "-", "source": "do kalibracji" },
+      "groupMin": { "value": 3, "unit": "os.", "source": "rodzic + dzieci" },
+      "groupMax": { "value": 5, "unit": "os.", "source": "do kalibracji" },
+      "snowboard": { "value": 0, "unit": "-", "source": "narty" }
+    },
+    {
+      "id": "school", "name": "grupa szkolna",
+      "share": { "value": 0.1, "unit": "-", "source": "wyjazdy szkolne w dni powszednie; do kalibracji" },
+      "groupMin": { "value": 8, "unit": "os.", "source": "grupa z instruktorem" },
+      "groupMax": { "value": 14, "unit": "os.", "source": "do kalibracji" },
+      "snowboard": { "value": 0, "unit": "-", "source": "narty" }
+    }
+  ],
+  "traits": {
+    "patienceMeanMin": { "value": 12, "unit": "min", "source": "ile gość wytrzyma w kolejce, zanim przejdzie na inny wyciąg; ankiety: 10–15 min to granica akceptacji; do kalibracji" },
+    "patienceSdMin": { "value": 5, "unit": "min", "source": "rozrzut cierpliwości" },
+    "patienceMinMin": { "value": 3, "unit": "min", "source": "najmniejsza cierpliwość" },
+    "giveUpFactor": { "value": 2.5, "unit": "×", "source": "gdy nie ma innego wyciągu, gość czeka do tylu × swoja cierpliwość, potem szuka innego miejsca albo wyjeżdża; do kalibracji" },
+    "childSkillDrop": { "value": 1, "unit": "poziom", "source": "dzieci w rodzinie jeżdżą o tyle poziomów słabiej niż rodzic (co najmniej początkujący)" },
+    "schoolMaxSkill": { "value": 1, "unit": "poziom", "source": "grupy szkolne: początkujący lub średni" }
+  },
+  "needs": {
+    "hungerPerH": { "value": 0.2, "unit": "1/h", "source": "przyrost głodu (0–1); po ok. 3–3,5 h jazdy przerwa na posiłek; do kalibracji" },
+    "lunchThreshold": { "value": 0.65, "unit": "-", "source": "głód, przy którym gość szuka jedzenia" },
+    "lunchMin": { "value": 40, "unit": "min", "source": "czas posiłku w schronisku lub gastronomii przy bazie; do kalibracji" },
+    "fatiguePerH": { "value": 0.04, "unit": "1/h", "source": "zmęczenie od samego przebywania na stoku (stanie w kolejkach, chodzenie)" },
+    "restThreshold": { "value": 0.6, "unit": "-", "source": "zmęczenie, przy którym gość robi przerwę" },
+    "restMin": { "value": 15, "unit": "min", "source": "krótki odpoczynek (kawa, ławka); do kalibracji" },
+    "restRecoveryPerH": { "value": 1.2, "unit": "1/h", "source": "spadek zmęczenia podczas przerwy" },
+    "fatigueLeave": { "value": 0.92, "unit": "-", "source": "zmęczenie, przy którym gość kończy dzień" },
+    "comfortTempC": { "value": -4, "unit": "°C", "source": "temperatura odczuwalna, poniżej której gość marznie; do kalibracji" },
+    "coldPerHPerC": { "value": 0.025, "unit": "1/(h·°C)", "source": "przyrost zimna (0–1) na każdy stopień poniżej progu komfortu; na wyciągu krzesełkowym ×liftColdFactor" },
+    "liftColdFactor": { "value": 1.8, "unit": "×", "source": "na krzesełku marznie się szybciej (bez ruchu, wiatr)" },
+    "warmRecoveryPerH": { "value": 1.5, "unit": "1/h", "source": "ogrzewanie się w budynku" },
+    "coldLeave": { "value": 0.9, "unit": "-", "source": "zimno, przy którym gość kończy dzień" },
+    "coldBreakThreshold": { "value": 0.6, "unit": "-", "source": "zimno, przy którym gość idzie się ogrzać" }
+  },
+  "choice": {
+    "temperature": { "value": 0.35, "unit": "-", "source": "losowość wyboru (softmax): 0 – zawsze najlepszy, więcej – bardziej przypadkowo; do wyczucia" },
+    "queuePenaltyPerMin": { "value": 0.12, "unit": "1/min", "source": "o ile minuta przewidywanego czekania obniża ocenę wyciągu (w jednostkach oceny trasy)" },
+    "overPatiencePenalty": { "value": 1.5, "unit": "-", "source": "kara, gdy przewidywane czekanie przekracza cierpliwość gościa" },
+    "easierClassValue": { "value": 0.55, "unit": "×", "source": "wartość trasy łatwiejszej od ulubionej (nuda)" },
+    "harderClassValue": { "value": 0.5, "unit": "×", "source": "wartość trasy trudniejszej od ulubionej (w granicach umiejętności)" },
+    "lengthRefM": { "value": 1000, "unit": "m", "source": "długość odniesienia oceny zjazdu" },
+    "longPreferenceWeight": { "value": 0.6, "unit": "-", "source": "jak bardzo miłośnik długich tras ceni długość" },
+    "powderWeight": { "value": 0.5, "unit": "-", "source": "premia za puch dla miłośnika puchu" },
+    "quietWeight": { "value": 0.8, "unit": "-", "source": "kara za tłok dla gościa, który woli mało ludzi" },
+    "badSnowWeight": { "value": 0.6, "unit": "-", "source": "kara za lód, breję i przetarcia na trasie" },
+    "foodBonus": { "value": 1.5, "unit": "-", "source": "premia za kierunek do jedzenia, gdy gość jest głodny lub zmarznięty" },
+    "homeBonus": { "value": 3, "unit": "-", "source": "premia za kierunek do bazy, gdy gość kończy dzień" },
+    "badWeatherLeavePerH": { "value": 0.25, "unit": "1/h", "source": "prawdopodobieństwo wcześniejszego wyjazdu na godzinę przy deszczu lub silnym wietrze; do kalibracji" },
+    "badSnowLeavePerH": { "value": 0.15, "unit": "1/h", "source": "jw. przy złym śniegu na trasach; do kalibracji" }
+  },
+  "movement": {
+    "lateralMarginM": { "value": 2.5, "unit": "m", "source": "odstęp od skraju trasy (las, siatki)" },
+    "minGapM": { "value": 5, "unit": "m", "source": "najmniejszy odstęp od innego narciarza (unikanie zderzeń)" },
+    "lookAheadM": { "value": 18, "unit": "m", "source": "jak daleko przed sobą gość patrzy na innych" },
+    "turnLengthMinM": { "value": 12, "unit": "m", "source": "długość skrętu (pół slalomu) – krótkie skręty" },
+    "turnLengthMaxM": { "value": 32, "unit": "m", "source": "długie skręty" },
+    "turnAmplitudeM": { "value": 6, "unit": "m", "source": "wychylenie skrętu na boki" },
+    "flatSlopePercent": { "value": 4, "unit": "%", "source": "poniżej – jazda wolna (płasko, odpychanie)" },
+    "minSpeedMs": { "value": 1.2, "unit": "m/s", "source": "najmniejsza prędkość na płaskim" },
+    "groupGapM": { "value": 6, "unit": "m", "source": "odstęp członków grupy jadących razem" },
+    "queueRowSize": { "value": 6, "unit": "os.", "source": "osób w rzędzie kolejki przy stacji (rysowanie)" },
+    "queueSpacingM": { "value": 1.3, "unit": "m", "source": "odstęp osób w kolejce" }
+  },
+  "satisfaction": {
+    "rideRatioWeight": { "value": 0.32, "unit": "-", "source": "waga: czas jazdy do czasu w kolejkach (wagi sumują się do 1)" },
+    "rideRatioZero": { "value": 0.3, "unit": "-", "source": "udział jazdy w (jazda + kolejki), przy którym ta część oceny = 0" },
+    "rideRatioFull": { "value": 0.85, "unit": "-", "source": "udział jazdy, przy którym ta część oceny = 1" },
+    "snowWeight": { "value": 0.25, "unit": "-", "source": "waga: jakość śniegu pod nartami" },
+    "crowdWeight": { "value": 0.13, "unit": "-", "source": "waga: tłok na trasie" },
+    "crowdFullPer100m": { "value": 6, "unit": "os./100 m", "source": "tylu narciarzy na 100 m trasy w pobliżu = pełny tłok (ocena 0)" },
+    "weatherWeight": { "value": 0.12, "unit": "-", "source": "waga: pogoda" },
+    "matchWeight": { "value": 0.18, "unit": "-", "source": "waga: dopasowanie tras do umiejętności" },
+    "accidentPenalty": { "value": 0.5, "unit": "-", "source": "spadek zadowolenia po wypadku" },
+    "snowScorePowder": { "value": 1.0, "unit": "-", "source": "ocena śniegu: puch" },
+    "snowScoreSettled": { "value": 0.85, "unit": "-", "source": "ocena śniegu: osiadły" },
+    "snowScoreWindPacked": { "value": 0.7, "unit": "-", "source": "ocena śniegu: przewiany" },
+    "snowScoreFirn": { "value": 0.75, "unit": "-", "source": "ocena śniegu: firn (wiosną przyjemny)" },
+    "snowScoreSlush": { "value": 0.45, "unit": "-", "source": "ocena śniegu: breja" },
+    "snowScoreIcy": { "value": 0.25, "unit": "-", "source": "ocena śniegu: lód" },
+    "snowScoreThin": { "value": 0.2, "unit": "-", "source": "ocena śniegu: przetarcia" },
+    "snowScoreNone": { "value": 0, "unit": "-", "source": "ocena śniegu: brak" },
+    "mogulPenaltyBeginner": { "value": 0.5, "unit": "-", "source": "o ile muldy obniżają ocenę śniegu początkującemu (ekspertom nie przeszkadzają)" }
+  },
+  "accidents": {
+    "basePerKm": { "value": 0.00006, "unit": "1/km", "source": "prawdopodobieństwo wypadku na km zjazdu (ok. 2–3 wypadki na 1000 dni narciarskich, ~20 km dziennie); do kalibracji z danymi GOPR" },
+    "crowdFactor": { "value": 1.5, "unit": "×", "source": "przy pełnym tłoku ryzyko × (1 + to)" },
+    "icyFactor": { "value": 2.5, "unit": "×", "source": "na lodzie" },
+    "fatigueFactor": { "value": 2.0, "unit": "×", "source": "przy pełnym zmęczeniu ryzyko × (1 + to)" },
+    "tooHardFactor": { "value": 3.0, "unit": "×", "source": "na trasie trudniejszej niż ulubiona" },
+    "iconHours": { "value": 1.5, "unit": "h", "source": "jak długo ikona wypadku jest wyraźna na mapie" }
+  },
+  "snowImpact": {
+    "packedDensityKgM3": { "value": 420, "unit": "kg/m³", "source": "gęstość ubitego narciarzami śniegu na trasie (ok. 350–450); do kalibracji" },
+    "passesToPack": { "value": 40, "unit": "przejazdów/komórkę", "source": "po tylu przejazdach przez komórkę 10 m górna warstwa jest w ok. 63 % ubita (1 − e⁻¹); do kalibracji" },
+    "scrapeMmPerPass": { "value": 0.06, "unit": "mm w.e./przejazd", "source": "ile śniegu (woda) narciarz zsuwa w dół stoku na stromiźnie przy nachyleniu odniesienia; w zwężeniach ten sam ruch daje więcej przejazdów na komórkę – przetarcia szybciej; do kalibracji" },
+    "scrapeRefSlopePercent": { "value": 40, "unit": "%", "source": "nachylenie odniesienia zsuwania; zsuwanie rośnie liniowo od scrapeMinSlopePercent" },
+    "scrapeMinSlopePercent": { "value": 15, "unit": "%", "source": "poniżej tego nachylenia śnieg się nie zsuwa" },
+    "mogulMinSlopePercent": { "value": 22, "unit": "%", "source": "muldy powstają na stromszych odcinkach" },
+    "passesToMoguls": { "value": 600, "unit": "przejazdów/komórkę", "source": "po tylu przejazdach (bez ratraka) na stromym odcinku muldy są w pełni rozwinięte; do kalibracji" },
+    "mogulFillMm": { "value": 15, "unit": "mm w.e.", "source": "świeży śnieg zasypuje muldy: spadek o 1 − e^(−opad/to)" },
+    "mogulMeltDecayPerDay": { "value": 0.1, "unit": "1/d", "source": "muldy rozmiękają i niszczeją w odwilży (breja)" }
+  }
+}

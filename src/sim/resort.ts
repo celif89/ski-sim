@@ -58,13 +58,13 @@ export function parseLayout(raw: unknown): ResortLayout {
   for (const l of lifts as Record<string, unknown>[]) {
     if (typeof l.id !== 'string' || typeof l.typeId !== 'string' || !isPoint(l.bottom) || !isPoint(l.top)) throw new Error('Plik układu ośrodka: uszkodzony wyciąg');
     const towers = Array.isArray(l.towers) ? (l.towers as Record<string, unknown>[]).filter((t) => isNum(t.distanceM) && isNum(t.heightM)).map((t) => ({ distanceM: t.distanceM as number, heightM: t.heightM as number })) : [];
-    out.lifts.push({ id: l.id, typeId: l.typeId, name: typeof l.name === 'string' ? l.name : l.id, bottom: { xM: l.bottom.xM, yM: l.bottom.yM }, top: { xM: l.top.xM, yM: l.top.yM }, towers, manualTowers: l.manualTowers === true });
+    out.lifts.push({ id: l.id, typeId: l.typeId, name: typeof l.name === 'string' ? l.name : l.id, bottom: { xM: l.bottom.xM, yM: l.bottom.yM }, top: { xM: l.top.xM, yM: l.top.yM }, towers, manualTowers: l.manualTowers === true, ...(l.closed === true ? { closed: true } : {}) });
   }
   for (const p of pistes as Record<string, unknown>[]) {
     if (typeof p.id !== 'string' || !Array.isArray(p.points)) throw new Error('Plik układu ośrodka: uszkodzona trasa');
     const points = (p.points as Record<string, unknown>[]).filter((q) => isPoint(q) && isNum(q.widthM)).map((q) => ({ xM: q.xM as number, yM: q.yM as number, widthM: q.widthM as number }));
     if (points.length < 2) continue;
-    out.pistes.push({ id: p.id, name: typeof p.name === 'string' ? p.name : p.id, points });
+    out.pistes.push({ id: p.id, name: typeof p.name === 'string' ? p.name : p.id, points, ...(p.closed === true ? { closed: true } : {}) });
   }
   for (const b of bases as Record<string, unknown>[]) {
     if (typeof b.id === 'string' && isNum(b.xM) && isNum(b.yM)) out.bases.push({ id: b.id, name: typeof b.name === 'string' ? b.name : 'Baza', xM: b.xM, yM: b.yM });
@@ -460,4 +460,111 @@ export function compareRealPistes(osm: OsmResort, grid: TerrainGrid, p: PistePar
     });
   }
   return [...byName.values()].sort((a, b) => a.label.localeCompare(b.label, 'pl', { numeric: true }));
+}
+
+// ---------------------------------------------------------------- prawdziwy ośrodek jako układ do gry
+
+/** Typ wyciągu z OSM (aerialway, przepustowość) → typ z data/lifts.json. */
+export function liftTypeFromOsm(aerialway: string, capacityPerHour: number | null, lp: LiftParams): string {
+  const has = (id: string) => lp.types.some((t) => t.id === id);
+  const pickBy = (ids: string[]) => ids.find(has) ?? lp.types[0].id;
+  if (aerialway === 'chair_lift') {
+    if (capacityPerHour !== null && capacityPerHour >= 2200) return pickBy(['kanapa4d', 'kanapa4s']);
+    if (capacityPerHour !== null && capacityPerHour <= 1400) return pickBy(['kanapa2s', 'kanapa4s']);
+    return pickBy(['kanapa4s', 'kanapa2s']);
+  }
+  if (aerialway === 'gondola' || aerialway === 'cable_car') return pickBy(['gondola']);
+  if (aerialway === 't-bar' || aerialway === 'drag_lift' || aerialway === 'j-bar') return pickBy(['orczyk']);
+  if (aerialway === 'platter' || aerialway === 'rope_tow') return pickBy(['talerzyk']);
+  if (aerialway === 'magic_carpet') return pickBy(['tasma']);
+  return pickBy(['orczyk']);
+}
+
+export interface OsmLayoutOptions {
+  /** Do jakiej odległości od stacji dociągnąć koniec trasy do stacji [m]. */
+  snapToStationM: number;
+  /** Parkingi (środki) – bazy przy najbliższej dolnej stacji. */
+  parkings: PointM[];
+}
+
+/**
+ * Prawdziwy ośrodek (wyciągi i trasy z OpenStreetMap) jako układ do gry: wyciągi od niższego do
+ * wyższego końca, trasy połączone w ciągi (jak w porównaniu), końce tras dociągnięte do pobliskich
+ * stacji, bazy przy parkingach. Wynik można dalej edytować jak własny ośrodek.
+ */
+export function layoutFromOsm(
+  osm: OsmResort,
+  grid: TerrainGrid,
+  lp: LiftParams,
+  p: PisteParams,
+  toLocal: (e: number, n: number) => PointM | null,
+  o: OsmLayoutOptions,
+  design: (id: string, typeId: string, name: string, bottom: PointM, top: PointM) => LiftDesign,
+): ResortLayout {
+  const layout = emptyLayout();
+  const z = (q: PointM) => grid.sampleElevationM(q.xM, q.yM);
+  let n = 1;
+  for (const l of osm.lifts) {
+    const pts = l.points.map(([e, nn]) => toLocal(e, nn)).filter((q): q is PointM => q !== null);
+    if (pts.length < 2) continue;
+    let a = pts[0];
+    let b = pts[pts.length - 1];
+    if (Number.isNaN(z(a)) || Number.isNaN(z(b))) continue;
+    if (z(a) > z(b)) [a, b] = [b, a];
+    const name = [l.ref, l.name].filter(Boolean).join(' ').trim() || `W${n}`;
+    layout.lifts.push(design(`W${n}`, liftTypeFromOsm(l.aerialway, l.capacityPerHour, lp), name, a, b));
+    n++;
+  }
+  const items = osm.pistes
+    .filter((x) => !x.area)
+    .map((x) => ({ key: `${x.ref || x.name || `#${x.osmId}`}|${x.difficulty}`, ids: [x.osmId], points: x.points.map(([e, nn]) => toLocal(e, nn)).filter((q): q is PointM => q !== null) }))
+    .filter((x) => x.points.length >= 2);
+  const chains = chainOsmPistes(items, p.osmChainToleranceM);
+  let t = 1;
+  for (const ch of chains) {
+    let pts = [...ch.points];
+    // Od góry do dołu.
+    if (z(pts[0]) < z(pts[pts.length - 1])) pts.reverse();
+    if (Number.isNaN(z(pts[0])) || Number.isNaN(z(pts[pts.length - 1]))) continue;
+    const near = (q: PointM, which: 'top' | 'bottom') => {
+      let best: PointM | null = null;
+      let bestD = o.snapToStationM;
+      for (const l of layout.lifts) {
+        const s = which === 'top' ? l.top : l.bottom;
+        const d = Math.hypot(s.xM - q.xM, s.yM - q.yM);
+        if (d < bestD) {
+          bestD = d;
+          best = s;
+        }
+      }
+      return best;
+    };
+    const top = near(pts[0], 'top');
+    if (top && Math.hypot(top.xM - pts[0].xM, top.yM - pts[0].yM) > 1) pts = [{ xM: top.xM, yM: top.yM }, ...pts];
+    const bottom = near(pts[pts.length - 1], 'bottom');
+    if (bottom && Math.hypot(bottom.xM - pts[pts.length - 1].xM, bottom.yM - pts[pts.length - 1].yM) > 1) pts = [...pts, { xM: bottom.xM, yM: bottom.yM }];
+    const label = ch.key.split('|')[0];
+    layout.pistes.push({ id: `T${t}`, name: label.startsWith('#') ? `${t}` : label, points: pts.map((q) => ({ xM: q.xM, yM: q.yM, widthM: p.osmPisteWidthM })) });
+    t++;
+  }
+  // Bazy: przy parkingach, w miejscu najbliższej dolnej stacji (tam kończą się trasy).
+  let b = 1;
+  const used = new Set<string>();
+  for (const pk of o.parkings) {
+    let best: LiftDesign | null = null;
+    let bestD = 600;
+    for (const l of layout.lifts) {
+      const d = Math.hypot(l.bottom.xM - pk.xM, l.bottom.yM - pk.yM);
+      if (d < bestD) {
+        bestD = d;
+        best = l;
+      }
+    }
+    if (!best || used.has(best.id)) continue;
+    used.add(best.id);
+    layout.bases.push({ id: `B${b}`, name: `Parking – ${best.name}`, xM: best.bottom.xM, yM: best.bottom.yM + 15 });
+    b++;
+  }
+  layout.nextId = Math.max(n, t, b) + 1;
+  return layout;
 }

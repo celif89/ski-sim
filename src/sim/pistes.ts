@@ -99,6 +99,8 @@ export interface PisteDesign {
   id: string;
   name: string;
   points: AxisPoint[];
+  /** Trasa zamknięta (goście nią nie jeżdżą). */
+  closed?: boolean;
 }
 
 export interface AxisSample extends PointM {

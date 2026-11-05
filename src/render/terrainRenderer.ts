@@ -356,7 +356,8 @@ export class TerrainRenderer {
   }
 
   /** Stan śniegu z modelu (null – jeszcze nie policzony: biały śnieg wszędzie). */
-  setSnow(depthCm: Float32Array | null, quality: Uint8Array | null): void {
+  /** Śnieg z modelu: grubość [cm], stan (kod) i muldy od narciarzy (0–255, opcjonalnie). */
+  setSnow(depthCm: Float32Array | null, quality: Uint8Array | null, moguls: Uint8Array | null = null): void {
     const u = this.uni(this.bakeMesh, 'terrainUniforms');
     if (!depthCm || !quality) {
       u.uHasSnow = 0;
@@ -364,7 +365,7 @@ export class TerrainRenderer {
       for (let k = 0; k < this.grid.cellCount; k++) {
         const d = depthCm[k];
         this.cells[k * 4] = Number.isNaN(d) ? 0 : Math.min(255, Math.max(0, Math.round(d)));
-        this.cells[k * 4 + 1] = Math.min(15, quality[k]) * 16;
+        this.cells[k * 4 + 1] = Math.min(15, quality[k]) * 16 + (moguls ? Math.round((moguls[k] / 255) * 15) : 0);
       }
       this.cellSource.update();
       u.uHasSnow = 1;

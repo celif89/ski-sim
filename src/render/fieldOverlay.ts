@@ -5,10 +5,10 @@
  */
 import { CanvasSource, Texture } from 'pixi.js';
 import type { TerrainGrid } from '../sim';
-import { RADIATION_SUM_STOPS, SNOW_DEPTH_STOPS, TEMPERATURE_STOPS, sampleColorStops } from './colors';
+import { RADIATION_SUM_STOPS, SNOW_DEPTH_STOPS, TEMPERATURE_STOPS, TRAFFIC_STOPS, sampleColorStops } from './colors';
 import type { Rgb, Stop } from './colors';
 
-export type FieldKind = 'insolation' | 'radiationSum' | 'temperature' | 'snowDepth';
+export type FieldKind = 'insolation' | 'radiationSum' | 'temperature' | 'snowDepth' | 'traffic';
 
 export interface FieldScale {
   stops: Stop[];
@@ -25,11 +25,12 @@ const RADIATION_SUM_SCALE_STEP = 0.5;
  */
 export function fieldScale(
   kind: FieldKind,
-  style: { insolationMaxWm2: number; radiationSumMaxKwhM2: number; temperatureRangeC: number; snowDepthMaxCm: number },
+  style: { insolationMaxWm2: number; radiationSumMaxKwhM2: number; temperatureRangeC: number; snowDepthMaxCm: number; trafficMaxPerHour?: number },
   values?: Float32Array,
 ): FieldScale {
   if (kind === 'insolation') return { stops: RADIATION_SUM_STOPS, min: 0, max: style.insolationMaxWm2 };
   if (kind === 'snowDepth') return { stops: SNOW_DEPTH_STOPS, min: 0, max: style.snowDepthMaxCm };
+  if (kind === 'traffic') return { stops: TRAFFIC_STOPS, min: 0, max: style.trafficMaxPerHour ?? 400 };
   if (kind === 'radiationSum') {
     let max = 0;
     if (values) for (const v of values) if (v > max) max = v;

@@ -265,7 +265,8 @@ void main() {
   vec2 jit = (vec2(fbm(p * 0.06, 1u), fbm(p * 0.06, 2u)) - 0.5) * 22.0;
   vec4 cell = cellAt(p + jit);
   float depthCm = uHasSnow > 0.5 ? cell.r * 255.0 : 120.0;
-  int q = uHasSnow > 0.5 ? int(cell.g * 255.0 / 16.0 + 0.5) : 3;
+  // Kanał G: stan śniegu × 16 + muldy (0–15) – stan w górnych 4 bitach.
+  int q = uHasSnow > 0.5 ? (int(cell.g * 255.0 + 0.5) >> 4) : 3;
   vec4 msk = texture(uMask, uv);
 
   // Pokrycie śniegiem: gruby – biały, cienki – płaty, brak – trawa.
@@ -371,13 +372,24 @@ void main() {
   vec2 sk = (texture(uSki, uv).rg - 0.5) * 2.0;
   float gi = length(g);
   float si = length(sk);
-  if (gi < 0.03 && si < 0.03) { fragColor = vec4(1.0); return; }
   vec4 cell = texelFetch(uCells, clamp(ivec2(floor(p / uCellM)), ivec2(0), ivec2(uGrid) - 1), 0);
-  int q = int(cell.g * 255.0 / 16.0 + 0.5);
+  int gv = int(cell.g * 255.0 + 0.5);
+  int q = gv >> 4;
+  // Muldy z modelu śniegu (przejazdy gości z poprzednich dni), wygładzone między komórkami.
+  vec2 cf = p / uCellM - 0.5;
+  ivec2 c0 = ivec2(floor(cf));
+  vec2 ff = fract(cf);
+  ivec2 hi = ivec2(uGrid) - 1;
+  float m00 = float(int(texelFetch(uCells, clamp(c0, ivec2(0), hi), 0).g * 255.0 + 0.5) & 15);
+  float m10 = float(int(texelFetch(uCells, clamp(c0 + ivec2(1, 0), ivec2(0), hi), 0).g * 255.0 + 0.5) & 15);
+  float m01 = float(int(texelFetch(uCells, clamp(c0 + ivec2(0, 1), ivec2(0), hi), 0).g * 255.0 + 0.5) & 15);
+  float m11 = float(int(texelFetch(uCells, clamp(c0 + ivec2(1, 1), ivec2(0), hi), 0).g * 255.0 + 0.5) & 15);
+  float mog = mix(mix(m00, m10, ff.x), mix(m01, m11, ff.x), ff.y) / 15.0;
+  if (gi < 0.03 && si < 0.03 && mog < 0.05) { fragColor = vec4(1.0); return; }
   if (q == 0 || q == 7 || cell.r * 255.0 < 3.0) { fragColor = vec4(1.0); return; }
   // Progi z płynnym przejściem (bufor śladów ma 2 m/px – twardy próg dawałby schodki).
   float kg = (q == 6 || q == 5) ? 0.0 : smoothstep(uSurfT.x - 0.12, uSurfT.x + 0.12, gi);
-  float km = q == 6 ? 0.0 : smoothstep(uSurfT.z - 0.12, uSurfT.z + 0.12, si) * (1.0 - kg);
+  float km = q == 6 ? 0.0 : max(smoothstep(uSurfT.z - 0.12, uSurfT.z + 0.12, si), smoothstep(0.1, 0.6, mog)) * (1.0 - kg);
   float kt = smoothstep(uSurfT.y - 0.08, uSurfT.y + 0.08, si) * (1.0 - kg) * (1.0 - km);
   float f = 1.0;
   if (kg > 0.0) {

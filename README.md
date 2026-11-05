@@ -35,7 +35,7 @@ zostaje poprzednia, sprawna wersja.
 | Przybliżanie i oddalanie | kółko myszy (przybliża w miejscu kursora), na gładziku Maca: gest szczypania; klawisze `+` / `−` |
 | Cała mapa na ekranie | klawisz `0` lub `Home` |
 | Obrót mapy o 180° | róża kierunków w prawym dolnym rogu (strzałka **N**). Domyślnie widok od Korbielowa: szczyt u góry, północ na dole |
-| Upływ czasu gry | prawy górny róg: pauza, ×1 (dzień sezonu w ok. 10 minut, noc szybciej), ×5, ×20; spacja – pauza / ×1 |
+| Upływ czasu gry | prawy górny róg: pauza, **1:1** (czas rzeczywisty – do oglądania narciarzy z bliska), ×1 (dzień sezonu w ok. 10 minut, noc szybciej), ×5, ×20; spacja – pauza / ×1 |
 | Nakładki danych | przycisk **„Nakładki”** na dolnym pasku (tam też mapa topograficzna, sieć tras, prawdziwy ośrodek) albo klawisze `1`–`8` |
 | Nakładka nachylenia | „Nakładki” → „Nachylenie” lub klawisz `1` |
 | Nakładka ekspozycji | przycisk „Ekspozycja” lub klawisz `2` |
@@ -48,7 +48,9 @@ zostaje poprzednia, sprawna wersja.
 | Przewijanie sezonu (śnieg zmienia się dzień po dniu do 30 kwietnia) | lewy górny róg: „Kalendarz i słońce” → „▶▶ Przewiń sezon”, prędkość 1 / 5 / 20 dni na sekundę |
 | Dzień i godzina | lewy górny róg: „Kalendarz i słońce” – data, strzałki ◀ ▶, suwak godziny, „▶ Odtwórz dzień” |
 | Pogoda | plakietka u góry na środku (temperatura, śnieg, wiatr); kliknięcie – szczegóły i prognoza na 7 dni |
-| Menu deweloperskie | przycisk „Dev” w lewym dolnym rogu lub klawisz `` ` `` – scena demonstracyjna (narciarze, ratrak), licznik klatek |
+| Goście | panel **„Goście”** po prawej: liczba gości dnia, „↺ Od nowa”, „Raport dnia”, tabela wyciągów; kliknięcie postaci na mapie – karta gościa |
+| Ruch na trasach / kolejki | klawisz `9` (natężenie ruchu) i `K` (czas oczekiwania przy stacjach) albo „Nakładki” |
+| Menu deweloperskie | przycisk „Dev” w lewym dolnym rogu lub klawisz `` ` `` – licznik klatek, czas pracy na klatkę |
 | Profil terenu | przycisk „Profil terenu” lub klawisz `P`, potem kliknij punkt A i punkt B; `Esc` zamyka |
 
 ### Budowa ośrodka (dolny pasek i panel „Budowa ośrodka” po prawej)
@@ -91,10 +93,8 @@ wtedy sezon od nowa (na przecince więcej słońca i wiatru, brak zatrzymywania 
     znikają, przy opadzie szybciej.
   Pora dnia zmienia światło (poranek chłodny, zmierzch ciepły, noc ciemna z oświetlonymi trasami
   i światłami ratraków); gdy pada, na ekranie widać płatki śniegu lub deszcz.
-- **Scena demonstracyjna** (menu „Dev” albo adres `…/ski-sim/?demo=50`): kilkudziesięciu narciarzy
-  zjeżdża po trasach (zbudowanych albo prawdziwych z OpenStreetMap) i jeden ratrak wyrównuje trasę.
-  To tylko pokaz wyglądu – prawdziwi goście to etap 5. Sztruks i przetarcia najlepiej widać przy
-  przybliżeniu ok. 0,25–0,5 m/px (pasek stanu na dole pokazuje skalę).
+- **Goście** (etap 5) – patrz niżej „Dzień z gośćmi”. Ślady nart, muldy i przetarcia najlepiej
+  widać przy przybliżeniu ok. 0,25–0,5 m/px (pasek stanu na dole pokazuje skalę).
 - **Mapa topograficzna** (dawna mapa bazowa, „Nakładki” → „Mapa topograficzna”): cieniowanie rzeźby (światło z północnego zachodu, jak na mapach
   topograficznych), barwy wysokości (zielonkawo w dolinach, jasny beż na grzbietach),
   warstwice co 10 m, pogrubione co 50 m z opisem wysokości, czerwona przerywana granica państwa.
@@ -123,6 +123,37 @@ wtedy sezon od nowa (na przecince więcej słońca i wiatru, brak zatrzymywania 
 - **Pogoda** (plakietka u góry, po kliknięciu szczegóły): warunki teraz na dole i na górze ośrodka (temperatura, opad i jego
   rodzaj, wiatr, wilgotność, zachmurzenie) i prognoza na 7 dni. Prognoza jest niepewna – im dalej,
   tym bardziej może się mylić (±°C w ostatniej kolumnie).
+
+### Dzień z gośćmi (etap 5)
+
+1. Ośrodek: zbuduj wyciąg i trasę (dolny pasek) albo w panelu **„Goście”** kliknij **„Wczytaj
+   prawdziwy ośrodek Pilsko”** (12 wyciągów i trasy z OpenStreetMap, parkingi jako bazy; Ctrl+Z
+   cofa).
+2. Liczba gości: pole „Gości dziś” w panelu (na razie parametr – popyt i ceny w etapie 6) albo
+   adres strony `…/ski-sim/?goscie=2000`.
+3. Czas: przycisk ×1 (albo ×5, ×20) w prawym górnym rogu. Goście przyjeżdżają od ok. 8:15,
+   wyciągi kursują 8:30–16:00. Wybranie innej godziny lub dnia przelicza dzień do tej chwili
+   (pasek postępu w panelu). Ten sam dzień zawsze przebiega tak samo (ten sam seed).
+
+Co widać:
+- **postacie**: narciarze i snowboardziści (kolor kurtki losowy, dzieci mniejsze) zjeżdżają slalomem
+  po całej szerokości trasy, omijając innych; **kolejki** – rzędy za dolnymi stacjami (kolejność
+  przybycia); **krzesełka z siedzącymi gośćmi** (na orczyku i talerzyku – stojący); grupy (rodziny,
+  szkoły) jadą razem i czekają na siebie na górze; idący pieszo z parkingu;
+- **karta gościa** (kliknij postać): kim jest, co robi i co planuje, zadowolenie (gwiazdki),
+  zmęczenie, głód, zimno, liczba zjazdów, czas jazdy i w kolejkach, preferencje;
+- **panel „Goście”**: ilu na stoku, w kolejkach, na wyciągach, na trasach, na przerwie; dla każdego
+  wyciągu długość kolejki, czas oczekiwania i wykorzystanie przepustowości (ostatnie 30 min);
+  dziennik zdarzeń (wypadki – ikona 🚑 także na mapie);
+- **nakładki**: `9` – natężenie ruchu na trasach (przejazdy na godzinę), `K` – plakietki z czasem
+  oczekiwania i liczbą osób przy dolnych stacjach (zielone do 5 min … czerwone ponad 30 min);
+- **śnieg**: za narciarzami ślady na puchu; po zakończeniu dnia przejazdy trafiają do modelu śniegu
+  – śnieg na trasach jest ubity, na stromiznach zsunięty w dół (przetarcia), rosną muldy
+  (zasypuje je świeży śnieg; ratraki – etap 7);
+- **raport dnia** (sam się otwiera po zamknięciu wyciągów, albo przycisk „Raport dnia”): liczba gości,
+  wjazdów i zjazdów, średni czas w kolejce na wjazd, średnia ocena i rozkład ocen 1–5, dlaczego
+  goście wyjechali, wykres na stoku/w kolejkach co godzinę, wyciągi z najdłuższym czekaniem,
+  najbardziej zatłoczone trasy, wypadki.
 
 ### Punkty kontrolne do porównania z Geoportalem
 
@@ -190,6 +221,16 @@ Co sprawdzają testy (katalog `tests/`):
   trzyma śnieg dłużej niż południowy; deszcz, a potem mróz → śnieg zlodzony; gęstość rośnie
   z czasem; ten sam seed = ten sam śnieg; wiatr przenosi śnieg z grzbietu na stronę zawietrzną;
   las zatrzymuje część opadu; czas liczenia dnia na całej mapie,
+- **goście (etap 5):** w tłumie 3000 gości żaden wyciąg nie przewozi w godzinę więcej osób niż jego
+  przepustowość; przejazd trwa dokładnie długość / prędkość; początkujący nigdy nie wjeżdżają na
+  czarną górę ani nie zjeżdżają czarną trasą; eksperci wybierają czarną ponad 2× częściej niż
+  zieloną; dłuższy czas w kolejce zawsze obniża zadowolenie, wolniejsze wyciągi – niższe oceny dnia;
+  przy wolnym i szybkim wyciągu obok siebie goście przenoszą się na szybszy (bez patrzenia na
+  kolejki czekaliby ponad 2× dłużej); grupa jedzie razem; nikt nie zjeżdża zamkniętą trasą;
+  jadący są zawsze w korytarzu trasy (nie w lesie); przejazdy ubijają śnieg, zsuwają go w dół
+  (masa zachowana), tworzą muldy, a wielodniowy ruch wyciera stromiznę do przetarć; świeży śnieg
+  zasypuje muldy; ten sam seed = ten sam dzień (także przy innym podziale czasu); prawdziwy Pilsko
+  z OSM – dzień 2000 gości bez błędów,
 - **pogoda:** ten sam seed = ta sama zima; 30 zim zgodnych z danymi IMGW (temperatura, opad,
   dni z opadem w tolerancji); śnieg na górze i deszcz na dole, gdy izoterma 0 °C leży pomiędzy;
   minimum temperatury nad ranem, maksimum po południu; błąd prognozy rośnie z każdym dniem,

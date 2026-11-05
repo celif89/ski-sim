@@ -1,93 +1,142 @@
 /**
- * Małe obiekty ruchome na mapie (widok z góry): narciarze, ratraki (z wyciągarką i światłami),
- * w przyszłości także inni. Wszystkie w jednym kontenerze cząstek (jedno wywołanie rysowania na
- * warstwę) – cień, obiekt, światła. Obrazki rysowane raz do jednej tekstury (atlas).
+ * Małe postacie na mapie (widok z góry): narciarze, snowboardziści, stojący w kolejce, siedzący na
+ * krzesełkach, idący pieszo; w przyszłości ratraki (etap 7). Wszystkie w kontenerach cząstek
+ * (jedno wywołanie rysowania na warstwę) – cień, postać, światła. Obrazki narysowane raz do jednej
+ * tekstury (atlas). Kolor kurtki – z ziarna (symulacja), dzieci mniejsze.
  *
- * To tylko rysowanie: położenie, kierunek i stan podaje logika (etap 5 – goście, etap 7 –
- * ratraki; teraz – scena demonstracyjna).
+ * Dane: ramka z wątku gości (FRAME_STRIDE liczb na osobę), między ramkami położenie przesuwane
+ * z prędkością (płynny ruch przy rzadszych ramkach).
  */
 import { Container, Particle, ParticleContainer, Rectangle, Texture } from 'pixi.js';
 import type { Camera } from './camera';
 
-export type MoverKind = 'skier' | 'groomer';
+/** Układ ramki (jak FRAME_STRIDE w src/sim/guests.ts). */
+const STRIDE = 9;
+export const KIND_SKI = 0;
+export const KIND_BOARD = 1;
+export const KIND_STAND = 2;
+export const KIND_SEATED = 3;
+export const KIND_WALK = 4;
+export const KIND_GROOMER = 5;
 
-export interface MoverState {
-  kind: MoverKind;
-  xM: number;
-  yM: number;
-  /** Kierunek jazdy (kąt w układzie mapy: 0 – na wschód, π/2 – na południe). */
-  headingRad: number;
-  /** Wariant wyglądu (kolor kurtki). */
-  variant: number;
-  /** Faza animacji 0–1 (np. skręt w lewo/prawo). */
-  phase: number;
-  lightsOn?: boolean;
-}
-
-/** Rozmiary obiektów w terenie [m]. */
-const SKIER_LENGTH_M = 1.9;
+/** Rozmiary w terenie [m]. */
+const PERSON_LENGTH_M = 1.9;
 const GROOMER_LENGTH_M = 8.5;
 const LIGHT_LENGTH_M = 26;
 const SHADOW_OFFSET_M = 0.8;
-/** Najmniejszy rozmiar na ekranie [px] – przy oddaleniu obiekty powiększone jak na mapie ilustrowanej. */
-const MIN_SKIER_PX = 7;
-const MIN_GROOMER_PX = 14;
+const CHILD_SCALE = 0.7;
+/** Najmniejszy rozmiar na ekranie [px] – przy oddaleniu postacie powiększone jak na mapie ilustrowanej. */
+const MIN_PERSON_PX = 14;
+const MIN_GROOMER_PX = 22;
+/** Najdłuższe przesunięcie między ramkami [s czasu gry]. */
+const MAX_EXTRAPOLATION_S = 3;
 
 const JACKETS = ['#d92b2b', '#1c64d8', '#f59e0b', '#2f9e44', '#7b3fbf', '#0f9fb0', '#e64980', '#212529'];
 const CELL = 64;
 
 interface Frames {
-  skier: Texture[][];
-  shadowSkier: Texture;
+  /** [kurtka][poza] – narciarz (pozy 0–2: skręt), deska (3), stojący (4), siedzący (5), idący (6, 7). */
+  person: Texture[][];
+  shadow: Texture;
   groomer: Texture;
   shadowGroomer: Texture;
   light: Texture;
 }
 
-/** Atlas: narciarze (kolory × 3 pozy), cienie, ratrak, smuga światła. */
 function buildAtlas(): Frames {
   const cols = JACKETS.length;
+  const rows = 9;
   const canvas = document.createElement('canvas');
   canvas.width = CELL * cols;
-  canvas.height = CELL * 5;
+  canvas.height = CELL * rows;
   const ctx = canvas.getContext('2d')!;
-  // Narciarz skierowany „w górę” tekstury (−y): narty, nogi, kurtka, głowa w kasku.
+  const body = (cx: number, cy: number, jacket: string, lean: number) => {
+    ctx.fillStyle = jacket;
+    ctx.beginPath();
+    ctx.ellipse(cx + lean * 6, cy - 2, 9, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = '#f8fafc';
+    ctx.beginPath();
+    ctx.arc(cx + lean * 6, cy - 8, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  };
   JACKETS.forEach((jacket, i) => {
+    const cx = i * CELL + CELL / 2;
+    // Narciarz – 3 pozy skrętu (postać skierowana „w górę” tekstury).
     for (let pose = 0; pose < 3; pose++) {
-      const cx = i * CELL + CELL / 2;
       const cy = pose * CELL + CELL / 2;
       const lean = (pose - 1) * 0.35;
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(lean * 0.4);
       ctx.fillStyle = '#334155';
-      for (const sx of [-5, 5]) ctx.fillRect(sx - 1.6, -26, 3.2, 52); // narty
+      for (const sx of [-5, 5]) ctx.fillRect(sx - 1.6, -26, 3.2, 52);
       ctx.fillStyle = '#1e293b';
-      ctx.fillRect(-7, -4, 14, 10); // spodnie
+      ctx.fillRect(-7, -4, 14, 10);
+      ctx.translate(-cx, -cy);
+      body(cx, cy, jacket, lean);
+      ctx.strokeStyle = '#475569';
+      ctx.beginPath();
+      ctx.moveTo(cx - 9, cy - 2);
+      ctx.lineTo(cx - 13, cy + 10);
+      ctx.moveTo(cx + 9, cy - 2);
+      ctx.lineTo(cx + 13, cy + 10);
+      ctx.stroke();
+      ctx.restore();
+    }
+    // Snowboardzista: deska wzdłuż kierunku jazdy, postać bokiem.
+    {
+      const cy = 3 * CELL + CELL / 2;
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.roundRect(cx - 5.5, cy - 24, 11, 48, 5.5);
+      ctx.fill();
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(cx - 4, cy - 2, 8, 2);
       ctx.fillStyle = jacket;
       ctx.beginPath();
-      ctx.ellipse(lean * 6, -2, 9, 7, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx, cy, 7, 10, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = '#1e293b';
       ctx.lineWidth = 1.5;
       ctx.stroke();
       ctx.fillStyle = '#f8fafc';
       ctx.beginPath();
-      ctx.arc(lean * 6, -8, 4.5, 0, Math.PI * 2);
+      ctx.arc(cx + 2, cy - 1, 4.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      // kijki
-      ctx.strokeStyle = '#475569';
-      ctx.beginPath();
-      ctx.moveTo(-9, -2);
-      ctx.lineTo(-13, 10);
-      ctx.moveTo(9, -2);
-      ctx.lineTo(13, 10);
-      ctx.stroke();
-      ctx.restore();
+    }
+    // Stojący (kolejka): narty równolegle, bez kijków w ruchu.
+    {
+      const cy = 4 * CELL + CELL / 2;
+      ctx.fillStyle = '#334155';
+      for (const sx of [-4, 4]) ctx.fillRect(cx + sx - 1.6, cy - 22, 3.2, 44);
+      body(cx, cy, jacket, 0);
+    }
+    // Siedzący na krzesełku (od góry: ramiona i kask, nogi do przodu).
+    {
+      const cy = 5 * CELL + CELL / 2;
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(cx - 6, cy - 14, 4, 12);
+      ctx.fillRect(cx + 2, cy - 14, 4, 12);
+      body(cx, cy + 4, jacket, 0);
+    }
+    // Idący pieszo z nartami na ramieniu (2 pozy).
+    for (let k = 0; k < 2; k++) {
+      const cy = (6 + k) * CELL + CELL / 2;
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(cx - 5 + (k ? 2 : -2), cy - 6, 4, 12);
+      ctx.fillRect(cx + 1 + (k ? -2 : 2), cy - 6, 4, 12);
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(cx + 6, cy - 22, 3, 40);
+      body(cx, cy, jacket, 0);
     }
   });
-  const row3 = 3 * CELL;
+  const row = 8 * CELL;
   const soft = (x: number, y: number, rx: number, ry: number) => {
     const g = ctx.createRadialGradient(x, y, 0, x, y, rx);
     g.addColorStop(0, 'rgba(30,41,59,0.55)');
@@ -102,12 +151,12 @@ function buildAtlas(): Frames {
     ctx.fill();
     ctx.restore();
   };
-  soft(CELL / 2, row3 + CELL / 2, 14, 26); // cień narciarza
-  soft(CELL + CELL / 2, row3 + CELL / 2, 26, 30); // cień ratraka
-  // Ratrak (skierowany w górę): gąsienice, nadwozie, kabina, pług z przodu, wyciągarka z tyłu.
+  soft(CELL / 2, row + CELL / 2, 14, 26);
+  soft(CELL + CELL / 2, row + CELL / 2, 26, 30);
+  // Ratrak (skierowany w górę): gąsienice, nadwozie, kabina, pług z przodu, frez z tyłu.
   {
     const cx = 2 * CELL + CELL / 2;
-    const cy = row3 + CELL / 2;
+    const cy = row + CELL / 2;
     ctx.save();
     ctx.translate(cx, cy);
     ctx.fillStyle = '#334155';
@@ -116,41 +165,40 @@ function buildAtlas(): Frames {
     ctx.fillStyle = '#d9480f';
     ctx.fillRect(-12, -18, 24, 38);
     ctx.fillStyle = '#93c5fd';
-    ctx.fillRect(-9, -15, 18, 10); // szyba kabiny
+    ctx.fillRect(-9, -15, 18, 10);
     ctx.fillStyle = '#e2e8f0';
-    ctx.fillRect(-24, -29, 48, 6); // pług
+    ctx.fillRect(-24, -29, 48, 6);
     ctx.fillStyle = '#475569';
-    ctx.fillRect(-4, 20, 8, 7); // wyciągarka
+    ctx.fillRect(-4, 20, 8, 7);
     ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(-11, 24, 22, 4); // frez (sztruks)
+    ctx.fillRect(-11, 24, 22, 4);
     ctx.fillStyle = '#fde68a';
     ctx.fillRect(-10, -19, 4, 3);
     ctx.fillRect(6, -19, 4, 3);
     ctx.restore();
   }
-  // Smuga światła reflektorów (do przodu, czyli w górę tekstury).
   {
     const x0 = 3 * CELL;
-    const g = ctx.createLinearGradient(0, row3 + CELL, 0, row3);
+    const g = ctx.createLinearGradient(0, row + CELL, 0, row);
     g.addColorStop(0, 'rgba(255,236,170,0.85)');
     g.addColorStop(1, 'rgba(255,236,170,0)');
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.moveTo(x0 + CELL / 2 - 6, row3 + CELL);
-    ctx.lineTo(x0 + CELL / 2 + 6, row3 + CELL);
-    ctx.lineTo(x0 + CELL - 2, row3);
-    ctx.lineTo(x0 + 2, row3);
+    ctx.moveTo(x0 + CELL / 2 - 6, row + CELL);
+    ctx.lineTo(x0 + CELL / 2 + 6, row + CELL);
+    ctx.lineTo(x0 + CELL - 2, row);
+    ctx.lineTo(x0 + 2, row);
     ctx.closePath();
     ctx.fill();
   }
   const base = Texture.from(canvas);
   const frame = (x: number, y: number) => new Texture({ source: base.source, frame: new Rectangle(x * CELL, y * CELL, CELL, CELL) });
   return {
-    skier: JACKETS.map((_, i) => [0, 1, 2].map((pose) => frame(i, pose))),
-    shadowSkier: frame(0, 3),
-    shadowGroomer: frame(1, 3),
-    groomer: frame(2, 3),
-    light: frame(3, 3),
+    person: JACKETS.map((_, i) => Array.from({ length: 8 }, (_, pose) => frame(i, pose))),
+    shadow: frame(0, 8),
+    shadowGroomer: frame(1, 8),
+    groomer: frame(2, 8),
+    light: frame(3, 8),
   };
 }
 
@@ -159,8 +207,12 @@ export class MoverLayer {
   private readonly shadows: ParticleContainer;
   private readonly bodies: ParticleContainer;
   private readonly lights: ParticleContainer;
-  private movers: MoverState[] = [];
-  /** Liczba obiektów narysowanych w ostatniej klatce (widocznych na ekranie). */
+  private data: Float32Array<ArrayBufferLike> = new Float32Array(0);
+  private count = 0;
+  private frameTimeS = 0;
+  /** Ratraki (etap 7) – osobna lista: x, y, kierunek, światła. */
+  groomers: { xM: number; yM: number; headingRad: number; lightsOn: boolean }[] = [];
+  /** Liczba postaci narysowanych w ostatniej klatce (widocznych na ekranie). */
   visibleCount = 0;
 
   constructor(world: Container) {
@@ -173,9 +225,22 @@ export class MoverLayer {
     world.addChild(this.shadows, this.bodies, this.lights);
   }
 
-  /** Nowy zestaw obiektów (liczba może się zmieniać). */
-  setMovers(list: MoverState[]): void {
-    this.movers = list;
+  /** Nowa ramka z wątku gości (dane i czas gry, którego dotyczą). */
+  setFrame(data: Float32Array, count: number, timeS: number): void {
+    this.data = data;
+    this.count = count;
+    this.frameTimeS = timeS;
+  }
+
+  /** Położenie osoby k w ramce w chwili renderTimeS (z przesunięciem o prędkość). */
+  positionOf(k: number, renderTimeS: number): { id: number; xM: number; yM: number; kind: number } {
+    const o = k * STRIDE;
+    const dt = Math.min(MAX_EXTRAPOLATION_S, Math.max(0, renderTimeS - this.frameTimeS));
+    return { id: this.data[o], xM: this.data[o + 1] + this.data[o + 3] * dt, yM: this.data[o + 2] + this.data[o + 4] * dt, kind: this.data[o + 6] };
+  }
+
+  get personCount(): number {
+    return this.count;
   }
 
   private sync(pc: ParticleContainer, n: number, texture: Texture): Particle[] {
@@ -186,10 +251,9 @@ export class MoverLayer {
   }
 
   /** Co klatkę: położenia, obroty, widoczność (tylko na ekranie), cienie, światła nocą. */
-  update(camera: Camera, night: number): void {
-    const list = this.movers;
+  update(camera: Camera, night: number, renderTimeS: number): void {
     const mpp = camera.metersPerPixel;
-    const show = mpp < 4 && list.length > 0;
+    const show = mpp < 6 && (this.count > 0 || this.groomers.length > 0);
     this.shadows.visible = show;
     this.bodies.visible = show;
     this.lights.visible = show && night > 0.05;
@@ -197,59 +261,100 @@ export class MoverLayer {
       this.visibleCount = 0;
       return;
     }
-    const corners = [camera.screenToWorld(0, 0), camera.screenToWorld(camera.viewportWidthPx, camera.viewportHeightPx)];
+    const a = camera.screenToWorld(0, 0);
+    const b = camera.screenToWorld(camera.viewportWidthPx, camera.viewportHeightPx);
     const margin = 30;
-    const x0 = Math.min(corners[0].xM, corners[1].xM) - margin;
-    const x1 = Math.max(corners[0].xM, corners[1].xM) + margin;
-    const y0 = Math.min(corners[0].yM, corners[1].yM) - margin;
-    const y1 = Math.max(corners[0].yM, corners[1].yM) + margin;
-    const visible = list.filter((m) => m.xM >= x0 && m.xM <= x1 && m.yM >= y0 && m.yM <= y1);
-    this.visibleCount = visible.length;
-    const lightsList = visible.filter((m) => m.kind === 'groomer' && m.lightsOn);
-    const sh = this.sync(this.shadows, visible.length, this.frames.shadowSkier);
-    const bo = this.sync(this.bodies, visible.length, this.frames.skier[0][1]);
-    const li = this.sync(this.lights, lightsList.length, this.frames.light);
-    // Cień w prawo w dół ekranu (jak drzewa i budynki).
-    const s = camera.sign;
-    const offX = s * SHADOW_OFFSET_M;
-    const offY = s * SHADOW_OFFSET_M;
-    // Obrazki rysowane „w górę” (−y) – obrót = kierunek + π/2.
-    for (let i = 0; i < visible.length; i++) {
-      const m = visible[i];
-      const groomer = m.kind === 'groomer';
-      const lengthM = groomer ? Math.max(GROOMER_LENGTH_M, MIN_GROOMER_PX * mpp) : Math.max(SKIER_LENGTH_M, MIN_SKIER_PX * mpp);
-      const scale = lengthM / CELL / (groomer ? 0.92 : 0.82);
-      const rot = m.headingRad + Math.PI / 2;
-      const b = bo[i];
-      b.texture = groomer ? this.frames.groomer : this.frames.skier[m.variant % this.frames.skier.length][m.phase < 0.33 ? 0 : m.phase < 0.66 ? 1 : 2];
-      b.x = m.xM;
-      b.y = m.yM;
-      b.rotation = rot;
-      b.scaleX = scale;
-      b.scaleY = scale;
-      b.tint = night > 0.3 ? 0x8899aa : 0xffffff;
-      const d = sh[i];
-      d.texture = groomer ? this.frames.shadowGroomer : this.frames.shadowSkier;
-      const shadowK = (groomer ? 2 : 1) * (lengthM / (groomer ? GROOMER_LENGTH_M : SKIER_LENGTH_M));
-      d.x = m.xM + offX * shadowK;
-      d.y = m.yM + offY * shadowK;
-      d.rotation = rot;
-      d.scaleX = scale;
-      d.scaleY = scale;
-      d.tint = 0xffffff;
+    const x0 = Math.min(a.xM, b.xM) - margin;
+    const x1 = Math.max(a.xM, b.xM) + margin;
+    const y0 = Math.min(a.yM, b.yM) - margin;
+    const y1 = Math.max(a.yM, b.yM) + margin;
+    const d = this.data;
+    const dt = Math.min(MAX_EXTRAPOLATION_S, Math.max(0, renderTimeS - this.frameTimeS));
+    // Najpierw policz widocznych (żeby nie tworzyć cząstek na zapas).
+    let n = 0;
+    for (let k = 0; k < this.count; k++) {
+      const o = k * STRIDE;
+      const x = d[o + 1] + d[o + 3] * dt;
+      const y = d[o + 2] + d[o + 4] * dt;
+      if (x >= x0 && x <= x1 && y >= y0 && y <= y1) n++;
     }
-    for (let i = 0; i < lightsList.length; i++) {
-      const m = lightsList[i];
-      const l = li[i];
+    const gVisible = this.groomers.filter((g) => g.xM >= x0 && g.xM <= x1 && g.yM >= y0 && g.yM <= y1);
+    const total = n + gVisible.length;
+    this.visibleCount = total;
+    const sh = this.sync(this.shadows, total, this.frames.shadow);
+    const bo = this.sync(this.bodies, total, this.frames.person[0][1]);
+    const s = camera.sign;
+    const personLen = Math.max(PERSON_LENGTH_M, MIN_PERSON_PX * mpp);
+    const tint = night > 0.3 ? 0x8899aa : 0xffffff;
+    let i = 0;
+    for (let k = 0; k < this.count; k++) {
+      const o = k * STRIDE;
+      const x = d[o + 1] + d[o + 3] * dt;
+      const y = d[o + 2] + d[o + 4] * dt;
+      if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+      const kind = d[o + 6];
+      const variant = d[o + 7];
+      const child = variant >= 16;
+      const jacket = this.frames.person[(variant % 16) % JACKETS.length];
+      const phase = d[o + 8];
+      const pose = kind === KIND_SKI ? (phase < 0.33 ? 0 : phase < 0.66 ? 1 : 2) : kind === KIND_BOARD ? 3 : kind === KIND_STAND ? 4 : kind === KIND_SEATED ? 5 : phase < 0.5 ? 6 : 7;
+      const scale = (personLen / CELL / 0.82) * (child ? CHILD_SCALE : 1);
+      const rot = d[o + 5] + Math.PI / 2;
+      const p = bo[i];
+      p.texture = jacket[pose];
+      p.x = x;
+      p.y = y;
+      p.rotation = rot;
+      p.scaleX = scale;
+      p.scaleY = scale;
+      p.tint = tint;
+      const q = sh[i];
+      q.texture = this.frames.shadow;
+      // Siedzący na krzesełku: cień daleko w dół (lina kilka metrów nad ziemią).
+      const off = (kind === KIND_SEATED ? 6 : 1) * SHADOW_OFFSET_M * (personLen / PERSON_LENGTH_M);
+      q.x = x + s * off;
+      q.y = y + s * off;
+      q.rotation = rot;
+      q.scaleX = scale;
+      q.scaleY = scale;
+      q.tint = 0xffffff;
+      i++;
+    }
+    const lightsList = gVisible.filter((g) => g.lightsOn);
+    const li = this.sync(this.lights, lightsList.length, this.frames.light);
+    for (const g of gVisible) {
+      const len = Math.max(GROOMER_LENGTH_M, MIN_GROOMER_PX * mpp);
+      const scale = len / CELL / 0.92;
+      const rot = g.headingRad + Math.PI / 2;
+      const p = bo[i];
+      p.texture = this.frames.groomer;
+      p.x = g.xM;
+      p.y = g.yM;
+      p.rotation = rot;
+      p.scaleX = scale;
+      p.scaleY = scale;
+      p.tint = tint;
+      const q = sh[i];
+      q.texture = this.frames.shadowGroomer;
+      q.x = g.xM + s * 2 * SHADOW_OFFSET_M * (len / GROOMER_LENGTH_M);
+      q.y = g.yM + s * 2 * SHADOW_OFFSET_M * (len / GROOMER_LENGTH_M);
+      q.rotation = rot;
+      q.scaleX = scale;
+      q.scaleY = scale;
+      q.tint = 0xffffff;
+      i++;
+    }
+    lightsList.forEach((g, k) => {
+      const l = li[k];
       const scale = LIGHT_LENGTH_M / CELL;
-      l.x = m.xM + Math.cos(m.headingRad) * LIGHT_LENGTH_M * 0.5;
-      l.y = m.yM + Math.sin(m.headingRad) * LIGHT_LENGTH_M * 0.5;
-      l.rotation = m.headingRad + Math.PI / 2;
+      l.x = g.xM + Math.cos(g.headingRad) * LIGHT_LENGTH_M * 0.5;
+      l.y = g.yM + Math.sin(g.headingRad) * LIGHT_LENGTH_M * 0.5;
+      l.rotation = g.headingRad + Math.PI / 2;
       l.scaleX = scale * 0.8;
       l.scaleY = scale;
       l.tint = 0xffffff;
       l.alpha = Math.min(1, night * 1.2);
-    }
+    });
     this.shadows.update();
     this.bodies.update();
     this.lights.update();

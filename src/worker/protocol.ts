@@ -61,6 +61,15 @@ export interface InitSnowRequest {
   forest: Float32Array;
   shrub: Float32Array;
   snowJson: unknown;
+  /** data/guests.json – wpływ narciarzy na śnieg (etap 5). */
+  guestsJson?: unknown;
+}
+
+/** Przejazdy gości w danym dniu (koniec dnia) – model śniegu dolicza ubijanie, zsuwanie i muldy. */
+export interface SetTrafficRequest {
+  type: 'setTraffic';
+  date: CalendarDate;
+  passes: Float32Array;
 }
 
 /** Stan śniegu na koniec dnia `date` (wątek doliczy brakujące dni sezonu). */
@@ -141,6 +150,7 @@ export interface SnowStateMessage {
   sweMm: Float32Array;
   densityKgM3: Float32Array;
   quality: Uint8Array;
+  moguls: Uint8Array;
 }
 
 export interface WorkerErrorMessage {
@@ -157,6 +167,7 @@ export type WorkerRequest =
   | DailyRadiationRequest
   | InitSnowRequest
   | SetLandCoverRequest
+  | SetTrafficRequest
   | SnowStateRequest;
 export type WorkerResponse =
   | TerrainReadyMessage
