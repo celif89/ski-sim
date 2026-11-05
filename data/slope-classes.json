@@ -1,0 +1,36 @@
+{
+  "_opis": "Klasy nachylenia terenu w kolorach tras narciarskich – do nakładki nachyleń i wykresu profilu. Ostatnia klasa nie ma górnej granicy.",
+  "classes": [
+    {
+      "name": "zielona – do 10 %",
+      "color": "#2f9e44",
+      "maxSlopePercent": {
+        "value": 10,
+        "unit": "%",
+        "source": "zadanie etapu 1; do kalibracji z normami tras (PN, FIS)"
+      }
+    },
+    {
+      "name": "niebieska – do 25 %",
+      "color": "#1c64d8",
+      "maxSlopePercent": {
+        "value": 25,
+        "unit": "%",
+        "source": "zadanie etapu 1; do kalibracji z normami tras (PN, FIS)"
+      }
+    },
+    {
+      "name": "czerwona – do 40 %",
+      "color": "#d92b2b",
+      "maxSlopePercent": {
+        "value": 40,
+        "unit": "%",
+        "source": "zadanie etapu 1; do kalibracji z normami tras (PN, FIS)"
+      }
+    },
+    {
+      "name": "czarna – powyżej 40 %",
+      "color": "#151515"
+    }
+  ]
+}
