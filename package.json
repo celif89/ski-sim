@@ -14,7 +14,8 @@
     "import-nmt": "tsx src/tools/importNmt.ts",
     "import-horizon-dem": "tsx src/tools/importHorizonDem.ts",
     "import-climate": "tsx src/tools/importClimate.ts",
-    "climate-report": "tsx src/tools/climateReport.ts"
+    "climate-report": "tsx src/tools/climateReport.ts",
+    "import-landcover": "tsx src/tools/importLandCover.ts"
   },
   "engines": {
     "node": ">=22"

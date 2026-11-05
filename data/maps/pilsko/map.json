@@ -336,5 +336,28 @@
     "source": "Copernicus DEM GLO-30 (DSM, geoida EGM2008), kafel Copernicus_DSM_COG_10_N49_00_E019_00_DEM, https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N49_00_E019_00_DEM/Copernicus_DSM_COG_10_N49_00_E019_00_DEM.tif; interpolacja dwuliniowa do PUWG 1992",
     "license": "Copernicus DEM: © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA; all rights reserved",
     "date": "2026-11-05"
+  },
+  "landCover": {
+    "_opis": "Pokrycie terenu – wypełnia src/tools/importLandCover.ts (npm run import-landcover).",
+    "file": "landcover.u8",
+    "encoding": "trzy warstwy Uint8 po kolei (każda: wiersze od północy, kolumny od zachodu): udział lasu [%], udział kosodrzewiny/zarośli [%], udział zabudowy [%]",
+    "source": "ESA WorldCover 10 m 2021 v200, kafel ESA_WorldCover_10m_2021_v200_N48E018_Map; 16 punktów próbkowania na komórkę",
+    "license": "ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium; CC BY 4.0",
+    "date": "2026-11-05",
+    "forestPercentOfMap": {
+      "value": 88.6,
+      "unit": "%",
+      "source": "policzone przy imporcie"
+    },
+    "shrubPercentOfMap": {
+      "value": 0,
+      "unit": "%",
+      "source": "policzone przy imporcie"
+    },
+    "builtPercentOfMap": {
+      "value": 0.6,
+      "unit": "%",
+      "source": "policzone przy imporcie"
+    }
   }
 }
