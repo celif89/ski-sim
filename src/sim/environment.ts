@@ -72,9 +72,14 @@ export class Environment {
     this.topElevationM = Math.round(maxM);
   }
 
+  /** Rok początku sezonu, do którego należy data (sezon od miesiąca seasonStartMonth). */
+  seasonStartYear(date: CalendarDate): number {
+    return date.month >= this.weatherParams.seasonStartMonth ? date.year : date.year - 1;
+  }
+
   /** Pogoda dnia wraz z sąsiadami (dla przebiegu dobowego) i indeksem w serii. */
   weatherDay(date: CalendarDate): { series: DailyWeather[]; index: number } {
-    const startYear = date.month >= this.weatherParams.seasonStartMonth ? date.year : date.year - 1;
+    const startYear = this.seasonStartYear(date);
     let series = this.seasons.get(startYear);
     if (!series) {
       series = generateSeason(this.profile, this.weatherParams, this.seed, startYear, YEAR_DAYS + FORECAST_MARGIN_DAYS);

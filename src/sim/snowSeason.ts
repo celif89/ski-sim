@@ -54,6 +54,26 @@ export function buildSolarCache(
   sp: SnowParams,
   onProgress?: (fraction: number) => void,
 ): SolarCache {
+  const it = solarCacheBuilder(st, startDate, days, location, rp, sp);
+  for (;;) {
+    const r = it.next();
+    if (r.done) return r.value;
+    onProgress?.(r.value);
+  }
+}
+
+/**
+ * To samo co buildSolarCache, ale krok po kroku (generator zwraca postęp 0–1 po każdej dacie
+ * odniesienia) – żeby wątek obliczeń mógł w międzyczasie odpowiadać na inne pytania.
+ */
+export function* solarCacheBuilder(
+  st: SolarTerrain,
+  startDate: CalendarDate,
+  days: number,
+  location: Location,
+  rp: RadiationParams,
+  sp: SnowParams,
+): Generator<number, SolarCache, void> {
   const steps = sp.stepsPerDay;
   const references = Math.floor(days / sp.solarReferenceSpacingDays) + 2;
   const { minM, maxM } = st.grid.elevationRangeM();
@@ -74,7 +94,7 @@ export function buildSolarCache(
       flat[o + 2] = wr.flatHigh.directHorizWh;
       flat[o + 3] = wr.flatHigh.diffuseWh;
     }
-    onProgress?.((r + 1) / references);
+    yield (r + 1) / references;
   }
   return { startDate, spacingDays: sp.solarReferenceSpacingDays, steps, references, zLowM: minM, zHighM: maxM, direct, flat, skyViewFactor: st.horizon.skyViewFactor };
 }
@@ -114,8 +134,14 @@ export class SnowSeason {
     this.sw = new Float32Array(options.domain.cellCount);
   }
 
+  /** Data następnego dnia do policzenia. */
   get date(): CalendarDate {
     return addDays(this.o.weather[0].date, this.dayIndex);
+  }
+
+  /** Data ostatniego policzonego dnia (stan śniegu = koniec tego dnia). */
+  dateOfLastDay(): CalendarDate {
+    return addDays(this.o.weather[0].date, this.dayIndex - 1);
   }
 
   /** Warunki w krokach danego dnia (dla całej mapy). */

@@ -491,3 +491,19 @@ body {
   margin-top: 8px;
   color: #8fb8ff;
 }
+
+.time-season {
+  margin-top: 6px;
+}
+
+.time-season select {
+  font: inherit;
+  color: var(--hud-fg);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 5px;
+}
+
+.status-snow {
+  color: #cfe3ff;
+}

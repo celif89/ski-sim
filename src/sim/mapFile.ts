@@ -30,6 +30,8 @@ export interface MapDefinition {
   controlPoints: ControlPoint[];
   /** Linie granicy państwa w PUWG 1992: [[E, N], …]. */
   borderLines: number[][][];
+  /** Plik pokrycia terenu (las / kosodrzewina / zabudowa); null – brak. */
+  landCoverFile: string | null;
   /** Strefa czasowa lokalizacji. */
   timeZone: TimeZoneRule;
   /** Opis modelu terenu okolicy (do horyzontu); null, gdy brak. */
@@ -114,6 +116,7 @@ export function parseMapDefinition(raw: unknown): MapDefinition {
     elevationFile: raw.elevationFile,
     controlPoints,
     borderLines,
+    landCoverFile: isRecord(raw.landCover) && typeof raw.landCover.file === 'string' ? raw.landCover.file : null,
     timeZone,
     horizonDem,
   };
@@ -148,4 +151,19 @@ export function createGridFromMap(def: MapDefinition, elevationBuffer: ArrayBuff
     westEastingM: def.westEastingM,
     northNorthingM: def.northNorthingM,
   });
+}
+
+/** Pokrycie terenu z pliku (trzy warstwy Uint8 w %): udziały 0–1. */
+export function parseLandCover(buffer: ArrayBuffer, cellCount: number): { forest: Float32Array; shrub: Float32Array; built: Float32Array } {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length !== 3 * cellCount) throw new Error(`Plik pokrycia terenu ma ${bytes.length} B, oczekiwano ${3 * cellCount} B`);
+  const forest = new Float32Array(cellCount);
+  const shrub = new Float32Array(cellCount);
+  const built = new Float32Array(cellCount);
+  for (let k = 0; k < cellCount; k++) {
+    forest[k] = bytes[k] / 100;
+    shrub[k] = bytes[cellCount + k] / 100;
+    built[k] = bytes[2 * cellCount + k] / 100;
+  }
+  return { forest, shrub, built };
 }

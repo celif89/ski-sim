@@ -8,7 +8,7 @@ import type { SlopeClass, TerrainGrid } from '../sim';
 import { FLAT_COLOR, aspectColor, hexToRgb } from './colors';
 import type { Rgb } from './colors';
 
-export type OverlayKind = 'slope' | 'aspect' | 'insolation' | 'radiationSum' | 'temperature' | 'none';
+export type OverlayKind = 'slope' | 'aspect' | 'insolation' | 'radiationSum' | 'temperature' | 'snowDepth' | 'snowQuality' | 'none';
 
 function createCanvas(grid: TerrainGrid, mpp: number): { canvas: HTMLCanvasElement; image: ImageData; ctx: CanvasRenderingContext2D } {
   const canvas = document.createElement('canvas');

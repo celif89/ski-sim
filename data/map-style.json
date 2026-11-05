@@ -111,6 +111,19 @@
       "value": 10,
       "unit": "°C",
       "source": "skala od −10 do +10 °C; granica 0 °C wyraźna (niebieski / pomarańczowy) – widać linię śnieg/deszcz"
+    },
+    "snowDepthMaxCm": {
+      "value": 150,
+      "unit": "cm",
+      "source": "górna granica skali grubości śniegu (Hala Miziowa: średnio ok. 80 cm w marcu – Hess i in. 1967)"
+    }
+  },
+  "forest": {
+    "_opis": "Las na mapie bazowej.",
+    "tintStrength": {
+      "value": 0.55,
+      "unit": "0–1",
+      "source": "jak mocno las przyciemnia barwę terenu (ciemniejsza zieleń pod cieniowaniem rzeźby); do wyczucia"
     }
   }
 }

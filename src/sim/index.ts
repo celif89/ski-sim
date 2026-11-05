@@ -45,4 +45,4 @@ export {
   precipitationPhase,
 } from './weather';
 export type { DailyWeather, HourlyWeather, ForecastDay, WeatherParams, Location, PrecipitationPhase, CalendarDate } from './weather';
-export { createHorizonDem } from './mapFile';
+export { createHorizonDem, parseLandCover } from './mapFile';

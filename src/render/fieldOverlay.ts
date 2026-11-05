@@ -5,10 +5,10 @@
  */
 import { CanvasSource, Texture } from 'pixi.js';
 import type { TerrainGrid } from '../sim';
-import { RADIATION_SUM_STOPS, TEMPERATURE_STOPS, sampleColorStops } from './colors';
+import { RADIATION_SUM_STOPS, SNOW_DEPTH_STOPS, TEMPERATURE_STOPS, sampleColorStops } from './colors';
 import type { Rgb, Stop } from './colors';
 
-export type FieldKind = 'insolation' | 'radiationSum' | 'temperature';
+export type FieldKind = 'insolation' | 'radiationSum' | 'temperature' | 'snowDepth';
 
 export interface FieldScale {
   stops: Stop[];
@@ -25,10 +25,11 @@ const RADIATION_SUM_SCALE_STEP = 0.5;
  */
 export function fieldScale(
   kind: FieldKind,
-  style: { insolationMaxWm2: number; radiationSumMaxKwhM2: number; temperatureRangeC: number },
+  style: { insolationMaxWm2: number; radiationSumMaxKwhM2: number; temperatureRangeC: number; snowDepthMaxCm: number },
   values?: Float32Array,
 ): FieldScale {
   if (kind === 'insolation') return { stops: RADIATION_SUM_STOPS, min: 0, max: style.insolationMaxWm2 };
+  if (kind === 'snowDepth') return { stops: SNOW_DEPTH_STOPS, min: 0, max: style.snowDepthMaxCm };
   if (kind === 'radiationSum') {
     let max = 0;
     if (values) for (const v of values) if (v > max) max = v;
@@ -55,14 +56,35 @@ export class FieldOverlay {
     this.texture = new Texture({ source: this.source });
   }
 
-  update(values: Float32Array, scale: FieldScale): void {
+  /** Kolory kategorii (np. stan śniegu); kod 0 = przezroczysty. */
+  updateCategorical(codes: Uint8Array, colors: [number, number, number][], transparentWhere?: (k: number) => boolean): void {
+    const px = this.image.data;
+    for (let k = 0; k < this.grid.cellCount; k++) {
+      const o = 4 * k;
+      const c = codes[k];
+      if (c === 0 || (transparentWhere && transparentWhere(k))) {
+        px[o + 3] = 0;
+        continue;
+      }
+      const col = colors[c];
+      px[o] = col[0];
+      px[o + 1] = col[1];
+      px[o + 2] = col[2];
+      px[o + 3] = 255;
+    }
+    this.ctx.putImageData(this.image, 0, 0);
+    this.source.update();
+  }
+
+  /** Wartości z progiem: poniżej `transparentBelow` – przezroczyste (np. brak śniegu). */
+  update(values: Float32Array, scale: FieldScale, transparentBelow = -Infinity): void {
     const px = this.image.data;
     const c: Rgb = [0, 0, 0];
     const span = scale.max - scale.min;
     for (let k = 0; k < this.grid.cellCount; k++) {
       const v = values[k];
       const o = 4 * k;
-      if (Number.isNaN(v)) {
+      if (Number.isNaN(v) || v < transparentBelow) {
         px[o + 3] = 0;
         continue;
       }
