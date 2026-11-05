@@ -3,9 +3,13 @@
 Realistyczny symulator budowy i prowadzenia ośrodka narciarskiego na północnych stokach Pilska.
 Zasady projektu i plan etapów: plik [CLAUDE.md](CLAUDE.md).
 
-**Stan: etap 1 – prawdziwy teren Pilska i czytelna mapa.** Mapa to Numeryczny Model Terenu
-z Geoportalu (GUGiK) przeliczony na siatkę 10 m: od granicy ze Słowacją pod Pilskiem
-do dna doliny w Korbielowie.
+**Stan: etap 2 – słońce i pogoda.** Mapa to Numeryczny Model Terenu z Geoportalu (GUGiK)
+w siatce 10 m: od granicy ze Słowacją pod Pilskiem do dna doliny w Korbielowie. Na mapie
+widać cienie terenu w dowolnym dniu i godzinie, nasłonecznienie, temperaturę; pogodę daje
+generator oparty na danych IMGW z lat 2001–2025.
+
+**Raport klimatu** (30 wygenerowanych zim obok danych IMGW, mapy promieniowania):
+https://celif89.github.io/ski-sim/raport-klimatu.html
 
 ---
 
@@ -29,6 +33,10 @@ zostaje poprzednia, sprawna wersja.
 | Nakładka nachylenia | przycisk „Nachylenie” lub klawisz `1` |
 | Nakładka ekspozycji | przycisk „Ekspozycja” lub klawisz `2` |
 | Sama mapa | przycisk „Bez nakładki” lub klawisz `3` |
+| Nasłonecznienie teraz (W/m²) | przycisk „Słońce teraz” lub klawisz `4` |
+| Suma dobowa promieniowania (kWh/m²) | przycisk „Słońce – doba” lub klawisz `5` |
+| Temperatura powietrza | przycisk „Temperatura” lub klawisz `6` |
+| Dzień i godzina | panel po lewej: data, strzałki ◀ ▶, suwak godziny, „▶ Odtwórz dzień” |
 | Profil terenu | przycisk „Profil terenu” lub klawisz `P`, potem kliknij punkt A i punkt B; `Esc` zamyka |
 
 ### Co widać
@@ -46,6 +54,16 @@ zostaje poprzednia, sprawna wersja.
 - **Profil terenu:** wykres przekroju A–B, odcinki pokolorowane jak nakładka nachyleń;
   odległość pozioma, różnica wysokości, maksymalne i średnie nachylenie. Po najechaniu na wykres
   żółty punkt pokazuje to miejsce na mapie.
+- **Słońce i cienie:** nakładka 4 pokazuje, ile energii słonecznej dociera w tej chwili do każdego
+  miejsca stoku – z cieniami terenu (także od kopuły Pilska po stronie słowackiej) i z zachmurzeniem
+  z generatora pogody. „Odtwórz dzień” przesuwa czas od wschodu do zachodu Słońca – cienie
+  wędrują po mapie. Przy pierwszym uruchomieniu gra liczy horyzont każdego miejsca (kilka sekund,
+  pasek postępu), potem pamięta wynik.
+- **Temperatura** (nakładka 6): spada z wysokością; niebieskie – mróz, pomarańczowe – powyżej 0 °C.
+  Granica kolorów to izoterma 0 °C, czyli mniej więcej granica śnieg/deszcz.
+- **Pogoda** (panel po lewej): warunki teraz na dole i na górze ośrodka (temperatura, opad i jego
+  rodzaj, wiatr, wilgotność, zachmurzenie) i prognoza na 7 dni. Prognoza jest niepewna – im dalej,
+  tym bardziej może się mylić (±°C w ostatniej kolumnie).
 
 ### Punkty kontrolne do porównania z Geoportalem
 
@@ -58,6 +76,14 @@ zostaje poprzednia, sprawna wersja.
 Wysokości z Geoportalu są w układzie PL-EVRF2007-NH, tym samym, którego używa mapa gry.
 Gra pokazuje średnią wysokość komórki 10 × 10 m, więc na stromym stoku może się różnić od
 wartości w punkcie o 1–2 m.
+
+### Raport klimatu („przewiń zimy”)
+
+https://celif89.github.io/ski-sim/raport-klimatu.html – na górze werdykt ZGODNE / NIEZGODNE:
+czy 30 zim z generatora pogody zgadza się z danymi IMGW (średnie temperatury, sumy opadu,
+liczba dni z opadem w miesiącach XI–IV). Niżej wykresy, przykładowa zima dzień po dniu (na dole
+i na górze ośrodka – widać, kiedy na górze pada śnieg, a na dole deszcz) i mapy sumy promieniowania
+21 grudnia i 21 marca. Lokalnie: `npm run climate-report` → plik `reports/raport-klimatu.html`.
 
 ### Jednorazowa konfiguracja publikacji (zrobione przy etapie 0)
 
@@ -72,6 +98,16 @@ Zielony znaczek ✓ = testy przeszły i gra została opublikowana; czerwony ✗ 
 i gra nie została opublikowana.
 
 Co sprawdzają testy (katalog `tests/`):
+
+- **Słońce:** położenie nad Halą Miziową zgodne z wzorcem NREL SPA (wysokość w południe
+  21 grudnia 17,1°, 21 marca 40,8°; wschody i zachody ±2 min; czas zimowy i letni),
+- **cienie:** ściana od południa rzuca cień za sobą, teren płaski nie ma cieni, horyzont na stoku
+  i przy górze poza mapą wyliczony zgodnie z geometrią,
+- **promieniowanie:** w grudniu stok północny 30 % dostaje kilka razy mniej energii niż południowy
+  (5×), w czerwcu różnica mała; sumy dobowe w realnym zakresie; chmury je osłabiają,
+- **pogoda:** ten sam seed = ta sama zima; 30 zim zgodnych z danymi IMGW (temperatura, opad,
+  dni z opadem w tolerancji); śnieg na górze i deszcz na dole, gdy izoterma 0 °C leży pomiędzy;
+  minimum temperatury nad ranem, maksimum po południu; błąd prognozy rośnie z każdym dniem,
 
 - **nachylenie i ekspozycja:** płaszczyzna 30 % opadająca na południe daje 30 % (16,7°)
   i ekspozycję 180°, opadająca na wschód – 90°; tak samo w każdym z 8 kierunków, także na brzegu
@@ -99,6 +135,10 @@ Wszystkie liczby są w plikach `data/*.json` – każda z jednostką i źródłe
   pobrania, granica państwa, punkty kontrolne; `elevation.f32` – siatka wysokości 400 × 450,
 - `data/map-style.json` – wygląd mapy (kierunek światła, odstęp warstwic, krycie nakładek…),
 - `data/slope-classes.json` – progi nachylenia w kolorach tras,
+- `data/climate/pilsko.json` – profil klimatyczny z danych IMGW (wynik `npm run import-climate`),
+  `data/climate/pilsko-sources.json` – okres referencyjny i wybór stacji,
+- `data/weather-generator.json` – parametry generatora pogody i prognozy, tolerancje raportu,
+- `data/radiation.json` – parametry horyzontu i promieniowania słonecznego,
 - `data/terrain-generator.json` – generator proceduralny z etapu 0 (zapas do testów).
 
 ### Ponowne pobranie terenu z Geoportalu
@@ -131,15 +171,18 @@ Potem otworzyć w przeglądarce adres wypisany w Terminalu (zwykle http://localh
 | `npm run build` | sprawdza poprawność kodu i buduje wersję do opublikowania (katalog `dist/`) |
 | `npm run preview` | pokazuje zbudowaną wersję tak, jak będzie wyglądać na GitHub Pages |
 | `npm run import-nmt` | pobiera teren z Geoportalu i zapisuje mapę gry |
+| `npm run import-horizon-dem` | pobiera model terenu okolicy (Copernicus, 15 × 15 km) do liczenia cieni |
+| `npm run import-climate` | pobiera dane IMGW i liczy profil klimatyczny |
+| `npm run climate-report` | raport „przewiń zimy” (`reports/raport-klimatu.html`) |
 
 ## Budowa projektu
 
 ```
 src/sim/       symulacja (bez grafiki): siatka terenu, nachylenie, ekspozycja, warstwice, profil,
-               współrzędne PUWG 1992, generator losowy, generator proceduralny
+               współrzędne PUWG 1992, Słońce, horyzont, promieniowanie, klimat, generator pogody
 src/render/    widok (PixiJS): mapa bazowa, nakładki, legenda, profil, kamera, pasek stanu
 src/worker/    wątek w tle (Web Worker), w którym liczy się teren
-src/tools/     narzędzia poza grą: konwerter NMT z Geoportalu
+src/tools/     narzędzia poza grą: konwerter NMT, model terenu okolicy, dane IMGW, raport klimatu
 data/          pliki z parametrami i mapy
 tests/         testy automatyczne
 ```

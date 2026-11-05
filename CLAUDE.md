@@ -61,6 +61,7 @@ tests/         testy Vitest
   przy czerwonych testach.
 - Tryb „przewiń zimę” (`npm run winter-report`) generuje raport HTML z wykresami grubości
   śniegu w punktach kontrolnych – to główne narzędzie Aleksandra do oceny realizmu jednym rzutem oka.
+  Od etapu 2 istnieje raport klimatu (`npm run climate-report`) – zgodność generatora pogody z IMGW.
 
 ## Dane źródłowe
 
@@ -103,7 +104,24 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
     + granica), nakładki nachylenia i ekspozycji (klawisze 1–3), legenda, pasek stanu,
     narzędzie profilu (P); wygląd w `data/map-style.json`;
   - generator proceduralny z etapu 0 zostaje jako zapas (`settings.json`: `terrain.map = "procedural"`).
-- **Następny: etap 2 – słońce i pogoda.**
+- **Etap 2 – zrobiony** (listopad 2026):
+  - Słońce: algorytm NOAA (`sun.ts`), czas lokalny z czasem letnim UE (`time.ts`);
+  - horyzont 32 kierunki (`horizon.ts`) z siatki gry + modelu okolicy 15 × 15 km
+    (`horizon-dem.f32`, Copernicus GLO-30, `npm run import-horizon-dem`); w przeglądarce liczony
+    w kilku wątkach (`worker/horizonPool.ts`) i zapamiętywany w IndexedDB;
+  - promieniowanie (`radiation.ts`): Meinel + Laue, kąt padania, cienie, rozproszone z widokiem
+    nieba, chmury Kasten–Czeplak; parametry `data/radiation.json`;
+  - klimat: `npm run import-climate` → `data/climate/pilsko.json` (IMGW 2001–2025). Stacja „PILSKO”
+    na Hali Miziowej (249190530, 1278 m) istnieje, ale jej pomiarów nie ma w archiwum publicznym
+    (tylko bieżące odczyty w API). Odniesienie: Zawoja + Laliki (~700 m), opad: Korbielów (650 m),
+    spadek temperatury: regresja 24 stacji (255–1990 m), wilgotność: Bielsko-Biała + Zakopane,
+    wiatr na wysokości: Kasprowy Wierch;
+  - generator pogody (`weather.ts`): Markow + gamma, AR(1), rozkład godzinowy, wysokość, rodzaj
+    opadu, prognoza 7 dni; `WeatherModifier` – miejsce na anomalie (etap 8);
+  - `Environment` (`environment.ts`) łączy wszystko dla wątku obliczeń;
+  - raport `npm run climate-report` (publikowany jako `raport-klimatu.html`);
+  - widok: panel daty/godziny z „odtwórz dzień”, nakładki 4–6, panel pogody.
+- **Następny: etap 3 – model śniegu + raport „przewiń zimę” (grubość śniegu).**
 
 Uwagi techniczne:
 - Usługa WCS Geoportalu przy pobieraniu w obniżonej rozdzielczości (SCALESIZE) zwraca mapę
@@ -113,6 +131,16 @@ Uwagi techniczne:
 - Usługa GUGiK `GetHbyXY`: parametr x = N (geodezyjne X), y = E (geodezyjne Y).
 - W chmurowym teście (grafika programowa, bez GPU) wygładzanie krawędzi (MSAA) spowalniało
   przesuwanie – jest wyłączone (`antialias: false`).
+- Archiwum IMGW: stacje klimatologiczne nie mierzą wilgotności (status 8); posterunki opadowe nie
+  mają wierszy dla dni bez opadu (brak wiersza = 0 mm, jeśli miesiąc ma dane); metadane stacji
+  (współrzędne, wysokość) tylko z API `api/data/meteo` (stan bieżący).
+- Copernicus DEM to model powierzchni (z lasem, średnio +10 m względem NMT) – poza mapą horyzont
+  uwzględnia drzewa, na mapie nie (las dojdzie z pokryciem terenu).
+- Parametry generatora pogody (stałe w miesiącu dla opadu, krzywa temperatury zachowująca
+  średnie miesięczne) – inaczej sumy opadu w miesiącach sąsiadujących z dużą zmianą (IV → V)
+  były zawyżone o ~20 %.
+- `npm run climate-report` liczy horyzont w Node (ok. 10 s); test zgodności 30 zim używa tolerancji
+  3 × błąd średniej z 30 lat (z rzeczywistej zmienności z roku na rok).
 
 ## Ustalenia rozgrywki
 
