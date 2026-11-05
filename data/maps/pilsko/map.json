@@ -1,0 +1,275 @@
+{
+  "_opis": "Mapa gry: północne stoki Pilska nad Korbielowem. Granice i parametry wpisane ręcznie; sekcje import, border i controlPoints wypełnia narzędzie src/tools/importNmt.ts (npm run import-nmt).",
+  "name": "Pilsko – stoki północne nad Korbielowem",
+  "crs": "EPSG:2180",
+  "crsName": "PUWG 1992 (ETRS89 / Poland CS92)",
+  "bounds": {
+    "westEastingM": {
+      "value": 521500,
+      "unit": "m, PUWG 1992 E (geodezyjnie Y)",
+      "source": "dobrane: Hala Miziowa ok. 1,6 km od zachodniej krawędzi"
+    },
+    "eastEastingM": {
+      "value": 525500,
+      "unit": "m, PUWG 1992 E (geodezyjnie Y)",
+      "source": "dobrane: szerokość 4 km; granica państwa na wschodzie skręca na północ dopiero ok. E 526 500"
+    },
+    "southNorthingM": {
+      "value": 184850,
+      "unit": "m, PUWG 1992 N (geodezyjnie X)",
+      "source": "dobrane: tuż za najdalej na południe wysuniętym punktem granicy przy Pilsku (ok. N 184 900)"
+    },
+    "northNorthingM": {
+      "value": 189350,
+      "unit": "m, PUWG 1992 N (geodezyjnie X)",
+      "source": "dobrane: 4,5 km na północ, do dna doliny w Korbielowie"
+    }
+  },
+  "cellSizeM": {
+    "value": 10,
+    "unit": "m",
+    "source": "CLAUDE.md: siatka gry 10 m"
+  },
+  "elevationFile": "elevation.f32",
+  "elevationEncoding": "Float32 little-endian; wiersze od północy, w wierszu kolumny od zachodu; wartość = średnia wysokość komórki [m n.p.m.]; NaN = poza mapą (Słowacja)",
+  "controlPoints": [
+    {
+      "name": "Hala Miziowa – wypłaszczenie przy schronisku",
+      "eastingM": 522980,
+      "northingM": 185950,
+      "latDeg": 49.540545,
+      "lonDeg": 19.317728,
+      "geoportalElevationM": 1275.1
+    },
+    {
+      "name": "stok powyżej Hali Miziowej, przy granicy",
+      "eastingM": 523300,
+      "northingM": 185150,
+      "latDeg": 49.533335,
+      "lonDeg": 19.322105,
+      "geoportalElevationM": 1461.5
+    },
+    {
+      "name": "dolina potoku w Korbielowie",
+      "eastingM": 524900,
+      "northingM": 189200,
+      "latDeg": 49.56971,
+      "lonDeg": 19.34448,
+      "geoportalElevationM": 657.4
+    }
+  ],
+  "import": {
+    "_opis": "Wypełnia narzędzie src/tools/importNmt.ts – nie edytować ręcznie.",
+    "date": "2026-11-05",
+    "elevationSource": "GUGiK, Numeryczny Model Terenu (siatka 1 m), usługa WCS https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/GRID1/WCS/DigitalTerrainModel, pokrycie DTM_PL-EVRF2007-NH",
+    "verticalDatum": "PL-EVRF2007-NH (ten sam układ wysokości co w Geoportalu)",
+    "resampling": "średnia arytmetyczna 10 × 10 pikseli 1 m na komórkę; komórka bez danych, gdy ważnych pikseli < 50%",
+    "borderSource": "GUGiK, Państwowy Rejestr Granic, usługa WFS https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries, warstwa ms:A00_Granice_panstwa",
+    "validCells": {
+      "value": 163706,
+      "unit": "komórki",
+      "source": "policzone przy imporcie"
+    },
+    "outsideCells": {
+      "value": 16294,
+      "unit": "komórki",
+      "source": "policzone przy imporcie: komórki po stronie słowackiej"
+    },
+    "noDataInPolandCells": {
+      "value": 0,
+      "unit": "komórki",
+      "source": "policzone przy imporcie: dziury w NMT po stronie polskiej (powinno być 0)"
+    },
+    "minElevationM": {
+      "value": 617.2,
+      "unit": "m n.p.m.",
+      "source": "policzone przy imporcie; komórka E 525115, N 189345"
+    },
+    "maxElevationM": {
+      "value": 1533.7,
+      "unit": "m n.p.m.",
+      "source": "policzone przy imporcie; komórka E 523065, N 184905"
+    }
+  },
+  "controlPointsInfo": "Punkty do sprawdzenia mapy z Geoportalem. eastingM/northingM – PUWG 1992 [m] (E = geodezyjne Y, N = geodezyjne X); latDeg/lonDeg – stopnie; geoportalElevationM – wysokość z usługi GUGiK „wysokość w punkcie” [m n.p.m., EVRF2007] z dnia importu.",
+  "border": {
+    "_opis": "Granica państwa w pobliżu mapy, do rysowania. Punkty [E, N] w PUWG 1992 [m].",
+    "source": "GUGiK, PRG, warstwa ms:A00_Granice_panstwa, pobrano 2026-11-05",
+    "lines": [
+      [
+        [
+          521278.5,
+          185137.4
+        ],
+        [
+          521342.4,
+          185156.6
+        ],
+        [
+          521403.9,
+          185174.4
+        ],
+        [
+          521479.1,
+          185156.9
+        ],
+        [
+          521553,
+          185154.7
+        ],
+        [
+          521676.5,
+          185173.7
+        ],
+        [
+          521825.7,
+          185237.9
+        ],
+        [
+          522000.3,
+          185351.8
+        ],
+        [
+          522075.2,
+          185409.4
+        ],
+        [
+          522183.1,
+          185483.3
+        ],
+        [
+          522310.3,
+          185532.9
+        ],
+        [
+          522447.8,
+          185556.3
+        ],
+        [
+          522664.7,
+          185509.6
+        ],
+        [
+          522814.3,
+          185509.2
+        ],
+        [
+          522825.7,
+          185509.2
+        ],
+        [
+          522916.8,
+          185401.9
+        ],
+        [
+          523050.8,
+          185244.1
+        ],
+        [
+          523056.5,
+          185052.4
+        ],
+        [
+          523061.5,
+          184898.7
+        ],
+        [
+          523130.1,
+          184906.5
+        ],
+        [
+          523352.5,
+          184928.1
+        ],
+        [
+          523558.1,
+          184942.5
+        ],
+        [
+          523698.5,
+          184957.6
+        ],
+        [
+          523829.3,
+          184974.3
+        ],
+        [
+          523963.1,
+          185011.6
+        ],
+        [
+          524019.7,
+          185077.9
+        ],
+        [
+          524090.5,
+          185177.8
+        ],
+        [
+          524134.3,
+          185186
+        ],
+        [
+          524260.1,
+          185209.7
+        ],
+        [
+          524348.3,
+          185225.6
+        ],
+        [
+          524413.5,
+          185237.9
+        ],
+        [
+          524506.6,
+          185236.9
+        ],
+        [
+          524567.1,
+          185236.4
+        ],
+        [
+          524665.2,
+          185266.9
+        ],
+        [
+          524886.5,
+          185336.4
+        ],
+        [
+          524930.4,
+          185358.6
+        ],
+        [
+          524991.5,
+          185387.4
+        ],
+        [
+          525097.4,
+          185441.1
+        ],
+        [
+          525206.1,
+          185454.5
+        ],
+        [
+          525325.7,
+          185464
+        ],
+        [
+          525467.4,
+          185432.1
+        ],
+        [
+          525608.1,
+          185419.9
+        ],
+        [
+          525740.1,
+          185410.1
+        ]
+      ]
+    ]
+  }
+}

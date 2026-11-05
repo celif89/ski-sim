@@ -20,3 +20,6 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Pamięć podręczna narzędzi (np. pobrane kafle NMT – duże pliki źródłowe)
+.cache/
