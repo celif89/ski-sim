@@ -1,5 +1,18 @@
-/** Wiadomości wymieniane między widokiem (wątek główny) a symulacją (Web Worker). */
-import type { ContourLine, ContourParams, HillshadeParams, MapSettings, TerrainGeneratorParams } from '../sim';
+/** Wiadomości wymieniane między widokiem (wątek główny) a wątkami obliczeń (Web Worker). */
+import type {
+  CalendarDate,
+  ContourLine,
+  ContourParams,
+  EnvironmentStateMessage,
+  HillshadeParams,
+  HorizonDem,
+  HorizonParams,
+  Location,
+  MapSettings,
+  TerrainGeneratorParams,
+} from './protocolTypes';
+
+export type { EnvironmentStateMessage } from './protocolTypes';
 
 interface TerrainJobCommon {
   hillshade: HillshadeParams;
@@ -19,6 +32,34 @@ export interface GenerateTerrainRequest extends TerrainJobCommon {
   map: MapSettings;
   params: TerrainGeneratorParams;
   seed: number;
+}
+
+/** Start modułu słońca i pogody (po policzeniu horyzontu). */
+export interface InitEnvironmentRequest {
+  type: 'initEnvironment';
+  horizonDirections: number;
+  horizonAngleDeg: Float32Array;
+  skyViewFactor: Float32Array;
+  climateJson: unknown;
+  weatherJson: unknown;
+  radiationJson: unknown;
+  seed: number;
+  location: Location;
+}
+
+/** Stan środowiska w danej chwili (czas lokalny). */
+export interface EnvironmentStateRequest {
+  type: 'environmentState';
+  requestId: number;
+  date: CalendarDate;
+  hour: number;
+}
+
+/** Suma dobowa promieniowania. */
+export interface DailyRadiationRequest {
+  type: 'dailyRadiation';
+  requestId: number;
+  date: CalendarDate;
 }
 
 /** Warstwice spakowane do tablic (szybkie przekazanie między wątkami bez kopiowania). */
@@ -46,13 +87,47 @@ export interface TerrainReadyMessage {
   timingsMs: Record<string, number>;
 }
 
+export interface EnvironmentReadyMessage {
+  type: 'environmentReady';
+  bottomElevationM: number;
+  topElevationM: number;
+}
+
+export interface DailyRadiationMessage {
+  type: 'dailyRadiation';
+  requestId: number;
+  date: CalendarDate;
+  sumKwhM2: Float32Array;
+}
+
 export interface WorkerErrorMessage {
   type: 'error';
+  requestId?: number;
   message: string;
 }
 
-export type WorkerRequest = LoadMapRequest | GenerateTerrainRequest;
-export type WorkerResponse = TerrainReadyMessage | WorkerErrorMessage;
+export type WorkerRequest = LoadMapRequest | GenerateTerrainRequest | InitEnvironmentRequest | EnvironmentStateRequest | DailyRadiationRequest;
+export type WorkerResponse = TerrainReadyMessage | EnvironmentReadyMessage | EnvironmentStateMessage | DailyRadiationMessage | WorkerErrorMessage;
+
+// ---------------------------------------------------------------- wątki horyzontu
+
+export interface HorizonJob {
+  widthCells: number;
+  heightCells: number;
+  cellSizeM: number;
+  georef: { westEastingM: number; northNorthingM: number } | null;
+  elevation: Float32Array;
+  dem: HorizonDem | null;
+  params: HorizonParams;
+  rowStart: number;
+  rowEnd: number;
+}
+
+export type HorizonWorkerMessage =
+  | { type: 'progress'; fraction: number }
+  | { type: 'done'; rowStart: number; rowEnd: number; angleDeg: Float32Array; skyViewFactor: Float32Array };
+
+// ---------------------------------------------------------------- warstwice
 
 export function packContours(lines: ContourLine[]): PackedContours {
   let totalPoints = 0;

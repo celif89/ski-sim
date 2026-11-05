@@ -11,6 +11,37 @@
     "map": "pilsko",
     "_mapInfo": "Nazwa katalogu w data/maps/ z mapą gry. Wartość „procedural” = tymczasowa góra z generatora (data/terrain-generator.json)."
   },
+  "climate": {
+    "profile": "pilsko",
+    "_profileInfo": "Nazwa pliku w data/climate/ z profilem klimatycznym."
+  },
+  "time": {
+    "startDate": "2026-12-21",
+    "_startDateInfo": "Data, od której startuje widok (RRRR-MM-DD).",
+    "startHour": {
+      "value": 12,
+      "unit": "h (czas lokalny)",
+      "source": "godzina startowa widoku"
+    },
+    "playDayDurationS": {
+      "value": 12,
+      "unit": "s",
+      "source": "„odtwórz dzień”: tyle sekund trwa przewinięcie od wschodu do zachodu Słońca; do wyczucia"
+    }
+  },
+  "fallbackLocation": {
+    "_opis": "Położenie dla mapy bez georeferencji (generator proceduralny) – Hala Miziowa.",
+    "latDeg": {
+      "value": 49.5405,
+      "unit": "°",
+      "source": "Hala Miziowa"
+    },
+    "lonDeg": {
+      "value": 19.3177,
+      "unit": "°",
+      "source": "Hala Miziowa"
+    }
+  },
   "view": {
     "minMetersPerPixel": {
       "value": 2,

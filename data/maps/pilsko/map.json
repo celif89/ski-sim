@@ -3,6 +3,15 @@
   "name": "Pilsko – stoki północne nad Korbielowem",
   "crs": "EPSG:2180",
   "crsName": "PUWG 1992 (ETRS89 / Poland CS92)",
+  "timeZone": {
+    "_opis": "Strefa czasowa: Polska – CET (UTC+1), czas letni wg zasady UE.",
+    "standardOffsetHours": {
+      "value": 1,
+      "unit": "h względem UTC",
+      "source": "czas środkowoeuropejski (CET)"
+    },
+    "euDaylightSaving": true
+  },
   "bounds": {
     "westEastingM": {
       "value": 521500,

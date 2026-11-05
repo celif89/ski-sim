@@ -17,6 +17,9 @@ export interface MapStyle {
   flatSlopePercent: number;
   tintLowM: number;
   tintHighM: number;
+  insolationMaxWm2: number;
+  radiationSumMaxKwhM2: number;
+  temperatureRangeC: number;
 }
 
 const FILE = 'data/map-style.json';
@@ -27,6 +30,7 @@ export function parseMapStyle(raw: unknown): MapStyle {
   const tx = readSection(raw, 'texture', FILE);
   const asp = readSection(raw, 'aspect', FILE);
   const tint = readSection(raw, 'elevationTint', FILE);
+  const scales = readSection(raw, 'overlayScales', FILE);
   const style: MapStyle = {
     hillshade: {
       lightAzimuthDeg: readNumber(hs, 'lightAzimuthDeg', FILE, { min: 0, max: 360 }),
@@ -49,6 +53,9 @@ export function parseMapStyle(raw: unknown): MapStyle {
     flatSlopePercent: readNumber(asp, 'flatSlopePercent', FILE, { min: 0 }),
     tintLowM: readNumber(tint, 'lowElevationM', FILE),
     tintHighM: readNumber(tint, 'highElevationM', FILE),
+    insolationMaxWm2: readNumber(scales, 'insolationMaxWm2', FILE, { min: 1 }),
+    radiationSumMaxKwhM2: readNumber(scales, 'radiationSumMaxKwhM2', FILE, { min: 0.1 }),
+    temperatureRangeC: readNumber(scales, 'temperatureRangeC', FILE, { min: 1 }),
   };
   if (style.contours.majorIntervalM % style.contours.intervalM !== 0) {
     throw new Error(`${FILE}: majorIntervalM musi być wielokrotnością intervalM`);

@@ -108,13 +108,15 @@ export const RADIATION_SUM_STOPS: Stop[] = [
   { t: 1, color: [252, 236, 140] },
 ];
 
-/** Skala temperatury (rozbieżna, 0 °C = biel): niebieski mróz, czerwone ciepło. */
+/**
+ * Skala temperatury (rozbieżna): poniżej 0 °C odcienie niebieskiego, powyżej – pomarańczu i czerwieni.
+ * Na 0 °C kolor zmienia się skokowo, więc linia zera (śnieg/deszcz) jest dobrze widoczna.
+ */
 export const TEMPERATURE_STOPS: Stop[] = [
-  { t: 0, color: [40, 60, 150] },
-  { t: 0.25, color: [80, 140, 210] },
-  { t: 0.45, color: [190, 220, 245] },
-  { t: 0.5, color: [245, 245, 245] },
-  { t: 0.55, color: [250, 220, 190] },
-  { t: 0.75, color: [235, 130, 80] },
-  { t: 1, color: [170, 40, 40] },
+  { t: 0, color: [35, 55, 150] },
+  { t: 0.3, color: [70, 130, 215] },
+  { t: 0.4999, color: [170, 210, 245] },
+  { t: 0.5001, color: [252, 205, 150] },
+  { t: 0.7, color: [240, 140, 80] },
+  { t: 1, color: [175, 40, 40] },
 ];

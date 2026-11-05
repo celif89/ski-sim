@@ -5,6 +5,7 @@
  */
 import { readNumber, readSection } from './params';
 import type { HorizonDem } from './horizon';
+import type { TimeZoneRule } from './time';
 import { TerrainGrid } from './terrainGrid';
 
 export interface ControlPoint {
@@ -29,6 +30,8 @@ export interface MapDefinition {
   controlPoints: ControlPoint[];
   /** Linie granicy państwa w PUWG 1992: [[E, N], …]. */
   borderLines: number[][][];
+  /** Strefa czasowa lokalizacji. */
+  timeZone: TimeZoneRule;
   /** Opis modelu terenu okolicy (do horyzontu); null, gdy brak. */
   horizonDem: Omit<HorizonDem, 'elevationM'> & { file: string } | null;
 }
@@ -79,6 +82,13 @@ export function parseMapDefinition(raw: unknown): MapDefinition {
     }
   }
 
+  let timeZone: TimeZoneRule = { standardOffsetHours: 1, euDaylightSaving: true };
+  if (isRecord(raw.timeZone)) {
+    timeZone = {
+      standardOffsetHours: readNumber(raw.timeZone, 'standardOffsetHours', FILE, { min: -12, max: 14 }),
+      euDaylightSaving: raw.timeZone.euDaylightSaving === true,
+    };
+  }
   let horizonDem: MapDefinition['horizonDem'] = null;
   if (isRecord(raw.horizonDem)) {
     const hd = raw.horizonDem;
@@ -104,6 +114,7 @@ export function parseMapDefinition(raw: unknown): MapDefinition {
     elevationFile: raw.elevationFile,
     controlPoints,
     borderLines,
+    timeZone,
     horizonDem,
   };
 }

@@ -94,5 +94,23 @@
       "unit": "m n.p.m.",
       "source": "górny kraniec skali barw hipsometrycznych"
     }
+  },
+  "overlayScales": {
+    "_opis": "Zakresy skal barwnych nakładek słońca i temperatury (stałe – żeby dało się porównywać dni i godziny).",
+    "insolationMaxWm2": {
+      "value": 1000,
+      "unit": "W/m²",
+      "source": "ok. największe promieniowanie na stok w Polsce w pełnym słońcu"
+    },
+    "radiationSumMaxKwhM2": {
+      "value": 8,
+      "unit": "kWh/m²",
+      "source": "górna granica skali sumy dobowej; w praktyce skala dopasowuje się do danego dnia (zaokrąglenie w górę do 0,5 kWh/m²), nie więcej niż ta wartość"
+    },
+    "temperatureRangeC": {
+      "value": 10,
+      "unit": "°C",
+      "source": "skala od −10 do +10 °C; granica 0 °C wyraźna (niebieski / pomarańczowy) – widać linię śnieg/deszcz"
+    }
   }
 }

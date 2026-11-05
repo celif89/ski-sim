@@ -281,10 +281,20 @@ function clamp(x: number, lo: number, hi: number): number {
   return Math.min(Math.max(x, lo), hi);
 }
 
-/** Sezon zimowy nr `seasonIndex` (np. rok początku) dla ziarna – zawsze ten sam dla tych samych danych. */
-export function generateSeason(profile: ClimateProfile, params: WeatherParams, seed: number, startYear: number): DailyWeather[] {
+/**
+ * Sezon zaczynający się w roku `startYear` (1 dnia miesiąca seasonStartMonth) – zawsze ten sam dla
+ * tego samego ziarna. `days` – liczba dni (domyślnie długość sezonu); dłuższa seria ma te same
+ * pierwsze dni co krótsza (generator idzie dzień po dniu).
+ */
+export function generateSeason(
+  profile: ClimateProfile,
+  params: WeatherParams,
+  seed: number,
+  startYear: number,
+  days: number = params.seasonLengthDays,
+): DailyWeather[] {
   const rng = new Rng(seed).fork('pogoda').fork(`sezon-${startYear}`);
-  return generateDailyWeather(profile, params, rng, { year: startYear, month: params.seasonStartMonth, day: 1 }, params.seasonLengthDays);
+  return generateDailyWeather(profile, params, rng, { year: startYear, month: params.seasonStartMonth, day: 1 }, days);
 }
 
 // ------------------------------------------------------------------ wysokość i godziny

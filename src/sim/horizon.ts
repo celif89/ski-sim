@@ -74,7 +74,8 @@ export function computeHorizon(
 
 /**
  * Horyzont tylko dla wierszy [rowStart, rowEnd) – do podziału pracy między kilka wątków.
- * Wyniki wpisywane do `out` (tablice na całą mapę).
+ * Wyniki wpisywane do `out`: tablice na całą mapę (`outStartsAtRow` = 0) albo tylko na te wiersze
+ * (`outStartsAtRow` = rowStart).
  */
 export function computeHorizonRows(
   grid: TerrainGrid,
@@ -84,6 +85,7 @@ export function computeHorizonRows(
   rowEnd: number,
   out: HorizonField,
   onProgress?: (fraction: number) => void,
+  outStartsAtRow = 0,
 ): void {
   const n = params.directions;
   const w = grid.widthCells;
@@ -91,6 +93,7 @@ export function computeHorizonRows(
   const c = grid.cellSizeM;
   const fine = grid.elevationM;
   const { angleDeg, skyViewFactor } = out;
+  const offset = outStartsAtRow * grid.widthCells;
 
   // Przesunięcie modelu okolicy względem lokalnych współrzędnych mapy.
   const geo = grid.georef;
@@ -139,10 +142,11 @@ export function computeHorizonRows(
   for (let j = rowStart; j < rowEnd; j++) {
     for (let i = 0; i < w; i++) {
       const k = j * w + i;
+      const ko = k - offset;
       const z0 = fine[k];
       if (Number.isNaN(z0)) {
-        for (let d = 0; d < n; d++) angleDeg[k * n + d] = Number.NaN;
-        skyViewFactor[k] = Number.NaN;
+        for (let d = 0; d < n; d++) angleDeg[ko * n + d] = Number.NaN;
+        skyViewFactor[ko] = Number.NaN;
         continue;
       }
       const x0 = (i + 0.5) * c;
@@ -174,11 +178,11 @@ export function computeHorizonRows(
           dist += Math.max(minStep, dist * params.stepGrowthFraction);
         }
         const angle = Math.atan(maxTan);
-        angleDeg[k * n + d] = (angle * 180) / Math.PI;
+        angleDeg[ko * n + d] = (angle * 180) / Math.PI;
         const cosA = Math.cos(angle);
         svfSum += cosA * cosA;
       }
-      skyViewFactor[k] = svfSum / n;
+      skyViewFactor[ko] = svfSum / n;
     }
     if (onProgress && (j & 15) === 0) onProgress((j - rowStart) / Math.max(1, rowEnd - rowStart));
   }

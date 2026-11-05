@@ -3,12 +3,24 @@
  */
 import type { SlopeClass } from '../sim';
 import { ASPECT_STOPS_DEG, FLAT_COLOR, rgbToCss } from './colors';
+import type { FieldScale } from './fieldOverlay';
+import { scaleGradientCss } from './fieldOverlay';
 import type { OverlayKind } from './overlays';
 
 export interface ToolbarHandlers {
   onOverlay(kind: OverlayKind): void;
   onProfileTool(): void;
 }
+
+/** Nakładki w kolejności klawiszy 1–7 (7 = bez nakładki). */
+export const OVERLAY_KEYS: { kind: OverlayKind; key: string; label: string; title: string }[] = [
+  { kind: 'slope', key: '1', label: 'Nachylenie', title: 'Nachylenie w kolorach tras' },
+  { kind: 'aspect', key: '2', label: 'Ekspozycja', title: 'Ekspozycja stoków' },
+  { kind: 'none', key: '3', label: 'Bez nakładki', title: 'Sama mapa' },
+  { kind: 'insolation', key: '4', label: 'Słońce teraz', title: 'Nasłonecznienie chwilowe [W/m²] – z cieniami terenu i zachmurzeniem' },
+  { kind: 'radiationSum', key: '5', label: 'Słońce – doba', title: 'Suma dobowa promieniowania [kWh/m²]' },
+  { kind: 'temperature', key: '6', label: 'Temperatura', title: 'Temperatura powietrza w tej chwili (zależna od wysokości)' },
+];
 
 export class Toolbar {
   private readonly buttons = new Map<string, HTMLButtonElement>();
@@ -20,25 +32,21 @@ export class Toolbar {
       const b = document.createElement('button');
       b.type = 'button';
       b.innerHTML = `<kbd>${key}</kbd> ${label}`;
-      b.title = title;
+      b.title = `${title} (klawisz ${key})`;
       b.addEventListener('click', onClick);
       bar.appendChild(b);
       this.buttons.set(id, b);
     };
-    add('slope', 'Nachylenie', '1', 'Nakładka nachylenia w kolorach tras (klawisz 1)', () => handlers.onOverlay('slope'));
-    add('aspect', 'Ekspozycja', '2', 'Nakładka ekspozycji stoków (klawisz 2)', () => handlers.onOverlay('aspect'));
-    add('none', 'Bez nakładki', '3', 'Sama mapa (klawisz 3)', () => handlers.onOverlay('none'));
+    for (const o of OVERLAY_KEYS) add(o.kind, o.label, o.key, o.title, () => handlers.onOverlay(o.kind));
     const sep = document.createElement('span');
     sep.className = 'toolbar-sep';
     bar.appendChild(sep);
-    add('profile', 'Profil terenu', 'P', 'Kliknij punkt A i punkt B na mapie (klawisz P, Esc – zamknij)', () =>
-      handlers.onProfileTool(),
-    );
+    add('profile', 'Profil terenu', 'P', 'Kliknij punkt A i punkt B na mapie, Esc – zamknij', () => handlers.onProfileTool());
     parent.appendChild(bar);
   }
 
   setOverlay(kind: OverlayKind): void {
-    for (const k of ['slope', 'aspect', 'none']) this.buttons.get(k)!.classList.toggle('active', k === kind);
+    for (const o of OVERLAY_KEYS) this.buttons.get(o.kind)!.classList.toggle('active', o.kind === kind);
   }
 
   setProfileActive(active: boolean): void {
@@ -46,8 +54,13 @@ export class Toolbar {
   }
 }
 
+const formatNum = (v: number) => v.toLocaleString('pl-PL', { maximumFractionDigits: 1 });
+
 export class Legend {
   private readonly element: HTMLElement;
+  private kind: OverlayKind = 'none';
+  private fieldInfo = '';
+  private fieldScaleValue: FieldScale | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -59,7 +72,15 @@ export class Legend {
     parent.appendChild(this.element);
   }
 
+  /** Dodatkowy opis i skala nakładek słońca/temperatury (np. data, zachmurzenie). */
+  setFieldInfo(scale: FieldScale | null, info: string): void {
+    this.fieldScaleValue = scale;
+    this.fieldInfo = info;
+    if (this.kind === 'insolation' || this.kind === 'radiationSum' || this.kind === 'temperature') this.show(this.kind);
+  }
+
   show(kind: OverlayKind): void {
+    this.kind = kind;
     if (kind === 'none') {
       this.element.innerHTML = `
         <div class="legend-title">Mapa</div>
@@ -77,12 +98,27 @@ export class Legend {
         <div class="legend-note">100 % = 45°; 25 % ≈ 14°; 40 % ≈ 22°</div>`;
       return;
     }
-    const rows = ASPECT_STOPS_DEG.slice(0, 8)
-      .map((s) => `<div class="legend-cell"><span class="legend-swatch" style="background:${rgbToCss(s.color)}"></span>${s.label}</div>`)
-      .join('');
-    this.element.innerHTML = `<div class="legend-title">Ekspozycja (w którą stronę opada stok)</div>
-      <div class="legend-grid">${rows}</div>
-      <div class="legend-row"><span class="legend-swatch" style="background:${rgbToCss(FLAT_COLOR)}"></span>płasko (poniżej ${this.flatSlopePercent} %)</div>
-      <div class="legend-note">S – ciepłe barwy, N – zimne</div>`;
+    if (kind === 'aspect') {
+      const rows = ASPECT_STOPS_DEG.slice(0, 8)
+        .map((s) => `<div class="legend-cell"><span class="legend-swatch" style="background:${rgbToCss(s.color)}"></span>${s.label}</div>`)
+        .join('');
+      this.element.innerHTML = `<div class="legend-title">Ekspozycja (w którą stronę opada stok)</div>
+        <div class="legend-grid">${rows}</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:${rgbToCss(FLAT_COLOR)}"></span>płasko (poniżej ${this.flatSlopePercent} %)</div>
+        <div class="legend-note">S – ciepłe barwy, N – zimne</div>`;
+      return;
+    }
+    const titles: Record<string, [string, string]> = {
+      insolation: ['Nasłonecznienie teraz', 'W/m²'],
+      radiationSum: ['Suma dobowa promieniowania', 'kWh/m²'],
+      temperature: ['Temperatura powietrza', '°C'],
+    };
+    const [title, unit] = titles[kind];
+    const s = this.fieldScaleValue;
+    const bar = s
+      ? `<div class="legend-scale" style="background:${scaleGradientCss(s)}"></div>
+         <div class="legend-scale-labels"><span>${formatNum(s.min)}</span><span>${formatNum((s.min + s.max) / 2)}</span><span>${formatNum(s.max)} ${unit}</span></div>`
+      : '<div class="legend-note">liczę…</div>';
+    this.element.innerHTML = `<div class="legend-title">${title}</div>${bar}<div class="legend-note">${this.fieldInfo}</div>`;
   }
 }
