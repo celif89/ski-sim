@@ -1,0 +1,72 @@
+{
+  "_opis": "Ustawienia narzędzia src/tools/importClimate.ts (npm run import-climate): okres referencyjny i wybór stacji IMGW. Wynik: data/climate/pilsko.json.",
+  "location": {
+    "_opis": "Punkt, względem którego liczone są odległości stacji (Hala Miziowa).",
+    "latDeg": {
+      "value": 49.5405,
+      "unit": "°",
+      "source": "Hala Miziowa, schronisko"
+    },
+    "lonDeg": {
+      "value": 19.3177,
+      "unit": "°",
+      "source": "Hala Miziowa, schronisko"
+    }
+  },
+  "period": {
+    "startYear": {
+      "value": 2001,
+      "unit": "rok",
+      "source": "zadanie etapu 2: ostatnie ok. 25 lat, żeby klimat odpowiadał obecnym zimom"
+    },
+    "endYear": {
+      "value": 2025,
+      "unit": "rok",
+      "source": "ostatni pełny rok w archiwum IMGW"
+    }
+  },
+  "referenceElevationM": {
+    "value": 700,
+    "unit": "m n.p.m.",
+    "source": "wysokość stacji odniesienia (Zawoja 697 m, Laliki 680 m) ≈ dolna stacja ośrodka (Korbielów 650–750 m)"
+  },
+  "regressionRadiusKm": {
+    "value": 65,
+    "unit": "km",
+    "source": "stacje do wyliczenia spadku temperatury z wysokością: Beskidy, Podhale, Tatry (do Kasprowego Wierchu)"
+  },
+  "precipitationRegressionRadiusKm": {
+    "value": 30,
+    "unit": "km",
+    "source": "posterunki opadowe w Beskidzie Żywieckim i Śląskim – do przyrostu opadu z wysokością"
+  },
+  "minYearsForRegression": {
+    "value": 8,
+    "unit": "lata",
+    "source": "stacja musi mieć co najmniej tyle lat danych w okresie referencyjnym"
+  },
+  "wetDayThresholdMm": {
+    "value": 0.1,
+    "unit": "mm",
+    "source": "dzień z opadem: suma dobowa ≥ 0,1 mm (najmniejsza mierzona wartość w sieci IMGW)"
+  },
+  "stations": {
+    "_opis": "Kody stacji IMGW (9 cyfr, jak w wykazie stacji).",
+    "reference": [
+      "249190350",
+      "249190480"
+    ],
+    "_referenceInfo": "Zawoja (697 m, 17 km) i Laliki (680 m, 22 km) – najbliższe stacje klimatologiczne z dobowymi pomiarami temperatury, wilgotności, wiatru i zachmurzenia na wysokości dolnej części ośrodka.",
+    "humidity": [
+      "349190600",
+      "349190625"
+    ],
+    "_humidityInfo": "Bielsko-Biała (396 m) i Zakopane (852 m) – najbliższe stacje synoptyczne; stacje klimatologiczne nie mierzą wilgotności.",
+    "precipitation": "249190440",
+    "_precipitationInfo": "Korbielów (650 m, 5 km) – posterunek opadowy na terenie mapy, pełna seria 2001–2025.",
+    "homogenization": "349190600",
+    "_homogenizationInfo": "Bielsko-Biała (synop, 396 m, 38 km) – pełna seria, do wyrównania średnich ze stacji o krótszych seriach (metoda różnic).",
+    "windAloft": "349190650",
+    "_windAloftInfo": "Kasprowy Wierch (synop, 1990 m) – kierunki wiatru w swobodnej atmosferze i przyrost prędkości wiatru z wysokością."
+  }
+}

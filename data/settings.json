@@ -7,21 +7,39 @@
       "source": "dowolna liczba całkowita; ten sam seed = ten sam teren i ta sama zima"
     }
   },
-  "map": {
-    "widthCells": {
-      "value": 400,
-      "unit": "komórki",
-      "source": "CLAUDE.md: mapa ok. 4 × 4 km przy komórce 10 m"
+  "terrain": {
+    "map": "pilsko",
+    "_mapInfo": "Nazwa katalogu w data/maps/ z mapą gry. Wartość „procedural” = tymczasowa góra z generatora (data/terrain-generator.json)."
+  },
+  "climate": {
+    "profile": "pilsko",
+    "_profileInfo": "Nazwa pliku w data/climate/ z profilem klimatycznym."
+  },
+  "time": {
+    "startDate": "2026-12-21",
+    "_startDateInfo": "Data, od której startuje widok (RRRR-MM-DD).",
+    "startHour": {
+      "value": 12,
+      "unit": "h (czas lokalny)",
+      "source": "godzina startowa widoku"
     },
-    "heightCells": {
-      "value": 400,
-      "unit": "komórki",
-      "source": "CLAUDE.md: mapa ok. 4 × 4 km przy komórce 10 m"
+    "playDayDurationS": {
+      "value": 12,
+      "unit": "s",
+      "source": "„odtwórz dzień”: tyle sekund trwa przewinięcie od wschodu do zachodu Słońca; do wyczucia"
+    }
+  },
+  "fallbackLocation": {
+    "_opis": "Położenie dla mapy bez georeferencji (generator proceduralny) – Hala Miziowa.",
+    "latDeg": {
+      "value": 49.5405,
+      "unit": "°",
+      "source": "Hala Miziowa"
     },
-    "cellSizeM": {
-      "value": 10,
-      "unit": "m",
-      "source": "CLAUDE.md: rozdzielczość startowa siatki 10 m"
+    "lonDeg": {
+      "value": 19.3177,
+      "unit": "°",
+      "source": "Hala Miziowa"
     }
   },
   "view": {

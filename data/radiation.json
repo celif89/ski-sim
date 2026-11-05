@@ -1,0 +1,81 @@
+{
+  "_opis": "Parametry horyzontu (cieni) i promieniowania słonecznego. Każda liczba: value, unit, source.",
+  "horizon": {
+    "directions": {
+      "value": 32,
+      "unit": "kierunki",
+      "source": "zadanie etapu 2: horyzont w 32 kierunkach (co 11,25°)"
+    },
+    "maxDistanceM": {
+      "value": 9000,
+      "unit": "m",
+      "source": "do ok. krawędzi modelu terenu okolicy (15 × 15 km wokół mapy)"
+    },
+    "stepGrowthFraction": {
+      "value": 0.05,
+      "unit": "część odległości",
+      "source": "krok wzdłuż promienia rośnie z odległością (5 % odległości, nie mniej niż komórka); kompromis dokładność/czas"
+    },
+    "earthRadiusM": {
+      "value": 6371000,
+      "unit": "m",
+      "source": "średni promień Ziemi (IUGG)"
+    },
+    "refractionCoefficient": {
+      "value": 0.13,
+      "unit": "-",
+      "source": "współczynnik refrakcji ziemskiej przy poprawce na krzywiznę Ziemi (geodezja: 0,13)"
+    }
+  },
+  "clearSky": {
+    "solarConstantWm2": {
+      "value": 1361,
+      "unit": "W/m²",
+      "source": "Kopp i Lean 2011 (TSI)"
+    },
+    "meinelTransmittanceBase": {
+      "value": 0.7,
+      "unit": "-",
+      "source": "Meinel i Meinel 1976: DNI = I0 · 0,7^(AM^0,678)"
+    },
+    "meinelAirMassExponent": {
+      "value": 0.678,
+      "unit": "-",
+      "source": "Meinel i Meinel 1976"
+    },
+    "laueAltitudeCoefficientPerKm": {
+      "value": 0.14,
+      "unit": "1/km",
+      "source": "Laue 1970: poprawka na wysokość n.p.m. do wzoru Meinela"
+    },
+    "diffuseFractionOfDirect": {
+      "value": 0.1,
+      "unit": "-",
+      "source": "przybliżenie: promieniowanie rozproszone przy bezchmurnym niebie ok. 10 % bezpośredniego (Meinel); do kalibracji z danymi aktynometrycznymi IMGW"
+    },
+    "groundAlbedo": {
+      "value": 0.2,
+      "unit": "-",
+      "source": "albedo trawy/lasu bez śniegu; w etapie 3 zastąpi je albedo pokrywy śnieżnej (0,6–0,9)"
+    }
+  },
+  "clouds": {
+    "kastenCzeplakA": {
+      "value": 0.75,
+      "unit": "-",
+      "source": "Kasten i Czeplak 1980: G = G_bezchm · (1 − 0,75·C^3,4)"
+    },
+    "kastenCzeplakB": {
+      "value": 3.4,
+      "unit": "-",
+      "source": "Kasten i Czeplak 1980"
+    }
+  },
+  "dailySum": {
+    "integrationStepMinutes": {
+      "value": 10,
+      "unit": "min",
+      "source": "krok całkowania sumy dobowej; błąd < 1 % względem kroku 1 min"
+    }
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "_opis": "Wygląd mapy bazowej i nakładek. Każda liczba: value, unit, source.",
+  "hillshade": {
+    "lightAzimuthDeg": {
+      "value": 315,
+      "unit": "°, azymut (0 = N, 90 = E)",
+      "source": "konwencja map topograficznych: światło z północnego zachodu"
+    },
+    "lightAltitudeDeg": {
+      "value": 45,
+      "unit": "° nad horyzontem",
+      "source": "standard cieniowania (GDAL, ArcGIS)"
+    },
+    "zFactor": {
+      "value": 1.5,
+      "unit": "-",
+      "source": "przewyższenie dla czytelności łagodnych stoków; do wyczucia"
+    },
+    "strength": {
+      "value": 0.75,
+      "unit": "0–1",
+      "source": "udział cienia w kolorze mapy; do wyczucia"
+    }
+  },
+  "contours": {
+    "intervalM": {
+      "value": 10,
+      "unit": "m",
+      "source": "zadanie etapu 1: warstwice co 10 m"
+    },
+    "majorIntervalM": {
+      "value": 50,
+      "unit": "m",
+      "source": "zadanie etapu 1: pogrubione co 50 m"
+    },
+    "minorWidthM": {
+      "value": 0.9,
+      "unit": "m w terenie",
+      "source": "grubość cienkiej warstwicy na teksturze; do wyczucia"
+    },
+    "majorWidthM": {
+      "value": 2.2,
+      "unit": "m w terenie",
+      "source": "grubość pogrubionej warstwicy; do wyczucia"
+    },
+    "labelSpacingM": {
+      "value": 700,
+      "unit": "m",
+      "source": "odstęp opisów wzdłuż pogrubionej warstwicy; do wyczucia"
+    },
+    "labelMinLineLengthM": {
+      "value": 250,
+      "unit": "m",
+      "source": "krótszych warstwic nie opisujemy; do wyczucia"
+    },
+    "labelFontSizeM": {
+      "value": 16,
+      "unit": "m w terenie",
+      "source": "wysokość opisu warstwicy na teksturze; do wyczucia"
+    }
+  },
+  "texture": {
+    "baseMetersPerPixel": {
+      "value": 2,
+      "unit": "m/px",
+      "source": "rozdzielczość tekstury mapy bazowej = największe przybliżenie widoku"
+    },
+    "overlayMetersPerPixel": {
+      "value": 2.5,
+      "unit": "m/px",
+      "source": "rozdzielczość tekstur nakładek; do wyczucia (wydajność)"
+    },
+    "overlayOpacity": {
+      "value": 0.65,
+      "unit": "0–1",
+      "source": "krycie nakładek nad mapą bazową; do wyczucia"
+    }
+  },
+  "aspect": {
+    "flatSlopePercent": {
+      "value": 3,
+      "unit": "%",
+      "source": "poniżej tego nachylenia ekspozycja nie ma znaczenia – pokazywane jako „płasko”; do kalibracji"
+    }
+  },
+  "elevationTint": {
+    "lowElevationM": {
+      "value": 700,
+      "unit": "m n.p.m.",
+      "source": "dolny kraniec skali barw hipsometrycznych"
+    },
+    "highElevationM": {
+      "value": 1550,
+      "unit": "m n.p.m.",
+      "source": "górny kraniec skali barw hipsometrycznych"
+    }
+  },
+  "overlayScales": {
+    "_opis": "Zakresy skal barwnych nakładek słońca i temperatury (stałe – żeby dało się porównywać dni i godziny).",
+    "insolationMaxWm2": {
+      "value": 1000,
+      "unit": "W/m²",
+      "source": "ok. największe promieniowanie na stok w Polsce w pełnym słońcu"
+    },
+    "radiationSumMaxKwhM2": {
+      "value": 8,
+      "unit": "kWh/m²",
+      "source": "górna granica skali sumy dobowej; w praktyce skala dopasowuje się do danego dnia (zaokrąglenie w górę do 0,5 kWh/m²), nie więcej niż ta wartość"
+    },
+    "temperatureRangeC": {
+      "value": 10,
+      "unit": "°C",
+      "source": "skala od −10 do +10 °C; granica 0 °C wyraźna (niebieski / pomarańczowy) – widać linię śnieg/deszcz"
+    }
+  }
+}

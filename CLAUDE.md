@@ -61,6 +61,7 @@ tests/         testy Vitest
   przy czerwonych testach.
 - Tryb „przewiń zimę” (`npm run winter-report`) generuje raport HTML z wykresami grubości
   śniegu w punktach kontrolnych – to główne narzędzie Aleksandra do oceny realizmu jednym rzutem oka.
+  Od etapu 2 istnieje raport klimatu (`npm run climate-report`) – zgodność generatora pogody z IMGW.
 
 ## Dane źródłowe
 
@@ -84,6 +85,62 @@ tests/         testy Vitest
 9. Dopracowanie, zapis gry, druga lokalizacja.
 
 Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, nie wybiegać do przodu.
+
+## Stan prac
+
+- **Etap 0 – zrobiony** (listopad 2026): szkielet, generator losowy z ziarnem, siatka terenu,
+  przesuwanie i zoom, publikacja na GitHub Pages (workflow `.github/workflows/pages.yml`,
+  testy blokują publikację).
+- **Etap 1 – zrobiony** (listopad 2026):
+  - mapa `data/maps/pilsko/`: E 521 500–525 500, N 184 850–189 350 (PUWG 1992), 400 × 450
+    komórek po 10 m; NMT z WCS GUGiK (`DTM_PL-EVRF2007-NH`, siatka 1 m, uśredniona do 10 m),
+    strona słowacka wycięta wg granicy z PRG (WFS) – w siatce NaN = „poza mapą”;
+  - konwerter `npm run import-nmt` (`src/tools/importNmt.ts`), kafle źródłowe w `.cache/`
+    (poza repozytorium); punkty kontrolne z usługi GUGiK „wysokość w punkcie” zapisane w map.json;
+  - `src/sim`: PUWG 1992 ↔ stopnie (`geo.ts`), nachylenie/ekspozycja metodą Horna
+    i cieniowanie (`terrainAnalysis.ts`), warstwice (`contours.ts`), profil (`profile.ts`),
+    klasy nachylenia (`slopeClasses.ts`, progi w `data/slope-classes.json`);
+  - widok: mapa bazowa jako jedna tekstura 2 m/px (cieniowanie + barwy + warstwice + opisy
+    + granica), nakładki nachylenia i ekspozycji (klawisze 1–3), legenda, pasek stanu,
+    narzędzie profilu (P); wygląd w `data/map-style.json`;
+  - generator proceduralny z etapu 0 zostaje jako zapas (`settings.json`: `terrain.map = "procedural"`).
+- **Etap 2 – zrobiony** (listopad 2026):
+  - Słońce: algorytm NOAA (`sun.ts`), czas lokalny z czasem letnim UE (`time.ts`);
+  - horyzont 32 kierunki (`horizon.ts`) z siatki gry + modelu okolicy 15 × 15 km
+    (`horizon-dem.f32`, Copernicus GLO-30, `npm run import-horizon-dem`); w przeglądarce liczony
+    w kilku wątkach (`worker/horizonPool.ts`) i zapamiętywany w IndexedDB;
+  - promieniowanie (`radiation.ts`): Meinel + Laue, kąt padania, cienie, rozproszone z widokiem
+    nieba, chmury Kasten–Czeplak; parametry `data/radiation.json`;
+  - klimat: `npm run import-climate` → `data/climate/pilsko.json` (IMGW 2001–2025). Stacja „PILSKO”
+    na Hali Miziowej (249190530, 1278 m) istnieje, ale jej pomiarów nie ma w archiwum publicznym
+    (tylko bieżące odczyty w API). Odniesienie: Zawoja + Laliki (~700 m), opad: Korbielów (650 m),
+    spadek temperatury: regresja 24 stacji (255–1990 m), wilgotność: Bielsko-Biała + Zakopane,
+    wiatr na wysokości: Kasprowy Wierch;
+  - generator pogody (`weather.ts`): Markow + gamma, AR(1), rozkład godzinowy, wysokość, rodzaj
+    opadu, prognoza 7 dni; `WeatherModifier` – miejsce na anomalie (etap 8);
+  - `Environment` (`environment.ts`) łączy wszystko dla wątku obliczeń;
+  - raport `npm run climate-report` (publikowany jako `raport-klimatu.html`);
+  - widok: panel daty/godziny z „odtwórz dzień”, nakładki 4–6, panel pogody.
+- **Następny: etap 3 – model śniegu + raport „przewiń zimę” (grubość śniegu).**
+
+Uwagi techniczne:
+- Usługa WCS Geoportalu przy pobieraniu w obniżonej rozdzielczości (SCALESIZE) zwraca mapę
+  z dziurami (brakujące arkusze w podglądach) – dlatego konwerter pobiera pełne 1 m kaflami.
+- Pokrycie `DTM_PL-KRON86-NH_TIFF` (format TIFF) jest szybsze, ale w starym układzie wysokości
+  (ok. 0,5 m niżej niż EVRF2007); używamy EVRF2007 (format ASCII), zgodnego z Geoportalem.
+- Usługa GUGiK `GetHbyXY`: parametr x = N (geodezyjne X), y = E (geodezyjne Y).
+- W chmurowym teście (grafika programowa, bez GPU) wygładzanie krawędzi (MSAA) spowalniało
+  przesuwanie – jest wyłączone (`antialias: false`).
+- Archiwum IMGW: stacje klimatologiczne nie mierzą wilgotności (status 8); posterunki opadowe nie
+  mają wierszy dla dni bez opadu (brak wiersza = 0 mm, jeśli miesiąc ma dane); metadane stacji
+  (współrzędne, wysokość) tylko z API `api/data/meteo` (stan bieżący).
+- Copernicus DEM to model powierzchni (z lasem, średnio +10 m względem NMT) – poza mapą horyzont
+  uwzględnia drzewa, na mapie nie (las dojdzie z pokryciem terenu).
+- Parametry generatora pogody (stałe w miesiącu dla opadu, krzywa temperatury zachowująca
+  średnie miesięczne) – inaczej sumy opadu w miesiącach sąsiadujących z dużą zmianą (IV → V)
+  były zawyżone o ~20 %.
+- `npm run climate-report` liczy horyzont w Node (ok. 10 s); test zgodności 30 zim używa tolerancji
+  3 × błąd średniej z 30 lat (z rzeczywistej zmienności z roku na rok).
 
 ## Ustalenia rozgrywki
 

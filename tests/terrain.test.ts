@@ -3,12 +3,12 @@ import { generateTerrain } from '../src/sim/terrainGenerator';
 import { TerrainGrid } from '../src/sim/terrainGrid';
 import { simSettings, terrainParams } from './helpers';
 
-const map = simSettings.map;
+const map = terrainParams.grid;
 const seed = simSettings.seed;
 const terrain = generateTerrain(map, terrainParams, seed);
 
 describe('Siatka terenu', () => {
-  it('ma wymiary i rozmiar komórki z data/settings.json (start: 400 × 400 komórek po 10 m)', () => {
+  it('ma wymiary i rozmiar komórki z pliku danych generatora (400 × 400 komórek po 10 m)', () => {
     expect(terrain.widthCells).toBe(map.widthCells);
     expect(terrain.heightCells).toBe(map.heightCells);
     expect(terrain.cellSizeM).toBe(map.cellSizeM);
@@ -43,7 +43,7 @@ describe('Siatka terenu', () => {
   });
 });
 
-describe('Tymczasowy generator terenu', () => {
+describe('Generator proceduralny terenu (zapas z etapu 0)', () => {
   it('ten sam seed daje identyczny teren', () => {
     const again = generateTerrain(map, terrainParams, seed);
     expect(again.elevationM).toEqual(terrain.elevationM);
