@@ -1,6 +1,7 @@
 /** Ustawienia symulacji odczytywane z data/settings.json. */
 import { readNumber, readSection } from './params';
 
+/** Wymiary siatki terenu. */
 export interface MapSettings {
   widthCells: number;
   heightCells: number;
@@ -9,20 +10,26 @@ export interface MapSettings {
 
 export interface SimSettings {
   seed: number;
-  map: MapSettings;
+  /** Nazwa mapy z data/maps/ albo „procedural” (generator z etapu 0). */
+  mapName: string;
 }
 
 const FILE = 'data/settings.json';
 
 export function parseSimSettings(raw: unknown): SimSettings {
   const world = readSection(raw, 'world', FILE);
-  const map = readSection(raw, 'map', FILE);
+  const terrain = readSection(raw, 'terrain', FILE);
+  if (typeof terrain.map !== 'string' || terrain.map.length === 0) throw new Error(`${FILE}: brak nazwy mapy (terrain.map)`);
   return {
     seed: readNumber(world, 'seed', FILE, { integer: true }),
-    map: {
-      widthCells: readNumber(map, 'widthCells', FILE, { integer: true, min: 2 }),
-      heightCells: readNumber(map, 'heightCells', FILE, { integer: true, min: 2 }),
-      cellSizeM: readNumber(map, 'cellSizeM', FILE, { min: 0.1 }),
-    },
+    mapName: terrain.map,
+  };
+}
+
+export function parseGridSettings(section: Record<string, unknown>, file: string): MapSettings {
+  return {
+    widthCells: readNumber(section, 'widthCells', file, { integer: true, min: 2 }),
+    heightCells: readNumber(section, 'heightCells', file, { integer: true, min: 2 }),
+    cellSizeM: readNumber(section, 'cellSizeM', file, { min: 0.1 }),
   };
 }

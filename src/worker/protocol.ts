@@ -1,11 +1,35 @@
 /** Wiadomości wymieniane między widokiem (wątek główny) a symulacją (Web Worker). */
-import type { MapSettings, TerrainGeneratorParams } from '../sim';
+import type { ContourLine, ContourParams, HillshadeParams, MapSettings, TerrainGeneratorParams } from '../sim';
 
-export interface GenerateTerrainRequest {
+interface TerrainJobCommon {
+  hillshade: HillshadeParams;
+  contours: ContourParams;
+}
+
+/** Wczytanie mapy z NMT: opis (map.json) i adres pliku wysokości. */
+export interface LoadMapRequest extends TerrainJobCommon {
+  type: 'loadMap';
+  mapJson: unknown;
+  elevationUrl: string;
+}
+
+/** Teren z generatora proceduralnego (etap 0) – zapas i testy. */
+export interface GenerateTerrainRequest extends TerrainJobCommon {
   type: 'generateTerrain';
   map: MapSettings;
   params: TerrainGeneratorParams;
   seed: number;
+}
+
+/** Warstwice spakowane do tablic (szybkie przekazanie między wątkami bez kopiowania). */
+export interface PackedContours {
+  /** Wszystkie punkty wszystkich linii: x0, y0, x1, y1, … [m]. */
+  coords: Float32Array;
+  /** Indeks pierwszego punktu każdej linii w coords (w punktach, nie liczbach); ostatni = liczba punktów. */
+  lineStart: Uint32Array;
+  levelM: Float32Array;
+  /** Bit 0 – pogrubiona, bit 1 – zamknięta. */
+  flags: Uint8Array;
 }
 
 export interface TerrainReadyMessage {
@@ -13,9 +37,13 @@ export interface TerrainReadyMessage {
   widthCells: number;
   heightCells: number;
   cellSizeM: number;
-  /** Bufor z wysokościami [m n.p.m.] (Float32Array), przekazywany bez kopiowania. */
-  elevationBuffer: ArrayBuffer;
-  generationTimeMs: number;
+  georef: { westEastingM: number; northNorthingM: number } | null;
+  elevation: Float32Array;
+  slopePercent: Float32Array;
+  aspectDeg: Float32Array;
+  hillshade: Float32Array;
+  contours: PackedContours;
+  timingsMs: Record<string, number>;
 }
 
 export interface WorkerErrorMessage {
@@ -23,5 +51,37 @@ export interface WorkerErrorMessage {
   message: string;
 }
 
-export type WorkerRequest = GenerateTerrainRequest;
+export type WorkerRequest = LoadMapRequest | GenerateTerrainRequest;
 export type WorkerResponse = TerrainReadyMessage | WorkerErrorMessage;
+
+export function packContours(lines: ContourLine[]): PackedContours {
+  let totalPoints = 0;
+  for (const l of lines) totalPoints += l.points.length / 2;
+  const coords = new Float32Array(totalPoints * 2);
+  const lineStart = new Uint32Array(lines.length + 1);
+  const levelM = new Float32Array(lines.length);
+  const flags = new Uint8Array(lines.length);
+  let p = 0;
+  lines.forEach((l, n) => {
+    lineStart[n] = p;
+    coords.set(l.points, p * 2);
+    p += l.points.length / 2;
+    levelM[n] = l.levelM;
+    flags[n] = (l.major ? 1 : 0) | (l.closed ? 2 : 0);
+  });
+  lineStart[lines.length] = p;
+  return { coords, lineStart, levelM, flags };
+}
+
+export function unpackContours(packed: PackedContours): ContourLine[] {
+  const lines: ContourLine[] = [];
+  for (let n = 0; n < packed.levelM.length; n++) {
+    lines.push({
+      levelM: packed.levelM[n],
+      major: (packed.flags[n] & 1) !== 0,
+      closed: (packed.flags[n] & 2) !== 0,
+      points: packed.coords.subarray(packed.lineStart[n] * 2, packed.lineStart[n + 1] * 2),
+    });
+  }
+  return lines;
+}

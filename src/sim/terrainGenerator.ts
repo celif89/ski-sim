@@ -15,9 +15,12 @@ import { GradientNoise2D } from './noise';
 import { readNumber, readSection } from './params';
 import { Rng } from './rng';
 import { TerrainGrid } from './terrainGrid';
+import { parseGridSettings } from './settings';
 import type { MapSettings } from './settings';
 
 export interface TerrainGeneratorParams {
+  /** Wymiary siatki generowanego terenu. */
+  grid: MapSettings;
   minElevationM: number;
   maxElevationM: number;
   summitXFraction: number;
@@ -50,6 +53,7 @@ export function parseTerrainGeneratorParams(raw: unknown): TerrainGeneratorParam
   const valleys = readSection(raw, 'valleys', FILE);
   const noise = readSection(raw, 'noise', FILE);
   const params: TerrainGeneratorParams = {
+    grid: parseGridSettings(readSection(raw, 'grid', FILE), FILE),
     minElevationM: readNumber(elev, 'minElevationM', FILE),
     maxElevationM: readNumber(elev, 'maxElevationM', FILE),
     summitXFraction: readNumber(mountain, 'summitXFraction', FILE, { min: 0, max: 1 }),

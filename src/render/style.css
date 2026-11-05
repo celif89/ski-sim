@@ -54,7 +54,8 @@ body {
   background: var(--hud-bg);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
-  white-space: pre;
+  white-space: nowrap;
+  overflow: hidden;
   pointer-events: none;
 }
 
@@ -107,5 +108,200 @@ body {
   .status-bar {
     gap: 12px;
     font-size: 11px;
+  }
+}
+
+#app canvas.tool-profile {
+  cursor: crosshair;
+}
+
+/* Pasek stanu – etap 1: więcej pól, zawijanie na wąskich ekranach. */
+.status-bar {
+  gap: 18px;
+}
+
+.status-geographic,
+.status-aspect {
+  color: var(--hud-muted);
+}
+
+/* Przyciski nakładek i narzędzi – lewy górny róg. */
+.toolbar {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  max-width: calc(100vw - 24px);
+}
+
+.toolbar button {
+  font: inherit;
+  font-size: 13px;
+  color: var(--hud-fg);
+  background: var(--hud-bg);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.toolbar button:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.toolbar button.active {
+  background: #2f6fd6;
+  border-color: #6d9cf0;
+}
+
+.toolbar kbd {
+  font: inherit;
+  font-size: 11px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.toolbar-sep {
+  width: 6px;
+}
+
+/* Legenda – prawy górny róg. */
+.legend {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  background: var(--hud-bg);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 260px;
+  pointer-events: none;
+}
+
+.legend-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.legend-row,
+.legend-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-grid {
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  gap: 2px 12px;
+  margin-bottom: 2px;
+}
+
+.legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex: none;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.legend-swatch.outside {
+  background: repeating-linear-gradient(45deg, #b0b2b6 0 4px, #96989e 4px 6px);
+}
+
+.legend-line {
+  width: 22px;
+  flex: none;
+  border-top: 1px solid rgb(176, 120, 70);
+}
+
+.legend-line.major {
+  border-top: 2px solid rgb(150, 90, 40);
+}
+
+.legend-line.border {
+  border-top: 2px dashed rgb(220, 40, 70);
+}
+
+.legend-note {
+  color: var(--hud-muted);
+  margin-top: 4px;
+}
+
+/* Panel profilu terenu – na dole, nad paskiem stanu. */
+.profile-panel {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--status-bar-height) + 12px);
+  width: min(760px, calc(100vw - 24px));
+  box-sizing: border-box;
+  background: rgba(20, 22, 26, 0.92);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+.profile-panel.hidden {
+  display: none;
+}
+
+.profile-panel.hint .profile-chart,
+.profile-panel.hint .profile-hover {
+  display: none;
+}
+
+.profile-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.profile-stats {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-close {
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  background: none;
+  border: none;
+  color: var(--hud-muted);
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.profile-chart {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.profile-hover {
+  color: var(--hud-muted);
+  min-height: 1.4em;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 700px) {
+  .legend {
+    top: auto;
+    bottom: calc(var(--status-bar-height) + 12px);
+    right: 12px;
+    max-width: 200px;
+    font-size: 11px;
+  }
+  .status-geographic {
+    display: none;
   }
 }

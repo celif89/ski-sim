@@ -11,6 +11,8 @@ const WHEEL_PIXELS_PER_NOTCH = 100;
 const WHEEL_PIXELS_PER_LINE = 16;
 /** Gest „szczypania” na gładziku Maca przychodzi jako kółko z ctrlKey i małymi wartościami. */
 const PINCH_SENSITIVITY_MULTIPLIER = 4;
+/** Przesunięcie myszy [px], do którego naciśnięcie i puszczenie przycisku liczy się jako kliknięcie. */
+const CLICK_MAX_MOVE_PX = 5;
 
 const PAN_KEYS: Record<string, [number, number]> = {
   ArrowLeft: [-1, 0],
@@ -34,6 +36,13 @@ export class MapInput {
   private dragPointerId: number | null = null;
   private lastDragX = 0;
   private lastDragY = 0;
+  private downX = 0;
+  private downY = 0;
+
+  /** Kliknięcie w mapę (bez przeciągania) – piksele ekranu. */
+  onClick: ((xPx: number, yPx: number) => void) | null = null;
+  /** Dodatkowe klawisze (np. nakładki, narzędzia). Zwraca true, jeśli klawisz obsłużono. */
+  onKey: ((code: string) => boolean) | null = null;
 
   constructor(
     private readonly element: HTMLElement,
@@ -80,6 +89,8 @@ export class MapInput {
     this.dragPointerId = event.pointerId;
     this.lastDragX = event.clientX;
     this.lastDragY = event.clientY;
+    this.downX = event.clientX;
+    this.downY = event.clientY;
     this.element.setPointerCapture(event.pointerId);
     this.element.classList.add('dragging');
   };
@@ -97,6 +108,10 @@ export class MapInput {
     this.dragPointerId = null;
     if (this.element.hasPointerCapture(event.pointerId)) this.element.releasePointerCapture(event.pointerId);
     this.element.classList.remove('dragging');
+    if (event.type === 'pointerup' && Math.hypot(event.clientX - this.downX, event.clientY - this.downY) <= CLICK_MAX_MOVE_PX) {
+      const p = this.localPosition(event);
+      this.onClick?.(p.xPx, p.yPx);
+    }
   };
 
   private onPointerLeave = (): void => {
@@ -117,6 +132,10 @@ export class MapInput {
 
   private onKeyDown = (event: KeyboardEvent): void => {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (this.onKey?.(event.code)) {
+      event.preventDefault();
+      return;
+    }
     if (event.code in PAN_KEYS) {
       this.pressedKeys.add(event.code);
       event.preventDefault();

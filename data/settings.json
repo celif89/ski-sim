@@ -7,22 +7,9 @@
       "source": "dowolna liczba całkowita; ten sam seed = ten sam teren i ta sama zima"
     }
   },
-  "map": {
-    "widthCells": {
-      "value": 400,
-      "unit": "komórki",
-      "source": "CLAUDE.md: mapa ok. 4 × 4 km przy komórce 10 m"
-    },
-    "heightCells": {
-      "value": 400,
-      "unit": "komórki",
-      "source": "CLAUDE.md: mapa ok. 4 × 4 km przy komórce 10 m"
-    },
-    "cellSizeM": {
-      "value": 10,
-      "unit": "m",
-      "source": "CLAUDE.md: rozdzielczość startowa siatki 10 m"
-    }
+  "terrain": {
+    "map": "pilsko",
+    "_mapInfo": "Nazwa katalogu w data/maps/ z mapą gry. Wartość „procedural” = tymczasowa góra z generatora (data/terrain-generator.json)."
   },
   "view": {
     "minMetersPerPixel": {

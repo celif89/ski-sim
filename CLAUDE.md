@@ -85,6 +85,35 @@ tests/         testy Vitest
 
 Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, nie wybiegać do przodu.
 
+## Stan prac
+
+- **Etap 0 – zrobiony** (listopad 2026): szkielet, generator losowy z ziarnem, siatka terenu,
+  przesuwanie i zoom, publikacja na GitHub Pages (workflow `.github/workflows/pages.yml`,
+  testy blokują publikację).
+- **Etap 1 – zrobiony** (listopad 2026):
+  - mapa `data/maps/pilsko/`: E 521 500–525 500, N 184 850–189 350 (PUWG 1992), 400 × 450
+    komórek po 10 m; NMT z WCS GUGiK (`DTM_PL-EVRF2007-NH`, siatka 1 m, uśredniona do 10 m),
+    strona słowacka wycięta wg granicy z PRG (WFS) – w siatce NaN = „poza mapą”;
+  - konwerter `npm run import-nmt` (`src/tools/importNmt.ts`), kafle źródłowe w `.cache/`
+    (poza repozytorium); punkty kontrolne z usługi GUGiK „wysokość w punkcie” zapisane w map.json;
+  - `src/sim`: PUWG 1992 ↔ stopnie (`geo.ts`), nachylenie/ekspozycja metodą Horna
+    i cieniowanie (`terrainAnalysis.ts`), warstwice (`contours.ts`), profil (`profile.ts`),
+    klasy nachylenia (`slopeClasses.ts`, progi w `data/slope-classes.json`);
+  - widok: mapa bazowa jako jedna tekstura 2 m/px (cieniowanie + barwy + warstwice + opisy
+    + granica), nakładki nachylenia i ekspozycji (klawisze 1–3), legenda, pasek stanu,
+    narzędzie profilu (P); wygląd w `data/map-style.json`;
+  - generator proceduralny z etapu 0 zostaje jako zapas (`settings.json`: `terrain.map = "procedural"`).
+- **Następny: etap 2 – słońce i pogoda.**
+
+Uwagi techniczne:
+- Usługa WCS Geoportalu przy pobieraniu w obniżonej rozdzielczości (SCALESIZE) zwraca mapę
+  z dziurami (brakujące arkusze w podglądach) – dlatego konwerter pobiera pełne 1 m kaflami.
+- Pokrycie `DTM_PL-KRON86-NH_TIFF` (format TIFF) jest szybsze, ale w starym układzie wysokości
+  (ok. 0,5 m niżej niż EVRF2007); używamy EVRF2007 (format ASCII), zgodnego z Geoportalem.
+- Usługa GUGiK `GetHbyXY`: parametr x = N (geodezyjne X), y = E (geodezyjne Y).
+- W chmurowym teście (grafika programowa, bez GPU) wygładzanie krawędzi (MSAA) spowalniało
+  przesuwanie – jest wyłączone (`antialias: false`).
+
 ## Ustalenia rozgrywki
 
 - Jeden dzień sezonu przy ×1 to ok. 10 minut realnych; dostępne ×5 i ×20, noc przewija się sama.
