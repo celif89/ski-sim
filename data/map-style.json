@@ -221,6 +221,16 @@
         "value": 0.7,
         "unit": "0–1",
         "source": "dużo przejazdów bez ratraka – muldy; do wyczucia (makieta A)"
+      },
+      "corduroyPeriodM": {
+        "value": 1.0,
+        "unit": "m",
+        "source": "odstęp prążków sztruksu na rysunku – stylizowany (w naturze ok. 2–3 cm, niewidoczne z góry); znikają przy < 2 px na prążek"
+      },
+      "groomerWidthM": {
+        "value": 4.6,
+        "unit": "m",
+        "source": "szerokość pasa ratraka (frez typowego ratraka ok. 4,5–6,5 m); styki pasów na rysunku i w scenie demonstracyjnej"
       }
     },
     "tracksHalfLifeS": {

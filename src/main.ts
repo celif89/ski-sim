@@ -35,6 +35,12 @@ import {
 import type { CalendarDate, HorizonDem, Location, MapDefinition } from './sim';
 import { createBaseMapCanvas } from './render/baseMap';
 import { TerrainRenderer } from './render/terrainRenderer';
+import { MoverLayer } from './render/movers';
+import { DemoScene } from './render/demoScene';
+import type { DemoPath } from './render/demoScene';
+import { WeatherFx } from './render/weatherFx';
+import { DevMenu } from './render/devMenu';
+import { compareRealPistes } from './sim/resort';
 import { BuildController } from './render/buildController';
 import type { MapContextData, MapLabel } from './render/resortLayer';
 import { parseLiftParams } from './sim/lifts';
@@ -489,6 +495,39 @@ async function start(): Promise<void> {
     })();
     requestState({ date: timePanel.date, hour: timePanel.hour });
 
+    // ---------------------------------------------------------------- obiekty ruchome, scena demonstracyjna, pogoda
+    const movers = new MoverLayer(world);
+    const demo = new DemoScene(simSettings.seed, terrain.groom, terrain.ski, style.illustrated.surface.groomerWidthM);
+    const weatherFx = new WeatherFx(screenLayer);
+    let demoOn = false;
+    const demoPaths = (): DemoPath[] => {
+      const { layout, analysis } = build.current;
+      const built = layout.pistes.map((p) => ({ points: (analysis.pistes.get(p.id)?.axis ?? []).filter((x) => !Number.isNaN(x.elevationM)) }));
+      if (built.some((b) => b.points.length >= 2)) return built;
+      // Brak tras w grze – prawdziwe trasy Pilska z OSM.
+      const osm = OSM_RESORTS[`../data/maps/${simSettings.mapName}/osm-resort.json`] as OsmResort | undefined;
+      if (!osm) return [];
+      const pp = parsePisteParams(pistesJson);
+      return compareRealPistes(osm, grid, pp, (e, n) => grid.puwg92ToLocal(e, n)).map((r) => ({ points: r.analysis.axis.filter((x) => !Number.isNaN(x.elevationM)) }));
+    };
+    const devMenu = new DevMenu(document.body, {
+      onDemo: (on, skiers) => {
+        demoOn = on;
+        if (on) demo.setup(demoPaths(), skiers);
+        else movers.setMovers([]);
+      },
+    });
+    {
+      // Adres ?demo=2000 – od razu scena demonstracyjna (do pomiarów).
+      const q = new URLSearchParams(window.location.search).get('demo');
+      if (q) {
+        const n = Number(q) || 50;
+        devMenu.setDemo(true, n);
+        demoOn = true;
+        demo.setup(demoPaths(), n);
+      }
+    }
+
     // ---------------------------------------------------------------- sterowanie
     input.onClick = (x, y) => {
       if (!profile.handleClick(x, y)) build.handleClick(x, y);
@@ -499,6 +538,10 @@ async function start(): Promise<void> {
     input.onDragMove = (x, y) => build.handleDragMove(x, y);
     input.onDragEnd = () => build.handleDragEnd();
     input.onKey = (code) => {
+      if (code === 'Backquote') {
+        devMenu.toggle();
+        return true;
+      }
       const digit = /^(Digit|Numpad)([1-9])$/.exec(code);
       if (digit) {
         const o = OVERLAY_KEYS[Number(digit[2]) - 1];
@@ -516,6 +559,7 @@ async function start(): Promise<void> {
     app.renderer.on('resize', (width: number, height: number) => camera.setViewport(width, height));
 
     app.ticker.add((ticker) => {
+      const frameStart = performance.now();
       timePanel.tick(performance.now());
       seasonTick(performance.now());
       input.update(ticker.deltaMS / 1000);
@@ -527,10 +571,16 @@ async function start(): Promise<void> {
       world.position.set(camera.viewportWidthPx / 2 - sg * camera.centerXM * scale, camera.viewportHeightPx / 2 - sg * camera.centerYM * scale);
       const nowS = performance.now() / 1000;
       const snowing = lastState && lastState.top.now.phase === 'snow' ? Math.min(1, lastState.top.now.precipitationMm) : 0;
+      const night = terrain.lighting().night;
+      if (demoOn) movers.setMovers(demo.step(ticker.deltaMS / 1000, night));
       terrain.update(camera, nowS, ticker.deltaMS / 1000, snowing);
+      movers.update(camera, night);
       profile.update(input.cursor);
       build.update(input.cursor, nowS);
       hud.update(camera, grid, input.cursor, lastSnow);
+      const wx = lastState?.top.now;
+      weatherFx.update(ticker.deltaMS / 1000, camera.viewportWidthPx, camera.viewportHeightPx, wx && wx.precipitationMm > 0 ? Math.min(1, 0.25 + wx.precipitationMm / 2) : 0, wx?.phase === 'rain', lastState?.cloudFraction ?? 0, wx?.windMs ?? 0);
+      devMenu.frame(performance.now() - frameStart, `kafle terenu: ${terrain.stats.visibleTiles} widocznych, ${terrain.stats.bakedTotal} policzonych · obiekty ruchome: ${movers.visibleCount} na ekranie`);
     });
 
     // Do podglądu i testów w przeglądarce.
@@ -546,6 +596,8 @@ async function start(): Promise<void> {
       getSnow: () => lastSnow,
       terrain,
       showTopo,
+      movers,
+      devMenu,
       build,
     };
   } catch (error) {

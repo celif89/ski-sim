@@ -84,7 +84,7 @@ function parseIllustration(sec: Record<string, unknown>): IllustrationStyle {
     trees: { spacingM: n(tr, 'spacingM', { min: 1 }), heightM: n(tr, 'heightM', { min: 1 }), widthRatio: n(tr, 'widthRatio', { min: 0.1, max: 2 }) },
     shrub: { spacingM: n(sh, 'spacingM', { min: 0.5 }), radius: n(sh, 'radius', { min: 0.05, max: 1 }), iconSpacingM: n(sh, 'iconSpacingM', { min: 0.5 }), iconRadius: n(sh, 'iconRadius', { min: 0.05, max: 1 }) },
     maskMetersPerPixel: n(sec, 'maskMetersPerPixel', { min: 0.25 }),
-    surface: { groomedMin: n(su, 'groomedMin', { min: 0, max: 1 }), skiedMin: n(su, 'skiedMin', { min: 0, max: 1 }), mogulsMin: n(su, 'mogulsMin', { min: 0, max: 1 }) },
+    surface: { groomedMin: n(su, 'groomedMin', { min: 0, max: 1 }), skiedMin: n(su, 'skiedMin', { min: 0, max: 1 }), mogulsMin: n(su, 'mogulsMin', { min: 0, max: 1 }), corduroyPeriodM: n(su, 'corduroyPeriodM', { min: 0.05 }), groomerWidthM: n(su, 'groomerWidthM', { min: 1 }) },
     tracksHalfLifeS: n(sec, 'tracksHalfLifeS', { min: 1 }),
     tracksSnowfallFactor: n(sec, 'tracksSnowfallFactor', { min: 0 }),
     reliefZFactor: n(sec, 'reliefZFactor', { min: 0.1, max: 10 }),

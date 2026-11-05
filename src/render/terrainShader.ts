@@ -32,8 +32,6 @@ out vec4 fragColor;
 uniform sampler2D uNormals;
 uniform sampler2D uCells;
 uniform sampler2D uMask;
-uniform sampler2D uGroom;
-uniform sampler2D uSki;
 
 uniform vec2 uMapSize;
 uniform vec2 uGrid;
@@ -102,9 +100,8 @@ vec4 cellAt(vec2 p) {
 }
 
 // ---------------------------------------------------------------- faktury śniegu
-vec3 surfaceDetail(vec3 col, vec2 p, int q, vec2 groomV, vec2 skiV, float shade) {
-  float groomed = length(groomV);
-  float skied = length(skiV);
+// Ślady (sztruks, muldy, narty) rysuje osobna nakładka TRACKS_FRAGMENT – zmieniają się co chwilę.
+vec3 surfaceDetail(vec3 col, vec2 p, int q, float shade) {
   // lód
   if (q == 6) {
     col = mix(col, vec3(0.80, 0.88, 0.97), 0.35);
@@ -117,34 +114,6 @@ vec3 surfaceDetail(vec3 col, vec2 p, int q, vec2 groomV, vec2 skiV, float shade)
     float m = fbm(p * 1.3, 43u);
     col *= mix(vec3(0.93, 0.93, 0.91), vec3(0.80, 0.81, 0.80), smoothstep(0.4, 0.7, m));
     return col;
-  }
-  // sztruks po ratraku: prążki w kierunku przejazdu, pasy co szerokość ratraka
-  if (groomed >= uSurfT.x) {
-    float ang = atan(groomV.y, groomV.x) * 0.5;
-    vec2 dir = vec2(cos(ang), sin(ang));
-    float s = dot(p, vec2(-dir.y, dir.x));
-    float stripe = 0.5 + 0.5 * cos(s * 6.2831853 / 0.45);
-    float lane = smoothstep(0.0, 0.06, abs(fract(s / 4.6) - 0.5) * 2.0 - 0.92);
-    col *= 1.0 - 0.07 * stripe * detailAmp(0.45) * min(1.0, groomed * 1.5) - 0.05 * lane * detailAmp(4.6);
-    return col;
-  }
-  // muldy (rozjeżdżony śnieg bez ratraka)
-  if (skied >= uSurfT.z) {
-    float e = 0.6;
-    float h0 = vnoise(p * 0.33, 47u);
-    float hx = vnoise((p + vec2(e, 0.0)) * 0.33, 47u);
-    float hy = vnoise((p + vec2(0.0, e)) * 0.33, 47u);
-    vec3 nn = normalize(vec3(-(hx - h0) * 6.0, -(hy - h0) * 6.0, 1.0));
-    col *= mix(1.0, 0.8 + 0.4 * clamp(dot(nn, uLight), 0.0, 1.0), detailAmp(3.0));
-    return col;
-  }
-  // ślady nart na puchu
-  if (q == 1 && skied >= uSurfT.y) {
-    float ang = atan(skiV.y, skiV.x) * 0.5;
-    vec2 dir = vec2(cos(ang), sin(ang));
-    float s = dot(p, vec2(-dir.y, dir.x)) + (vnoise(p * 0.15, 53u) - 0.5) * 3.0;
-    float line = 1.0 - smoothstep(0.03, 0.08, abs(fract(s / 1.7) - 0.5) - 0.38);
-    col *= 1.0 - 0.10 * line * detailAmp(1.7) * min(1.0, skied * 2.0);
   }
   // puch: miękki, iskrzący się
   if (q == 1) {
@@ -298,8 +267,6 @@ void main() {
   float depthCm = uHasSnow > 0.5 ? cell.r * 255.0 : 120.0;
   int q = uHasSnow > 0.5 ? int(cell.g * 255.0 / 16.0 + 0.5) : 3;
   vec4 msk = texture(uMask, uv);
-  vec2 groomV = (texture(uGroom, uv).rg - 0.5) * 2.0;
-  vec2 skiV = (texture(uSki, uv).rg - 0.5) * 2.0;
 
   // Pokrycie śniegiem: gruby – biały, cienki – płaty, brak – trawa.
   float n1 = fbm(p * 0.08, 11u);
@@ -316,7 +283,7 @@ void main() {
   // Faktury śniegu (poziom 3, częściowo 2).
   float detail = clamp(uLod.z + 0.35 * uLod.y, 0.0, 1.0);
   if (detail > 0.01 && cover > 0.02) {
-    vec3 dcol = surfaceDetail(col, p, q, groomV, skiV, shade);
+    vec3 dcol = surfaceDetail(col, p, q, shade);
     col = mix(col, dcol, detail * cover);
   }
 
@@ -394,8 +361,9 @@ uniform float uCellM;
 uniform float uMpp;
 uniform vec3 uLight;
 uniform vec3 uSurfT;
+uniform vec2 uCord;
 ${NOISE_GLSL}
-float detailAmp(float periodM) { return clamp((periodM / uMpp - 3.0) / 3.0, 0.0, 1.0); }
+float detailAmp(float periodM) { return clamp((periodM / uMpp - 2.0) / 2.0, 0.0, 1.0); }
 void main() {
   vec2 p = vWorld;
   vec2 uv = p / uMapSize;
@@ -407,28 +375,36 @@ void main() {
   vec4 cell = texelFetch(uCells, clamp(ivec2(floor(p / uCellM)), ivec2(0), ivec2(uGrid) - 1), 0);
   int q = int(cell.g * 255.0 / 16.0 + 0.5);
   if (q == 0 || q == 7 || cell.r * 255.0 < 3.0) { fragColor = vec4(1.0); return; }
+  // Progi z płynnym przejściem (bufor śladów ma 2 m/px – twardy próg dawałby schodki).
+  float kg = (q == 6 || q == 5) ? 0.0 : smoothstep(uSurfT.x - 0.12, uSurfT.x + 0.12, gi);
+  float km = q == 6 ? 0.0 : smoothstep(uSurfT.z - 0.12, uSurfT.z + 0.12, si) * (1.0 - kg);
+  float kt = smoothstep(uSurfT.y - 0.08, uSurfT.y + 0.08, si) * (1.0 - kg) * (1.0 - km);
   float f = 1.0;
-  if (gi >= uSurfT.x && q != 6 && q != 5) {
-    float ang = atan(g.y, g.x) * 0.5;
+  if (kg > 0.0) {
+    // Kierunek zaokrąglony do 1/32 półobrotu: prążki liczone od początku mapy (km) – drobne wahania
+    // kierunku po interpolacji przesuwałyby je o cały okres (falowanie).
+    float ang = floor(atan(g.y, g.x) * 0.5 / 0.0981748 + 0.5) * 0.0981748;
     vec2 dir = vec2(cos(ang), sin(ang));
     float s = dot(p, vec2(-dir.y, dir.x));
-    float stripe = 0.5 + 0.5 * cos(s * 6.2831853 / 0.45);
-    float lane = smoothstep(0.0, 0.06, abs(fract(s / 4.6) - 0.5) * 2.0 - 0.92);
-    float k = min(1.0, (gi - uSurfT.x) / (1.0 - uSurfT.x) * 2.0 + 0.3);
-    f = 1.0 - (0.09 * stripe * detailAmp(0.45) + 0.06 * lane * detailAmp(4.6)) * k;
-  } else if (si >= uSurfT.z && q != 6) {
+    float stripe = 0.5 + 0.5 * cos(s * 6.2831853 / uCord.x);
+    float lane = smoothstep(0.0, 0.06, abs(fract(s / uCord.y) - 0.5) * 2.0 - 0.92);
+    // Wyrównany śnieg odrobinę ciemniejszy (gładki, bez iskrzenia) + prążki i styki pasów.
+    f -= (0.03 + 0.11 * stripe * detailAmp(uCord.x) + 0.07 * lane * detailAmp(uCord.y)) * kg;
+  }
+  if (km > 0.0) {
     float e = 0.6;
     float h0 = vnoise(p * 0.33, 47u);
     float hx = vnoise((p + vec2(e, 0.0)) * 0.33, 47u);
     float hy = vnoise((p + vec2(0.0, e)) * 0.33, 47u);
     vec3 nn = normalize(vec3(-(hx - h0) * 6.0, -(hy - h0) * 6.0, 1.0));
-    f = mix(1.0, 0.82 + 0.25 * clamp(dot(nn, uLight), 0.0, 1.0), detailAmp(3.0));
-  } else if (si >= uSurfT.y) {
-    float ang = atan(sk.y, sk.x) * 0.5;
+    f *= mix(1.0, 0.82 + 0.25 * clamp(dot(nn, uLight), 0.0, 1.0), detailAmp(3.0) * km);
+  }
+  if (kt > 0.0) {
+    float ang = floor(atan(sk.y, sk.x) * 0.5 / 0.0981748 + 0.5) * 0.0981748;
     vec2 dir = vec2(cos(ang), sin(ang));
     float s = dot(p, vec2(-dir.y, dir.x)) + (vnoise(p * 0.15, 53u) - 0.5) * 3.0;
     float line = 1.0 - smoothstep(0.03, 0.08, abs(fract(s / 1.7) - 0.5) - 0.38);
-    f = 1.0 - 0.12 * line * detailAmp(1.7) * min(1.0, si * 2.0);
+    f *= 1.0 - 0.12 * line * detailAmp(1.7) * min(1.0, si * 2.0) * kt;
   }
   fragColor = vec4(vec3(min(f, 1.0)), 1.0);
 }

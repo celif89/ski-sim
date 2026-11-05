@@ -31,7 +31,7 @@ export interface IllustrationStyle {
   /** Rozdzielczość maski i śladów [m/px]. */
   maskMetersPerPixel: number;
   /** Progi faktur: sztruks, ślady nart, muldy (0–1). */
-  surface: { groomedMin: number; skiedMin: number; mogulsMin: number };
+  surface: { groomedMin: number; skiedMin: number; mogulsMin: number; corduroyPeriodM: number; groomerWidthM: number };
   /** Zanik śladów: czas połowicznego zaniku [s] i przyspieszenie przy opadzie śniegu. */
   tracksHalfLifeS: number;
   tracksSnowfallFactor: number;
@@ -47,8 +47,10 @@ export class TrackBuffer {
   readonly heightPx: number;
   readonly data: Uint8Array;
   readonly source: BufferImageSource;
-  private dirtyMin = Infinity;
-  private dirtyMax = -Infinity;
+  /** Stan prostego generatora do rozproszonego zaokrąglania (tylko wygląd). */
+  private dither = 1;
+  /** Wiersze zmienione od ostatniej wysyłki do karty graficznej. */
+  private readonly rowDirty: Uint8Array;
   private decayRow = 0;
   /** Wiersze, w których są ślady (pozostałe pomijamy przy zanikaniu). */
   private readonly rowActive: Uint8Array;
@@ -62,6 +64,7 @@ export class TrackBuffer {
     this.heightPx = Math.ceil(heightM / metersPerPixel);
     this.data = new Uint8Array(this.widthPx * this.heightPx * 4);
     this.rowActive = new Uint8Array(this.heightPx);
+    this.rowDirty = new Uint8Array(this.heightPx);
     for (let i = 0; i < this.data.length; i += 4) {
       this.data[i] = 128;
       this.data[i + 1] = 128;
@@ -87,10 +90,10 @@ export class TrackBuffer {
     const tG = 128 + 127 * vy;
     const mpp = this.metersPerPixel;
     const half = widthM / 2;
-    const x0 = Math.max(0, Math.floor((Math.min(ax, bx) - half) / mpp));
-    const x1 = Math.min(this.widthPx - 1, Math.ceil((Math.max(ax, bx) + half) / mpp));
-    const y0 = Math.max(0, Math.floor((Math.min(ay, by) - half) / mpp));
-    const y1 = Math.min(this.heightPx - 1, Math.ceil((Math.max(ay, by) + half) / mpp));
+    const x0 = Math.max(0, Math.floor((Math.min(ax, bx) - half) / mpp) - 1);
+    const x1 = Math.min(this.widthPx - 1, Math.ceil((Math.max(ax, bx) + half) / mpp) + 1);
+    const y0 = Math.max(0, Math.floor((Math.min(ay, by) - half) / mpp) - 1);
+    const y1 = Math.min(this.heightPx - 1, Math.ceil((Math.max(ay, by) + half) / mpp) + 1);
     const ux = dx / len;
     const uy = dy / len;
     for (let py = y0; py <= y1; py++) {
@@ -99,14 +102,16 @@ export class TrackBuffer {
         const wy = (py + 0.5) * mpp - ay;
         const along = wx * ux + wy * uy;
         if (along < -mpp || along > len + mpp) continue;
-        if (Math.abs(-wx * uy + wy * ux) > half) continue;
+        // Brzeg miękki na szerokości jednego piksela bufora (bez schodków przy 2 m/px).
+        const cover = Math.min(1, Math.max(0, (half - Math.abs(-wx * uy + wy * ux)) / mpp + 0.5));
+        if (cover <= 0) continue;
+        const k = strength * cover;
         const o = (py * this.widthPx + px) * 4;
-        this.data[o] += (tR - this.data[o]) * strength;
-        this.data[o + 1] += (tG - this.data[o + 1]) * strength;
+        this.data[o] += (tR - this.data[o]) * k;
+        this.data[o + 1] += (tG - this.data[o + 1]) * k;
       }
     }
-    this.dirtyMin = Math.min(this.dirtyMin, y0);
-    this.dirtyMax = Math.max(this.dirtyMax, y1);
+    this.rowDirty.fill(1, y0, y1 + 1);
     this.rowActive.fill(1, y0, y1 + 1);
   }
 
@@ -124,27 +129,46 @@ export class TrackBuffer {
         const a = this.data[o];
         const b = this.data[o + 1];
         if (a === 128 && b === 128) continue;
-        // Zaokrąglanie ku 128, żeby ślad na pewno zniknął.
-        const na = 128 + Math.trunc((a - 128) * factor);
-        const nb = 128 + Math.trunc((b - 128) * factor);
+        // Zaokrąglanie losowe (rozproszone): średnio dokładnie × factor, a ślad i tak w końcu znika.
+        this.dither = (Math.imul(this.dither, 1664525) + 1013904223) >>> 0;
+        const r = this.dither / 4294967296;
+        const va = (a - 128) * factor;
+        const vb = (b - 128) * factor;
+        const na = 128 + Math.sign(va) * Math.floor(Math.abs(va) + r);
+        const nb = 128 + Math.sign(vb) * Math.floor(Math.abs(vb) + r);
         this.data[o] = na;
         this.data[o + 1] = nb;
         if (na !== 128 || nb !== 128) any = true;
       }
       if (!any) this.rowActive[py] = 0;
-      this.dirtyMin = Math.min(this.dirtyMin, py);
-      this.dirtyMax = Math.max(this.dirtyMax, py);
+      this.rowDirty[py] = 1;
     }
   }
 
-  /** Wysyła zmienione wiersze do karty graficznej. */
-  flush(): void {
-    if (this.dirtyMax < this.dirtyMin) return;
-    const from = this.dirtyMin * this.widthPx;
-    const to = (this.dirtyMax + 1) * this.widthPx;
-    this.source.update(from, to - from);
-    this.dirtyMin = Infinity;
-    this.dirtyMax = -Infinity;
+  /**
+   * Wysyła do karty graficznej zmienione wiersze z pasa yMinM–yMaxM (widoczny wycinek); wiersze
+   * poza nim czekają, aż staną się widoczne. Przerwy krótsze niż 32 wiersze są scalane (jedno
+   * wywołanie zamiast wielu małych).
+   */
+  flush(yMinM = 0, yMaxM = Infinity): void {
+    const r0 = Math.max(0, Math.floor(yMinM / this.metersPerPixel));
+    const r1 = Math.min(this.heightPx - 1, Math.ceil(yMaxM / this.metersPerPixel));
+    let start = -1;
+    let last = -1;
+    const send = () => {
+      this.source.update(start * this.widthPx, (last + 1) * this.widthPx);
+      this.rowDirty.fill(0, start, last + 1);
+    };
+    for (let r = r0; r <= r1; r++) {
+      if (!this.rowDirty[r]) continue;
+      if (start >= 0 && r - last > 32) {
+        send();
+        start = -1;
+      }
+      if (start < 0) start = r;
+      last = r;
+    }
+    if (start >= 0) send();
   }
 
   /** Intensywność śladu w punkcie (0–1) – do testów i podglądu. */
@@ -189,6 +213,7 @@ export class TerrainRenderer {
   private readonly tiles = new Map<string, Tile>();
   private readonly levelMpp: number[];
   private gen = 0;
+  private flushTimerS = 0;
   private frame = 0;
   private rotatedBaked: boolean | null = null;
   private sunElevationDeg = 30;
@@ -252,7 +277,6 @@ export class TerrainRenderer {
     this.maskSource = new CanvasSource({ resource: this.maskCanvas, scaleMode: 'linear', alphaMode: 'no-premultiply-alpha' });
     this.groom = new TrackBuffer(W, H, style.maskMetersPerPixel);
     this.ski = new TrackBuffer(W, H, style.maskMetersPerPixel);
-    const neutral = new BufferImageSource({ resource: new Uint8Array([128, 128, 128, 255]), width: 1, height: 1, format: 'rgba8unorm', alphaMode: 'no-premultiply-alpha' });
 
     const quad = () =>
       new Geometry({
@@ -285,7 +309,7 @@ export class TerrainRenderer {
       geometry: quad(),
       shader: Shader.from({
         gl: { vertex: TERRAIN_VERTEX, fragment: TERRAIN_FRAGMENT, name: 'terrain-a-bake' },
-        resources: { uNormals: normalSource, uCells: this.cellSource, uMask: this.maskSource, uGroom: neutral, uSki: neutral, terrainUniforms: bakeUniforms },
+        resources: { uNormals: normalSource, uCells: this.cellSource, uMask: this.maskSource, terrainUniforms: bakeUniforms },
       }),
     });
     this.bakeRoot.addChild(this.bakeMesh);
@@ -304,6 +328,7 @@ export class TerrainRenderer {
             uMpp: { value: 1, type: 'f32' },
             uLight: { value: new Float32Array([0, 0, 1]), type: 'vec3<f32>' },
             uSurfT: { value: new Float32Array([t.surface.groomedMin, t.surface.skiedMin, t.surface.mogulsMin]), type: 'vec3<f32>' },
+            uCord: { value: new Float32Array([t.surface.corduroyPeriodM, t.surface.groomerWidthM]), type: 'vec2<f32>' },
           },
         },
       }),
@@ -557,8 +582,17 @@ export class TerrainRenderer {
     const perPass = Math.pow(0.5, (Math.max(dtS, 1e-3) * (this.groom.heightPx / rowsPerCall)) / half);
     this.groom.decayStep(perPass, rowsPerCall);
     this.ski.decayStep(perPass, rowsPerCall);
-    this.groom.flush();
-    this.ski.flush();
+    // Wysyłka do karty graficznej: tylko gdy ślady widać, najwyżej 10 razy na sekundę, tylko widoczny pas.
+    this.flushTimerS += dtS;
+    if (this.tracksMesh.visible && this.flushTimerS >= 0.1) {
+      this.flushTimerS = 0;
+      const a = camera.screenToWorld(0, 0);
+      const b = camera.screenToWorld(camera.viewportWidthPx, camera.viewportHeightPx);
+      const y0 = Math.min(a.yM, b.yM) - 20;
+      const y1 = Math.max(a.yM, b.yM) + 20;
+      this.groom.flush(y0, y1);
+      this.ski.flush(y0, y1);
+    }
   }
 }
 
