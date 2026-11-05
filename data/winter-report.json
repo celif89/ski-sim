@@ -37,6 +37,11 @@
       "value": 30,
       "unit": "cm",
       "source": "pokrywa wystarczająca do jazdy po naturalnym śniegu (przyjęte; Łajczak 1996 podaje 50 cm jako bezpieczne dla narciarstwa)"
+    },
+    "distributionWinters": {
+      "value": 100,
+      "unit": "zim",
+      "source": "zimy z generatora do porównania rozkładu z prawdziwymi zimami 2001–2025 (model w punkcie stacji – szybki; 30 zim to za mało, żeby ocenić skrajne zimy)"
     }
   },
   "mapDates": {
@@ -145,6 +150,11 @@
         "unit": "–",
         "source": "Kasten i Czeplak 1980"
       }
-    ]
+    ],
+    "maxSubstitutedTemperatureDays": {
+      "value": 10,
+      "unit": "dni",
+      "source": "zima liczy się do kalibracji, jeśli temperatura z Bielska-Białej (zamiast Zawoi/Lalik) uzupełnia najwyżej tyle dni; od ok. 2020 r. Zawoja i Laliki nie mierzą temperatury"
+    }
   }
 }

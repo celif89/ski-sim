@@ -100,9 +100,11 @@ i na górze ośrodka – widać, kiedy na górze pada śnieg, a na dole deszcz) 
 ### Raport zimy („przewiń zimę”)
 
 https://celif89.github.io/ski-sim/raport-zimy.html – na górze werdykt ZGODNE / NIEZGODNE Z POMIARAMI:
-model śniegu policzony na prawdziwej pogodzie 28 zim w Korbielowie, Zawoi i Lalikach porównany
-z grubością śniegu mierzoną codziennie przez IMGW (średni błąd w cm, różnica długości zalegania
-w dniach). Niżej: wykresy każdej z tych zim (pomiar i model), sprawdzenie promieniowania na
+model śniegu policzony na prawdziwej pogodzie 49 zim (2001–2021) w Korbielowie, Zawoi i Lalikach
+porównany z grubością śniegu mierzoną codziennie przez IMGW (średni błąd w cm, różnica długości
+zalegania w dniach). Niżej: wykresy każdej z tych zim (pomiar i model), zimy z generatora obok
+prawdziwych zim 2001–2025 (dni z pokrywą, maksimum, pojawienie się i zanik pokrywy – każda zima
+jako kropka, żeby było widać też słabe zimy), sprawdzenie promieniowania na
 pomiarach z Bielska-Białej i Kasprowego Wierchu, grubość śniegu dzień po dniu w 8 punktach
 kontrolnych (zima 2026/27 na tle 30 zim), mapy grubości 1 XII – 1 IV, mapa liczby dni z pokrywą
 ≥ 30 cm (średnio z 30 zim), rozkład śniegu z wysokością obok pomiarów Łajczaka (Pilsko 1993/94),

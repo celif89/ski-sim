@@ -34,9 +34,9 @@ import { validateRadiation } from '../sim/radiationValidation';
 import { parseSimSettings } from '../sim/settings';
 import type { SnowBalance, SnowParams } from '../sim/snow';
 import { SNOW_QUALITY_CODES, SNOW_QUALITY_NAMES, parseSnowParams } from '../sim/snow';
-import type { CalibrationSummary, StationData, WinterComparison } from '../sim/snowCalibration';
-import { compareStations } from '../sim/snowCalibration';
-import { runPointSnow } from '../sim/snowPoint';
+import type { CalibrationSummary, StationData, WinterComparison, WinterSnowStats, WinterWeatherStats } from '../sim/snowCalibration';
+import { compareStations, hasCompleteSnowRecord, observedDays, winterSnowStats, winterWeatherStats, withMeasuredTemperature } from '../sim/snowCalibration';
+import { observedToDailyWeather, profileAtPoint, runPointSnow } from '../sim/snowPoint';
 import { seasonWeather } from '../sim/environment';
 import { buildSolarCache, createSnowDomain } from '../sim/snowSeason';
 import { computeHillshade } from '../sim/terrainAnalysis';
@@ -63,10 +63,10 @@ interface Param {
 }
 const R = reportJson as unknown as {
   verdict: { maxMaeCm: Param; maxCoverDaysBias: Param; maxStationBiasCm: Param };
-  generatedWinters: { count: Param; firstSeasonStartYear: Param; runUntilMonth: Param; deepCoverThresholdCm: Param };
+  generatedWinters: { count: Param; firstSeasonStartYear: Param; runUntilMonth: Param; deepCoverThresholdCm: Param; distributionWinters: Param };
   mapDates: { dates: string[] };
   points: { list: { id: string; name: string; eastingM: number; northingM: number; note: string }[] };
-  calibration: { before: { file: 'snow' | 'radiation'; param: string; label: string; value: number; unit: string; source: string }[] };
+  calibration: { before: { file: 'snow' | 'radiation'; param: string; label: string; value: number; unit: string; source: string }[]; maxSubstitutedTemperatureDays: Param };
 };
 const LAJ = lajczakJson as unknown as {
   sites: { name: string; elevationM: number; meltOut1994: string; meltOutNormal: string; coverDays1994: number; coverDaysNormal: number; maxDepthNormalCm?: number; maxDepth1993Cm?: number; maxDepth1994Cm?: number }[];
@@ -269,7 +269,9 @@ async function main(): Promise<void> {
 
   // ---- 1. Kalibracja na stacjach IMGW
   log('Kalibracja: model na rzeczywistej pogodzie stacji IMGW…');
-  const stations = (JSON.parse(readFileSync(new URL('../../data/calibration/imgw-stations.json', import.meta.url), 'utf8')) as { stations: StationData[] }).stations;
+  const allStations = (JSON.parse(readFileSync(new URL('../../data/calibration/imgw-stations.json', import.meta.url), 'utf8')) as { stations: StationData[] }).stations;
+  // Kalibracja – tylko zimy z temperaturą mierzoną na miejscu lub na sąsiedniej stacji.
+  const stations = withMeasuredTemperature(allStations, R.calibration.maxSubstitutedTemperatureDays.value);
   const tCal = performance.now();
   const cal = compareStations(stations, profile, wp, sp, rp);
   const calMs = performance.now() - tCal;
@@ -290,31 +292,35 @@ async function main(): Promise<void> {
   const rad = validateRadiation(radStations, rp);
   const radBefore = validateRadiation(radStations, before.rp);
 
-  // ---- 2b. Cały łańcuch: generator pogody + model śniegu w punktach stacji (teren płaski, otwarty)
-  log('Cały łańcuch: wygenerowana pogoda + model w punktach stacji…');
-  const chainWinters = WINTERS_OVERRIDE ?? R.generatedWinters.count.value;
-  const chain = stations.map((stn) => {
-    const obs = cal.winters.filter((w) => w.station === stn.name);
-    const obsCover = mean(obs.map((w) => w.observedCoverDays));
-    const obsMax = mean(obs.map((w) => w.observedMaxCm));
-    const obsCoverSd = Math.sqrt(mean(obs.map((w) => (w.observedCoverDays - obsCover) ** 2)));
-    const cover: number[] = [];
-    const maxes: number[] = [];
-    for (let i = 0; i < chainWinters; i++) {
-      const weather = seasonWeather(profile, wp, seed, R.generatedWinters.firstSeasonStartYear.value + i);
-      const run = runPointSnow({ elevationM: stn.elevationM, latDeg: stn.latDeg, lonDeg: stn.lonDeg, timeZone: { standardOffsetHours: 1, euDaylightSaving: true }, weather: weather.slice(0, 245), profile, weatherParams: wp, snowParams: sp, radiationParams: rp, weatherAtPointElevation: false });
-      let c = 0;
-      let mx = 0;
-      run.dates.forEach((d, j) => {
-        if (d.month < 11 && d.month > 4) return;
-        const cm = run.depthM[j] * 100;
-        if (cm >= sp.coverDepthM * 100) c++;
-        if (cm > mx) mx = cm;
-      });
-      cover.push(c);
-      maxes.push(mx);
+  // ---- 2b. Zimy z generatora a prawdziwe zimy 2001–2025 (teren płaski przy stacji)
+  log('Zimy z generatora a prawdziwe zimy: model w punktach stacji…');
+  const distWinters = WINTERS_OVERRIDE ? Math.max(WINTERS_OVERRIDE, 10) : R.generatedWinters.distributionWinters.value;
+  const TZ_PL = { standardOffsetHours: 1, euDaylightSaving: true };
+  const genWeather = Array.from({ length: distWinters }, (_, i) => seasonWeather(profile, wp, seed, R.generatedWinters.firstSeasonStartYear.value + i).slice(0, 245));
+  const dist = allStations.map((stn) => {
+    const loc = { latDeg: stn.latDeg, lonDeg: stn.lonDeg, timeZone: TZ_PL };
+    const complete = stn.winters.filter((w) => hasCompleteSnowRecord(w, R.calibration.maxSubstitutedTemperatureDays.value));
+    const obs: WinterSnowStats[] = [];
+    const real: WinterSnowStats[] = [];
+    const wxObs: WinterWeatherStats[] = [];
+    for (const w of complete) {
+      const weather = observedToDailyWeather(observedDays(w), profile, wp);
+      const dates = weather.map((d) => d.date);
+      obs.push(winterSnowStats(dates, w.snowDepthCm));
+      const run = runPointSnow({ elevationM: stn.elevationM, latDeg: stn.latDeg, lonDeg: stn.lonDeg, timeZone: TZ_PL, weather, profile, weatherParams: wp, snowParams: sp, radiationParams: rp });
+      real.push(winterSnowStats(run.dates, run.depthM.map((x) => x * 100)));
     }
-    return { name: stn.name, elevationM: stn.elevationM, winters: obs.length, obsCover, obsCoverSd, obsMax, genCover: mean(cover), genMax: mean(maxes) };
+    // Pogoda – ze wszystkich zim (także tych bez pełnego pomiaru śniegu).
+    for (const w of stn.winters) wxObs.push(winterWeatherStats(observedToDailyWeather(observedDays(w), profile, wp), stn.elevationM, profileAtPoint(profile, stn.elevationM), wp, loc));
+    const gen: WinterSnowStats[] = [];
+    const wxGen: WinterWeatherStats[] = [];
+    for (const weather of genWeather) {
+      const run = runPointSnow({ elevationM: stn.elevationM, latDeg: stn.latDeg, lonDeg: stn.lonDeg, timeZone: TZ_PL, weather, profile, weatherParams: wp, snowParams: sp, radiationParams: rp, weatherAtPointElevation: false });
+      gen.push(winterSnowStats(run.dates, run.depthM.map((x) => x * 100)));
+      wxGen.push(winterWeatherStats(weather, stn.elevationM, profile, wp, loc));
+    }
+    const years = complete.map((w) => Number(w.start.slice(0, 4)));
+    return { name: stn.name, elevationM: stn.elevationM, years, obs, real, gen, wxObs, wxGen };
   });
 
   // ---- 3. Mapa: teren, horyzont, promieniowanie bezchmurne
@@ -705,6 +711,62 @@ async function main(): Promise<void> {
     .join('');
   const mizIdx = points.findIndex((p) => p.id === 'miziowa');
 
+  // ---- rozkład zim: wykres kropkowy i tabele
+  const stripChart = (rows: { label: string; color: string; values: number[] }[], xMax: number, unit: string) => {
+    const W = 520;
+    const rowH = 26;
+    const pad = { l: 170, r: 14, t: 8, b: 26 };
+    const H = pad.t + rows.length * rowH + pad.b;
+    const x = (v: number) => pad.l + ((W - pad.l - pad.r) * Math.min(v, xMax)) / xMax;
+    const step = niceStep(xMax, 5);
+    let svg = `<svg viewBox="0 0 ${W} ${H}" class="chart small" role="img">`;
+    for (let v = 0; v <= xMax + 1e-9; v += step) svg += `<line x1="${x(v)}" x2="${x(v)}" y1="${pad.t}" y2="${H - pad.b}" class="grid"/><text x="${x(v)}" y="${H - 8}" class="tick" text-anchor="middle">${fmt(v, 0)}</text>`;
+    rows.forEach((r, i) => {
+      const yc = pad.t + rowH * (i + 0.5);
+      svg += `<text x="${pad.l - 8}" y="${yc + 4}" class="tick" text-anchor="end">${esc(r.label)}</text>`;
+      r.values.forEach((v, j) => {
+        const jitter = (((j * 7919) % 13) / 12 - 0.5) * (rowH * 0.55);
+        svg += `<circle cx="${x(v).toFixed(1)}" cy="${(yc + jitter).toFixed(1)}" r="2.6" fill="${r.color}" opacity="0.55"/>`;
+      });
+      const m = mean(r.values);
+      svg += `<line x1="${x(m)}" x2="${x(m)}" y1="${yc - rowH * 0.42}" y2="${yc + rowH * 0.42}" stroke="var(--fg)" stroke-width="2.5"/>`;
+    });
+    svg += `<text x="${W - pad.r}" y="${H - 8}" class="unit" text-anchor="end">${esc(unit)}</text></svg>`;
+    return svg;
+  };
+  const seasonRef: CalendarDate = { year: 2001, month: wp.seasonStartMonth, day: 1 };
+  const dayLabel = (i: number) => (Number.isNaN(i) ? '–' : dateLabel(addDays(seasonRef, Math.round(i))));
+  const sortedOf = (a: number[]) => [...a].sort((x, y) => x - y);
+  const sdOf = (a: number[]) => Math.sqrt(mean(a.map((x) => (x - mean(a)) ** 2)));
+  const WEAK_WINTER_DAYS = 50;
+  const distRow = (label: string, list: WinterSnowStats[]) => {
+    const cover = sortedOf(list.map((w) => w.coverDays));
+    const mx = sortedOf(list.map((w) => w.maxCm));
+    const first = sortedOf(list.filter((w) => w.firstCoverDay >= 0).map((w) => w.firstCoverDay));
+    const last = sortedOf(list.filter((w) => w.lastCoverDay >= 0).map((w) => w.lastCoverDay));
+    return `<tr><td>${label}</td><td>${list.length}</td><td><b>${fmt(mean(cover), 0)}</b> ± ${fmt(sdOf(cover), 0)}</td><td>${fmt(quantile(cover, 0.1), 0)} / ${fmt(quantile(cover, 0.9), 0)}</td><td>${fmt(cover[0], 0)}</td><td>${fmt((100 * cover.filter((c) => c < WEAK_WINTER_DAYS).length) / cover.length, 0)} %</td><td><b>${fmt(mean(mx), 0)}</b> ± ${fmt(sdOf(mx), 0)}</td><td>${fmt(quantile(mx, 0.1), 0)} / ${fmt(quantile(mx, 0.9), 0)}</td><td>${dayLabel(mean(first))} <small>${dayLabel(quantile(first, 0.1))}–${dayLabel(quantile(first, 0.9))}</small></td><td>${dayLabel(mean(last))} <small>${dayLabel(quantile(last, 0.1))}–${dayLabel(quantile(last, 0.9))}</small></td></tr>`;
+  };
+  const distHtml = dist
+    .map((d) => {
+      const rows = (f: (w: WinterSnowStats) => number) => [
+        { label: `pomiar (${d.obs.length} zim)`, color: 'var(--obs)', values: d.obs.map(f) },
+        { label: 'model – pogoda zmierzona', color: 'var(--c1)', values: d.real.map(f) },
+        { label: `model – generator (${d.gen.length})`, color: 'var(--c2)', values: d.gen.map(f) },
+      ];
+      const maxAll = Math.max(...[...d.obs, ...d.real, ...d.gen].map((w) => w.maxCm));
+      return `<div class="card" style="margin-top:12px"><b>${esc(d.name)}</b> <span class="muted">${fmt(d.elevationM, 0)} m n.p.m. · zimy z pełnym pomiarem śniegu: ${Math.min(...d.years)}/${String(Math.min(...d.years) + 1).slice(-2)}–${Math.max(...d.years)}/${String(Math.max(...d.years) + 1).slice(-2)}</span>
+<div class="grid2"><div><p class="small">Dni z pokrywą ≥ 1 cm (XI–IV); kreska – średnia</p>${stripChart(rows((w) => w.coverDays), 181, 'dni')}</div>
+<div><p class="small">Największa grubość w sezonie</p>${stripChart(rows((w) => w.maxCm), Math.ceil(maxAll / 20) * 20, 'cm')}</div></div>
+<div class="table-wrap"><table><thead><tr><th></th><th>zim</th><th>dni z pokrywą</th><th>10 % / 90 % zim</th><th>najmniej</th><th>zimy &lt; ${WEAK_WINTER_DAYS} dni</th><th>maks. grubość [cm]</th><th>10 % / 90 %</th><th>pojawienie się (10–90 %)</th><th>zanik (10–90 %)</th></tr></thead><tbody>
+${distRow('pomiar IMGW', d.obs)}${distRow('model – prawdziwa pogoda', d.real)}${distRow('model – generator', d.gen)}</tbody></table></div></div>`;
+    })
+    .join('');
+  const wxCells = (list: WinterWeatherStats[]) => {
+    const m = (f: (w: WinterWeatherStats) => number, dg = 0) => fmt(mean(list.map(f)), dg);
+    return `<td>${m((w) => w.tMeanC, 2)}</td><td>${m((w) => w.precipMm)}</td><td>${m((w) => w.wetDays)}</td><td>${m((w) => w.precipWeightedTC, 2)}</td><td>${m((w) => w.snowfallMm)}</td><td>${m((w) => w.positiveDegreeDays)}</td><td>${m((w) => w.thawDays)}</td>`;
+  };
+  const wxRows = dist.map((d) => `<tr><td rowspan="2">${esc(d.name)}</td><td>pomiar</td>${wxCells(d.wxObs)}</tr><tr><td>generator</td>${wxCells(d.wxGen)}</tr>`).join('');
+
   const totalS = (performance.now() - tStart) / 1000;
   const html = `<!doctype html>
 <html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -738,7 +800,7 @@ ul.plain{margin:6px 0 6px 18px;padding:0}
 <p class="muted">Wygenerowano ${new Date().toISOString().slice(0, 10)} · seed ${seed} · model śniegu naturalnego (bez narciarzy, naśnieżania i ratraków) · ${winters} zim gry od ${firstYear}/${String(firstYear + 1).slice(-2)}</p>
 
 <div class="verdict"><b class="big">${verdictOk ? 'ZGODNE Z POMIARAMI' : 'NIEZGODNE Z POMIARAMI'}</b>
-Model policzony na rzeczywistej pogodzie ${cal.winters.length} zim (${stationNames.join(', ')}; 2009/10–2018/19) i porównany z grubością śniegu mierzoną codziennie przez IMGW:
+Model policzony na rzeczywistej pogodzie ${cal.winters.length} zim (${stationNames.join(', ')}; ${Math.min(...cal.winters.map((w) => w.start.year))}/${String(Math.min(...cal.winters.map((w) => w.start.year)) + 1).slice(-2)}–${Math.max(...cal.winters.map((w) => w.start.year))}/${String(Math.max(...cal.winters.map((w) => w.start.year)) + 1).slice(-2)}) i porównany z grubością śniegu mierzoną codziennie przez IMGW:
 <ul>${checks.map((c) => `<li>${c.ok ? '✓' : '✗'} ${c.text}</li>`).join('')}</ul></div>
 <div class="kpis">
 <div class="kpi"><b>${fmt(cal.maeCm)} cm</b><span>średni błąd grubości (przed kalibracją ${fmt(calBefore.maeCm)} cm)</span></div>
@@ -759,12 +821,12 @@ ${calMetricsRow('przed kalibracją', calBefore)}${calMetricsRow('<b>po kalibracj
 ${calCharts}
 <p class="muted small">Czarne kropki – pomiar IMGW, niebieska linia – model. Temperatura dla Korbielowa (posterunek opadowy) przeniesiona z Zawoi i Lalik z poprawką na wysokość.</p>
 
-<h3>Cały łańcuch: generator pogody + model śniegu</h3>
-<p>To samo miejsce (teren płaski przy stacji), ale pogoda nie z pomiarów, tylko z generatora gry (${chainWinters} zim). Sprawdza, czy wygenerowane zimy dają tyle śniegu, ile było naprawdę. Informacyjnie – nie wchodzi do werdyktu: pomiary obejmują tylko ${Math.max(...chain.map((c) => c.winters))} zim 2009–2019, a generator odtwarza klimat 2001–2025.</p>
-<div class="card table-wrap"><table><thead><tr><th>stacja</th><th>dni z pokrywą XI–IV: pomiar</th><th>generator + model</th><th>różnica</th><th>maks. grubość: pomiar</th><th>generator + model</th></tr></thead><tbody>
-${chain.map((c) => `<tr><td>${esc(c.name)} <small>${fmt(c.elevationM, 0)} m</small></td><td>${fmt(c.obsCover, 0)} <small>± ${fmt(c.obsCoverSd, 0)} z roku na rok</small></td><td>${fmt(c.genCover, 0)}</td><td><b>${signed(c.genCover - c.obsCover, 0)} dni</b></td><td>${fmt(c.obsMax, 0)} cm</td><td>${fmt(c.genMax, 0)} cm</td></tr>`).join('')}
-</tbody></table>
-<p class="small muted">Średni błąd średniej z ok. 10 zim to ok. ± ${fmt(mean(chain.map((c) => c.obsCoverSd / Math.sqrt(Math.max(1, c.winters)))), 0)} dni – różnica większa od tego znaczy, że wygenerowane zimy w dolnych partiach są nieco bardziej śnieżne niż zimy 2009–2019.</p></div>
+<h3>Zimy z generatora a prawdziwe zimy ${Math.min(...dist.flatMap((d) => d.years))}–${Math.max(...dist.flatMap((d) => d.years)) + 1}</h3>
+<p>Ten sam punkt przy stacji (teren płaski, otwarty). Trzy rzędy: <b>pomiar</b> IMGW (każda kropka to jedna prawdziwa zima), <b>model na prawdziwej pogodzie</b> tych samych zim i <b>model na pogodzie z generatora</b> (${distWinters} zim gry). Generator ma oddawać nie tylko średnią, ale też rozrzut – w tym zimy słabe.</p>
+${distHtml}
+<div class="card table-wrap" style="margin-top:16px"><b>Pogoda zimą (XI–IV) tak, jak widzi ją model – pomiar a generator</b>
+<table><thead><tr><th>stacja</th><th></th><th>temperatura [°C]</th><th>opad [mm]</th><th>dni z opadem</th><th>temperatura, w której pada [°C]</th><th>z tego śnieg [mm]</th><th>odwilż: suma dodatnich temp. [°C·doba]</th><th>dni XII–II ze średnią &gt; 0 °C</th></tr></thead><tbody>${wxRows}</tbody></table>
+<p class="small muted">„temperatura, w której pada” – średnia temperatura dni ważona sumą opadu; „z tego śnieg” – opad przy temperaturze godzinowej, w której model przyjmuje śnieg (bez poprawki na deszczomierz). Pomiar: wszystkie zimy 2001–2025 z danymi pogody (temperatura od ok. 2020 r. z Bielska-Białej z poprawką; w Korbielowie zawsze z Zawoi i Lalik). Generator ma jeden klimat dla wszystkich trzech stacji: temperatura jak średnio w Zawoi i Lalikach, opad jak w Korbielowie.</p></div>
 
 <h2>2. Promieniowanie słoneczne a pomiar</h2>
 <p>Suma dobowa promieniowania całkowitego na powierzchnię poziomą: model (z zachmurzeniem obserwowanym tego dnia) wobec pomiarów aktynometrycznych IMGW 2007–2014, miesiące XI–IV.</p>
@@ -833,7 +895,7 @@ ${avg(concave, meanMax) / avg(convex, meanMax) < 1.2 ? `<p class="small"><b>Sła
 <p class="muted small">Stany śniegu w grze: ${SNOW_QUALITY_CODES.slice(1).map((c) => SNOW_QUALITY_NAMES[c]).join(', ')}.</p>
 
 <h2>Skąd dane</h2>
-<p class="muted small">Grubość śniegu i pogoda: IMGW-PIB, danepubliczne.imgw.pl (dane dobowe klimatologiczne, opadowe i synoptyczne 2009–2019). Promieniowanie: IMGW-PIB, dane aktynometryczne 2007–2014. Pokrycie terenu: ESA WorldCover 2021 (CC BY 4.0). Teren: NMT GUGiK; okolica: Copernicus DEM GLO-30. Łajczak A. (1996), praca o pogodzie i pokrywie śnieżnej północnego stoku Pilska, rcin.org.pl.</p>
+<p class="muted small">Grubość śniegu i pogoda: IMGW-PIB, danepubliczne.imgw.pl (dane dobowe klimatologiczne, opadowe i synoptyczne 2001–2025). Promieniowanie: IMGW-PIB, dane aktynometryczne 2007–2014. Pokrycie terenu: ESA WorldCover 2021 (CC BY 4.0). Teren: NMT GUGiK; okolica: Copernicus DEM GLO-30. Łajczak A. (1996), praca o pogodzie i pokrywie śnieżnej północnego stoku Pilska, rcin.org.pl.</p>
 </main></body></html>`;
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, html);
