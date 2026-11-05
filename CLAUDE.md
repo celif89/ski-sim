@@ -22,6 +22,9 @@ wyciąg po wyciągu. Pełna koncepcja gry: dokument „Symulator ośrodka narcia
 - Gra działa w przeglądarce. Później, jeśli się sprawdzi: aplikacja na Maca (Tauri lub Electron)
   z tego samego kodu – nie używać rozwiązań, które to uniemożliwią.
 - Repozytorium Git: małe, opisane po polsku commity po każdym działającym kroku.
+- **Zmiany wypychać od razu na gałąź `main`** (po zielonym `npm test` lokalnie) – Aleksander sprawdza
+  poprawki na opublikowanej stronie. Bez osobnych gałęzi i PR, chyba że poprosi inaczej. Workflow
+  GitHub Pages i tak uruchamia testy i nie publikuje przy czerwonych.
 
 ## Architektura – zasady obowiązkowe
 
