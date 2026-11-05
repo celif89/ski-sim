@@ -1,7 +1,7 @@
 /** Wczytanie mapy z dysku (data/maps/<mapa>/) – dla narzędzi, raportów i testów (Node). */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { createGridFromMap, createHorizonDem, parseMapDefinition } from '../sim/mapFile';
+import { createGridFromMap, createHorizonDem, parseLandCover, parseMapDefinition } from '../sim/mapFile';
 import { computeSlopeAndAspect } from '../sim/terrainAnalysis';
 
 export const DATA_DIR = fileURLToPath(new URL('../../data/', import.meta.url));
@@ -18,5 +18,6 @@ export function loadMapFromDisk(mapName = 'pilsko') {
   const grid = createGridFromMap(def, readBuffer(`${dir}${def.elevationFile}`));
   computeSlopeAndAspect(grid);
   const dem = def.horizonDem ? createHorizonDem(def, readBuffer(`${dir}${def.horizonDem.file}`)) : null;
-  return { mapJson, def, grid, dem };
+  const landCover = def.landCoverFile ? parseLandCover(readBuffer(`${dir}${def.landCoverFile}`), grid.cellCount) : null;
+  return { mapJson, def, grid, dem, landCover };
 }

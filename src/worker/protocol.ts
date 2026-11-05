@@ -55,6 +55,21 @@ export interface EnvironmentStateRequest {
   hour: number;
 }
 
+/** Start modelu śniegu (po initEnvironment): pokrycie terenu i parametry śniegu. */
+export interface InitSnowRequest {
+  type: 'initSnow';
+  forest: Float32Array;
+  shrub: Float32Array;
+  snowJson: unknown;
+}
+
+/** Stan śniegu na koniec dnia `date` (wątek doliczy brakujące dni sezonu). */
+export interface SnowStateRequest {
+  type: 'snowState';
+  requestId: number;
+  date: CalendarDate;
+}
+
 /** Suma dobowa promieniowania. */
 export interface DailyRadiationRequest {
   type: 'dailyRadiation';
@@ -100,14 +115,50 @@ export interface DailyRadiationMessage {
   sumKwhM2: Float32Array;
 }
 
+export interface SnowReadyMessage {
+  type: 'snowReady';
+}
+
+export interface SnowProgressMessage {
+  type: 'snowProgress';
+  phase: 'radiation' | 'days';
+  fraction: number;
+  date?: CalendarDate;
+}
+
+export interface SnowStateMessage {
+  type: 'snowState';
+  requestId: number;
+  date: CalendarDate;
+  depthCm: Float32Array;
+  sweMm: Float32Array;
+  densityKgM3: Float32Array;
+  quality: Uint8Array;
+}
+
 export interface WorkerErrorMessage {
   type: 'error';
   requestId?: number;
   message: string;
 }
 
-export type WorkerRequest = LoadMapRequest | GenerateTerrainRequest | InitEnvironmentRequest | EnvironmentStateRequest | DailyRadiationRequest;
-export type WorkerResponse = TerrainReadyMessage | EnvironmentReadyMessage | EnvironmentStateMessage | DailyRadiationMessage | WorkerErrorMessage;
+export type WorkerRequest =
+  | LoadMapRequest
+  | GenerateTerrainRequest
+  | InitEnvironmentRequest
+  | EnvironmentStateRequest
+  | DailyRadiationRequest
+  | InitSnowRequest
+  | SnowStateRequest;
+export type WorkerResponse =
+  | TerrainReadyMessage
+  | EnvironmentReadyMessage
+  | EnvironmentStateMessage
+  | DailyRadiationMessage
+  | SnowReadyMessage
+  | SnowProgressMessage
+  | SnowStateMessage
+  | WorkerErrorMessage;
 
 // ---------------------------------------------------------------- wątki horyzontu
 

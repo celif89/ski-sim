@@ -20,6 +20,8 @@ export interface MapStyle {
   insolationMaxWm2: number;
   radiationSumMaxKwhM2: number;
   temperatureRangeC: number;
+  snowDepthMaxCm: number;
+  forestTintStrength: number;
 }
 
 const FILE = 'data/map-style.json';
@@ -56,6 +58,8 @@ export function parseMapStyle(raw: unknown): MapStyle {
     insolationMaxWm2: readNumber(scales, 'insolationMaxWm2', FILE, { min: 1 }),
     radiationSumMaxKwhM2: readNumber(scales, 'radiationSumMaxKwhM2', FILE, { min: 0.1 }),
     temperatureRangeC: readNumber(scales, 'temperatureRangeC', FILE, { min: 1 }),
+    snowDepthMaxCm: readNumber(scales, 'snowDepthMaxCm', FILE, { min: 1 }),
+    forestTintStrength: readNumber(readSection(raw, 'forest', FILE), 'tintStrength', FILE, { min: 0, max: 1 }),
   };
   if (style.contours.majorIntervalM % style.contours.intervalM !== 0) {
     throw new Error(`${FILE}: majorIntervalM musi być wielokrotnością intervalM`);

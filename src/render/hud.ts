@@ -3,6 +3,7 @@
  * ekspozycja, skala) oraz podziałka liniowa w lewym dolnym rogu.
  */
 import { puwg92ToLatLon, slopePercentToDeg } from '../sim';
+import { SNOW_QUALITY_CODES, SNOW_QUALITY_NAMES } from '../sim/snow';
 import type { TerrainGrid } from '../sim';
 import type { Camera } from './camera';
 import { compassName } from './colors';
@@ -19,12 +20,21 @@ export interface CursorReadout {
   elevation: string;
   slope: string;
   aspect: string;
+  snow: string;
 }
 
-const EMPTY: CursorReadout = { position: 'kursor poza mapą', geographic: '', elevation: '', slope: '', aspect: '' };
+/** Stan śniegu do odczytu pod kursorem. */
+export interface SnowReadoutData {
+  depthCm: Float32Array;
+  sweMm: Float32Array;
+  densityKgM3: Float32Array;
+  quality: Uint8Array;
+}
+
+const EMPTY: CursorReadout = { position: 'kursor poza mapą', geographic: '', elevation: '', slope: '', aspect: '', snow: '' };
 
 /** Opis terenu pod kursorem (czysta funkcja – testowana). */
-export function describePoint(grid: TerrainGrid, xM: number, yM: number, flatSlopePercent: number): CursorReadout {
+export function describePoint(grid: TerrainGrid, xM: number, yM: number, flatSlopePercent: number, snow: SnowReadoutData | null = null): CursorReadout {
   if (!grid.containsPointM(xM, yM)) return EMPTY;
   const puwg = grid.localToPuwg92(xM, yM);
   let position: string;
@@ -38,7 +48,7 @@ export function describePoint(grid: TerrainGrid, xM: number, yM: number, flatSlo
     position = `x ${formatInt.format(xM)} m  y ${formatInt.format(yM)} m`;
   }
   const h = grid.sampleElevationM(xM, yM);
-  if (Number.isNaN(h)) return { position, geographic, elevation: 'poza mapą (Słowacja)', slope: '', aspect: '' };
+  if (Number.isNaN(h)) return { position, geographic, elevation: 'poza mapą (Słowacja)', slope: '', aspect: '', snow: '' };
   const cell = grid.cellAt(xM, yM)!;
   const k = grid.index(cell.i, cell.j);
   const s = grid.slopePercent[k];
@@ -52,7 +62,14 @@ export function describePoint(grid: TerrainGrid, xM: number, yM: number, flatSlo
       Number.isNaN(a) || s < flatSlopePercent
         ? 'ekspozycja: płasko'
         : `ekspozycja ${compassName(a)} (${formatInt.format(a)}°)`,
+    snow: snow ? describeSnow(snow, k) : '',
   };
+}
+
+function describeSnow(snow: SnowReadoutData, k: number): string {
+  const q = SNOW_QUALITY_CODES[snow.quality[k]];
+  if (q === 'none' || !(snow.depthCm[k] > 0)) return 'śnieg: brak';
+  return `śnieg ${formatInt.format(snow.depthCm[k])} cm · SWE ${formatInt.format(snow.sweMm[k])} mm · ${formatInt.format(snow.densityKgM3[k])} kg/m³ · ${SNOW_QUALITY_NAMES[q]}`;
 }
 
 export class Hud {
@@ -68,7 +85,7 @@ export class Hud {
   ) {
     const status = document.createElement('div');
     status.className = 'status-bar';
-    const roles = ['position', 'geographic', 'elevation', 'slope', 'aspect', 'scale'] as const;
+    const roles = ['position', 'geographic', 'elevation', 'slope', 'aspect', 'snow', 'scale'] as const;
     status.innerHTML = roles
       .map((r) => `<span class="status-item status-${r}" data-role="${r}"></span>`)
       .join('');
@@ -86,11 +103,11 @@ export class Hud {
     this.scaleBarLine = scaleBar.querySelector('.scale-bar-line')!;
   }
 
-  update(camera: Camera, grid: TerrainGrid, cursor: { xPx: number; yPx: number } | null): void {
+  update(camera: Camera, grid: TerrainGrid, cursor: { xPx: number; yPx: number } | null, snow: SnowReadoutData | null = null): void {
     let readout = EMPTY;
     if (cursor) {
       const { xM, yM } = camera.screenToWorld(cursor.xPx, cursor.yPx);
-      readout = describePoint(grid, xM, yM, this.flatSlopePercent);
+      readout = describePoint(grid, xM, yM, this.flatSlopePercent, snow);
     }
     const bar = computeScaleBar(camera.metersPerPixel, this.scaleBarMaxWidthPx);
     const scaleText = `skala ${formatScale.format(camera.metersPerPixel)} m/px`;

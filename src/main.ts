@@ -10,9 +10,12 @@ import settingsJson from '../data/settings.json';
 import slopeClassesJson from '../data/slope-classes.json';
 import terrainGeneratorJson from '../data/terrain-generator.json';
 import weatherJson from '../data/weather-generator.json';
+import snowJson from '../data/snow.json';
 import {
+  addDays,
   createHorizonDem,
   parseHorizonParams,
+  parseLandCover,
   parseIsoDate,
   parseMapDefinition,
   parseSimSettings,
@@ -22,6 +25,8 @@ import {
 } from './sim';
 import type { CalendarDate, HorizonDem, Location, MapDefinition } from './sim';
 import { createBaseMapCanvas } from './render/baseMap';
+import { SNOW_QUALITY_COLORS } from './render/colors';
+import type { SnowReadoutData } from './render/hud';
 import { Camera } from './render/camera';
 import { FieldOverlay, fieldScale } from './render/fieldOverlay';
 import type { FieldKind } from './render/fieldOverlay';
@@ -42,7 +47,7 @@ import { SimClient } from './worker/simClient';
 
 // Wszystkie mapy z data/maps/<nazwa>/: opis dołączany do programu, pliki binarne jako osobne zasoby.
 const MAP_JSONS = import.meta.glob('../data/maps/*/map.json', { eager: true, import: 'default' });
-const MAP_BINARY_URLS = import.meta.glob('../data/maps/*/*.f32', { eager: true, query: '?url', import: 'default' });
+const MAP_BINARY_URLS = import.meta.glob('../data/maps/*/*.{f32,u8}', { eager: true, query: '?url', import: 'default' });
 const CLIMATE_JSONS = import.meta.glob('../data/climate/*.json', { eager: true, import: 'default' });
 
 function binaryUrl(mapName: string, file: string): string {
@@ -105,6 +110,12 @@ async function start(): Promise<void> {
     root.appendChild(app.canvas);
 
     const { grid, hillshade, contours, timingsMs } = await terrainPromise;
+    // Pokrycie terenu (las) – do mapy bazowej i modelu śniegu.
+    let landCover: { forest: Float32Array; shrub: Float32Array } | null = null;
+    if (def?.landCoverFile) {
+      const response = await fetch(binaryUrl(simSettings.mapName, def.landCoverFile));
+      if (response.ok) landCover = parseLandCover(await response.arrayBuffer(), grid.cellCount);
+    }
     message.textContent = 'Rysuję mapę…';
     await new Promise((r) => requestAnimationFrame(r));
 
@@ -115,7 +126,7 @@ async function start(): Promise<void> {
         return [p.xM, p.yM];
       }),
     );
-    const baseCanvas = createBaseMapCanvas({ grid, hillshade, contours, borderLinesLocal, style });
+    const baseCanvas = createBaseMapCanvas({ grid, hillshade, contours, borderLinesLocal, style, forest: landCover?.forest ?? null });
     timingsMs['mapa bazowa (rysowanie)'] = Math.round(performance.now() - t0);
     message.remove();
 
@@ -146,7 +157,10 @@ async function start(): Promise<void> {
     let lastState: EnvironmentStateMessage | null = null;
     let radiationSum: { date: CalendarDate; values: Float32Array } | null = null;
     let radiationRequest = 0;
-    const isField = (k: OverlayKind): k is FieldKind => k === 'insolation' || k === 'radiationSum' || k === 'temperature';
+    const isField = (k: OverlayKind): k is FieldKind | 'snowQuality' =>
+      k === 'insolation' || k === 'radiationSum' || k === 'temperature' || k === 'snowDepth' || k === 'snowQuality';
+    let lastSnow: (SnowReadoutData & { date: CalendarDate }) | null = null;
+    const fmtDate = (d: CalendarDate) => `${d.day}.${String(d.month).padStart(2, '0')}.${d.year}`;
     const sameDate = (a: CalendarDate, b: CalendarDate) => a.year === b.year && a.month === b.month && a.day === b.day;
 
     const toolbar = new Toolbar(document.body, {
@@ -171,6 +185,22 @@ async function start(): Promise<void> {
 
     function refreshField(): void {
       if (!isField(overlay)) return;
+      if (overlay === 'snowDepth' || overlay === 'snowQuality') {
+        if (!lastSnow) {
+          legend.setFieldInfo(null, 'liczę śnieg…');
+          return;
+        }
+        const info = `koniec dnia ${fmtDate(lastSnow.date)}; śnieg naturalny (bez ratraków i naśnieżania)`;
+        if (overlay === 'snowDepth') {
+          const scale = fieldScale('snowDepth', style);
+          field.update(lastSnow.depthCm, scale, 0.5);
+          legend.setFieldInfo(scale, info);
+        } else {
+          field.updateCategorical(lastSnow.quality, SNOW_QUALITY_COLORS);
+          legend.setFieldInfo(null, info);
+        }
+        return;
+      }
       const scale = fieldScale(overlay, style, overlay === 'radiationSum' ? radiationSum?.values : undefined);
       if (overlay === 'radiationSum') {
         const date = timePanel.date;
@@ -259,6 +289,7 @@ async function start(): Promise<void> {
           timePanel.setSun({ ...s.sun, summerTime: s.summerTime });
           if (overlay === 'radiationSum' && radiationSum && !sameDate(radiationSum.date, t.date)) radiationSum = null;
           refreshField();
+          requestSnow(t.date);
         })
         .catch((e: unknown) => timePanel.setStatus(`Błąd: ${e instanceof Error ? e.message : String(e)}`))
         .finally(() => {
@@ -269,6 +300,54 @@ async function start(): Promise<void> {
             requestState(next);
           }
         });
+    }
+
+    // ---------------------------------------------------------------- śnieg
+    let snowReady = false;
+    let snowRequestedDate: CalendarDate | null = null;
+    let snowInflight = 0;
+    let latestSnowRequest = 0;
+    function requestSnow(date: CalendarDate): void {
+      if (!snowReady) {
+        snowRequestedDate = date;
+        return;
+      }
+      if (lastSnow && sameDate(lastSnow.date, date)) return;
+      if (snowRequestedDate && sameDate(snowRequestedDate, date) && snowInflight > 0) return;
+      snowRequestedDate = date;
+      const id = ++latestSnowRequest;
+      snowInflight++;
+      sim
+        .snowState(date)
+        .then((m) => {
+          if (id !== latestSnowRequest) return;
+          lastSnow = { date: m.date, depthCm: m.depthCm, sweMm: m.sweMm, densityKgM3: m.densityKgM3, quality: m.quality };
+          timePanel.setStatus('');
+          refreshField();
+        })
+        .catch((e: unknown) => {
+          if (e instanceof Error && e.message === '__superseded__') return; // zastąpione nowszym pytaniem
+          timePanel.setStatus(`Błąd modelu śniegu: ${e instanceof Error ? e.message : String(e)}`);
+        })
+        .finally(() => snowInflight--);
+    }
+    sim.onSnowProgress = (p) => {
+      if (p.phase === 'radiation') timePanel.setStatus(`Liczę promieniowanie na sezon (raz na sezon)… ${f0(p.fraction * 100)} %`);
+      else if (p.date) timePanel.setStatus(`Liczę śnieg dzień po dniu… ${fmtDate(p.date)}`);
+    };
+    // Przewijanie sezonu: kolejny dzień, gdy poprzedni stan śniegu jest już policzony.
+    let lastSeasonStepMs = 0;
+    function seasonTick(nowMs: number): void {
+      if (!timePanel.seasonPlaying || !snowReady) return;
+      if (nowMs - lastSeasonStepMs < 1000 / timePanel.seasonSpeedDaysPerS) return;
+      if (lastSnow && !sameDate(lastSnow.date, timePanel.date)) return; // czekamy na wynik
+      const next = addDays(timePanel.date, 1);
+      if (next.month === 5 && next.day === 1) {
+        timePanel.setSeasonPlaying(false);
+        return;
+      }
+      lastSeasonStepMs = nowMs;
+      timePanel.setDate(next);
     }
 
     const location: Location = grid.georef
@@ -308,6 +387,10 @@ async function start(): Promise<void> {
         console.info(`Czasy [ms]: ${JSON.stringify(timingsMs)}`);
         requestState(pendingTime ?? { date: timePanel.date, hour: timePanel.hour });
         refreshField();
+        const n = grid.cellCount;
+        await sim.initSnow(landCover?.forest.slice() ?? new Float32Array(n), landCover?.shrub.slice() ?? new Float32Array(n), snowJson);
+        snowReady = true;
+        requestSnow(snowRequestedDate ?? timePanel.date);
       } catch (e) {
         console.error(e);
         timePanel.setStatus(`Nie udało się uruchomić słońca i pogody: ${e instanceof Error ? e.message : String(e)}`);
@@ -334,13 +417,14 @@ async function start(): Promise<void> {
 
     app.ticker.add((ticker) => {
       timePanel.tick(performance.now());
+      seasonTick(performance.now());
       input.update(ticker.deltaMS / 1000);
       // Przeliczenie metrów na piksele: świat jest w metrach, kamera mówi, ile pikseli to metr.
       const scale = camera.pixelsPerMeter;
       world.scale.set(scale);
       world.position.set(camera.viewportWidthPx / 2 - camera.centerXM * scale, camera.viewportHeightPx / 2 - camera.centerYM * scale);
       profile.update(input.cursor);
-      hud.update(camera, grid, input.cursor);
+      hud.update(camera, grid, input.cursor, lastSnow);
     });
 
     // Do podglądu i testów w przeglądarce.
@@ -353,6 +437,7 @@ async function start(): Promise<void> {
       getOverlay: () => overlay,
       getState: () => lastState,
       isEnvironmentReady: () => environmentReady,
+      getSnow: () => lastSnow,
     };
   } catch (error) {
     console.error(error);

@@ -17,6 +17,8 @@ import {
   parseRadiationParams,
   parseWeatherParams,
 } from '../sim';
+import { parseSnowParams } from '../sim/snow';
+import { SnowWorld } from '../sim/snowWorld';
 import type { TerrainGrid } from '../sim';
 import { Environment } from '../sim/environment';
 import { packContours } from './protocol';
@@ -30,6 +32,54 @@ interface WorkerScope {
 const scope = self as unknown as WorkerScope;
 let grid: TerrainGrid | null = null;
 let environment: Environment | null = null;
+let snowWorld: SnowWorld | null = null;
+/** Najnowsze (jeszcze nieobsłużone) pytanie o śnieg i czy trwa liczenie. */
+let pendingSnow: { requestId: number; date: { year: number; month: number; day: number } } | null = null;
+let snowRunning = false;
+/** Co ile ms oddawać sterowanie (żeby wątek odpowiadał na inne pytania). */
+const SNOW_YIELD_MS = 40;
+
+/** Odpowiedź na pytanie zastąpione nowszym (widok ją pomija). */
+const SUPERSEDED = '__superseded__';
+const yieldToEvents = () => new Promise<void>((r) => setTimeout(r, 0));
+
+async function runSnowJobs(): Promise<void> {
+  if (snowRunning) return;
+  snowRunning = true;
+  try {
+    while (pendingSnow && snowWorld) {
+      const job = pendingSnow;
+      pendingSnow = null;
+      let last = performance.now();
+      let superseded = false;
+      for (const progress of snowWorld.advanceTo(job.date)) {
+        const now = performance.now();
+        if (now - last > SNOW_YIELD_MS) {
+          scope.postMessage({ type: 'snowProgress', ...progress });
+          await yieldToEvents();
+          last = performance.now();
+          if (pendingSnow) {
+            superseded = true;
+            break;
+          }
+        }
+      }
+      if (superseded) {
+        scope.postMessage({ type: 'error', requestId: job.requestId, message: SUPERSEDED });
+        continue;
+      }
+      const snap = snowWorld.snapshot();
+      scope.postMessage({ type: 'snowState', requestId: job.requestId, ...snap }, [
+        snap.depthCm.buffer,
+        snap.sweMm.buffer,
+        snap.densityKgM3.buffer,
+        snap.quality.buffer,
+      ] as ArrayBuffer[]);
+    }
+  } finally {
+    snowRunning = false;
+  }
+}
 
 async function handle(request: WorkerRequest): Promise<void> {
   switch (request.type) {
@@ -105,6 +155,19 @@ async function handle(request: WorkerRequest): Promise<void> {
         state.insolationWm2.buffer,
         state.temperatureC.buffer,
       ] as ArrayBuffer[]);
+      return;
+    }
+    case 'initSnow': {
+      if (!environment) throw new Error('Moduł słońca i pogody nie jest gotowy');
+      snowWorld = new SnowWorld(environment, request.forest, request.shrub, parseSnowParams(request.snowJson));
+      scope.postMessage({ type: 'snowReady' });
+      return;
+    }
+    case 'snowState': {
+      if (!snowWorld) throw new Error('Model śniegu nie jest gotowy');
+      if (pendingSnow) scope.postMessage({ type: 'error', requestId: pendingSnow.requestId, message: SUPERSEDED });
+      pendingSnow = { requestId: request.requestId, date: request.date };
+      void runSnowJobs();
       return;
     }
     case 'dailyRadiation': {

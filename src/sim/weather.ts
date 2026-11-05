@@ -89,6 +89,9 @@ const FILE = 'data/weather-generator.json';
 /** Fizyczne granice wilgotności względnej używane przy losowaniu [%]. */
 const MIN_HUMIDITY_PERCENT = 15;
 const POLAR_FALLBACK_MIN_HOUR = 6;
+/** Pamięć godzin wschodu Słońca (liczenie wschodu jest kosztowne, a dni się powtarzają). */
+const SUNRISE_CACHE = new Map<string, number>();
+const SUNRISE_CACHE_MAX = 20_000;
 
 export function parseWeatherParams(raw: unknown): WeatherParams {
   const s = readSection(raw, 'season', FILE);
@@ -151,6 +154,57 @@ export function sampleGamma(rng: Rng, shape: number, scale: number): number {
   }
 }
 
+/** Logarytm funkcji gamma (przybliżenie Lanczosa, g = 7) – do dystrybuanty rozkładu gamma. */
+function lnGamma(x: number): number {
+  const c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lnGamma(1 - x);
+  x -= 1;
+  let a = c[0];
+  const t = x + 7.5;
+  for (let i = 1; i < 9; i++) a += c[i] / (x + i);
+  return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+}
+
+/**
+ * Dystrybuanta rozkładu gamma: P(X ≤ x) dla kształtu `shape` i skali `scale` (szereg dla małych x,
+ * ułamek łańcuchowy dla dużych – Numerical Recipes, gammp).
+ */
+export function gammaCdf(x: number, shape: number, scale: number): number {
+  if (x <= 0) return 0;
+  const z = x / scale;
+  const gln = lnGamma(shape);
+  if (z < shape + 1) {
+    let ap = shape;
+    let sum = 1 / shape;
+    let del = sum;
+    for (let n = 0; n < 200; n++) {
+      ap += 1;
+      del *= z / ap;
+      sum += del;
+      if (Math.abs(del) < Math.abs(sum) * 1e-12) break;
+    }
+    return Math.min(1, sum * Math.exp(-z + shape * Math.log(z) - gln));
+  }
+  const tiny = 1e-300;
+  let b = z + 1 - shape;
+  let c = 1 / tiny;
+  let d = 1 / b;
+  let h = d;
+  for (let i = 1; i < 200; i++) {
+    const an = -i * (i - shape);
+    b += 2;
+    d = an * d + b;
+    if (Math.abs(d) < tiny) d = tiny;
+    c = b + an / c;
+    if (Math.abs(c) < tiny) c = tiny;
+    d = 1 / d;
+    const del = d * c;
+    h *= del;
+    if (Math.abs(del - 1) < 1e-12) break;
+  }
+  return Math.max(0, 1 - Math.exp(-z + shape * Math.log(z) - gln) * h);
+}
+
 /** Zmiana dnia przez moduł anomalii (etap 8). */
 export interface WeatherModifier {
   apply(day: DailyWeather, rng: Rng): void;
@@ -202,7 +256,11 @@ export function generateDailyWeather(
     const pWet = state.wet ? monthly(p.pWetAfterWet, date.month) : monthly(p.pWetAfterDry, date.month);
     const wet = rng.next() < pWet;
     const gammaScale = monthly(p.gammaScaleMm, date.month);
-    const precipitationMm = wet ? p.wetDayThresholdMm + sampleGamma(rng, monthly(p.gammaShape, date.month), gammaScale) : 0;
+    const gammaShape = monthly(p.gammaShape, date.month);
+    const excessMm = wet ? sampleGamma(rng, gammaShape, gammaScale) : 0;
+    const precipitationMm = wet ? p.wetDayThresholdMm + excessMm : 0;
+    // Percentyl sumy opadu wśród dni z opadem tego miesiąca (0 – najsłabszy, 1 – najsilniejszy).
+    const precipPercentile = wet ? gammaCdf(excessMm, gammaShape, gammaScale) : 0.5;
     // Temperatura.
     const phi = mi(t.anomalyAutocorrelation);
     const sigma = mi(t.dailyAnomalyStdC);
@@ -214,7 +272,10 @@ export function generateDailyWeather(
     const wetShift = mi(t.wetDayAnomalyC);
     const dryShift = mi(t.dryDayAnomalyC);
     const shiftMean = pStationaryWet * wetShift + (1 - pStationaryWet) * dryShift;
-    const shift = (wet ? wetShift : dryShift) - shiftMean;
+    // Dni z silnym opadem są zimą cieplejsze (adwekcja ciepłego powietrza z frontem), ze słabym –
+    // chłodniejsze; zależność liniowa od percentyla sumy, średnio po dniach mokrych zero.
+    const amountShift = wet ? mi(t.wetDayAnomalyPerPercentileC) * (precipPercentile - 0.5) : 0;
+    const shift = (wet ? wetShift : dryShift) - shiftMean + amountShift;
     const anomalyC = residualC + shift;
     const tMeanC = mi(meanNodes) + anomalyC;
     const diurnalRangeC = Math.max(1, wet ? mi(t.diurnalRangeWetC) : mi(t.diurnalRangeDryC));
@@ -363,6 +424,15 @@ export function hourlyAt(
   const yesterday = dailyAtElevation(prev, elevationM, profile, params);
   const tomorrow = dailyAtElevation(next, elevationM, profile, params);
   const sunriseHour = (d: DailyWeather) => {
+    const key = `${d.date.year}-${d.date.month}-${d.date.day}|${location.latDeg}|${location.lonDeg}`;
+    const cached = SUNRISE_CACHE.get(key);
+    if (cached !== undefined) return cached;
+    const value = computeSunriseHour(d);
+    if (SUNRISE_CACHE.size > SUNRISE_CACHE_MAX) SUNRISE_CACHE.clear();
+    SUNRISE_CACHE.set(key, value);
+    return value;
+  };
+  const computeSunriseHour = (d: DailyWeather) => {
     const sd = sunDay(d.date, location.latDeg, location.lonDeg, location.timeZone);
     const start = localToUtcMs({ ...d.date, hour: 0 }, location.timeZone);
     // Noc/dzień polarny (nie dotyczy Polski): minimum o północy słonecznej + 6 h.

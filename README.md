@@ -3,10 +3,14 @@
 Realistyczny symulator budowy i prowadzenia ośrodka narciarskiego na północnych stokach Pilska.
 Zasady projektu i plan etapów: plik [CLAUDE.md](CLAUDE.md).
 
-**Stan: etap 2 – słońce i pogoda.** Mapa to Numeryczny Model Terenu z Geoportalu (GUGiK)
-w siatce 10 m: od granicy ze Słowacją pod Pilskiem do dna doliny w Korbielowie. Na mapie
-widać cienie terenu w dowolnym dniu i godzinie, nasłonecznienie, temperaturę; pogodę daje
-generator oparty na danych IMGW z lat 2001–2025.
+**Stan: etap 3 – model śniegu.** Mapa to Numeryczny Model Terenu z Geoportalu (GUGiK)
+w siatce 10 m: od granicy ze Słowacją pod Pilskiem do dna doliny w Korbielowie, z lasem
+(ESA WorldCover). Na mapie widać cienie terenu w dowolnym dniu i godzinie, nasłonecznienie,
+temperaturę, grubość i stan śniegu; pogodę daje generator oparty na danych IMGW z lat 2001–2025.
+Śnieg jest na razie tylko naturalny (bez narciarzy, naśnieżania i ratraków).
+
+**Raport zimy** (model śniegu obok pomiarów IMGW, punkty kontrolne, mapy grubości, 30 zim):
+https://celif89.github.io/ski-sim/raport-zimy.html
 
 **Raport klimatu** (30 wygenerowanych zim obok danych IMGW, mapy promieniowania):
 https://celif89.github.io/ski-sim/raport-klimatu.html
@@ -36,6 +40,9 @@ zostaje poprzednia, sprawna wersja.
 | Nasłonecznienie teraz (W/m²) | przycisk „Słońce teraz” lub klawisz `4` |
 | Suma dobowa promieniowania (kWh/m²) | przycisk „Słońce – doba” lub klawisz `5` |
 | Temperatura powietrza | przycisk „Temperatura” lub klawisz `6` |
+| Grubość śniegu (cm) | przycisk „Śnieg – grubość” lub klawisz `7` |
+| Stan śniegu (puch, przewiany, osiadły, firn, breja, zlodzony, przetarty) | przycisk „Śnieg – stan” lub klawisz `8` |
+| Przewijanie sezonu (śnieg zmienia się dzień po dniu do 30 kwietnia) | panel po lewej: „▶▶ Przewiń sezon”, prędkość 1 / 5 / 20 dni na sekundę |
 | Dzień i godzina | panel po lewej: data, strzałki ◀ ▶, suwak godziny, „▶ Odtwórz dzień” |
 | Profil terenu | przycisk „Profil terenu” lub klawisz `P`, potem kliknij punkt A i punkt B; `Esc` zamyka |
 
@@ -61,6 +68,11 @@ zostaje poprzednia, sprawna wersja.
   pasek postępu), potem pamięta wynik.
 - **Temperatura** (nakładka 6): spada z wysokością; niebieskie – mróz, pomarańczowe – powyżej 0 °C.
   Granica kolorów to izoterma 0 °C, czyli mniej więcej granica śnieg/deszcz.
+- **Śnieg** (nakładki 7 i 8): grubość i stan śniegu o północy wybranego dnia. Pod kursorem pasek
+  na dole pokazuje grubość, ilość wody w śniegu (SWE), gęstość i stan. Przy pierwszym włączeniu
+  gra liczy sezon od 1 października do wybranego dnia (kilkanaście sekund, pasek postępu); potem
+  przewijanie do przodu jest szybkie, a cofanie – z zapamiętanych stanów co 15 dni.
+  Las widać na mapie bazowej jako ciemniejszą zieleń.
 - **Pogoda** (panel po lewej): warunki teraz na dole i na górze ośrodka (temperatura, opad i jego
   rodzaj, wiatr, wilgotność, zachmurzenie) i prognoza na 7 dni. Prognoza jest niepewna – im dalej,
   tym bardziej może się mylić (±°C w ostatniej kolumnie).
@@ -85,6 +97,20 @@ liczba dni z opadem w miesiącach XI–IV). Niżej wykresy, przykładowa zima dz
 i na górze ośrodka – widać, kiedy na górze pada śnieg, a na dole deszcz) i mapy sumy promieniowania
 21 grudnia i 21 marca. Lokalnie: `npm run climate-report` → plik `reports/raport-klimatu.html`.
 
+### Raport zimy („przewiń zimę”)
+
+https://celif89.github.io/ski-sim/raport-zimy.html – na górze werdykt ZGODNE / NIEZGODNE Z POMIARAMI:
+model śniegu policzony na prawdziwej pogodzie 49 zim (2001–2021) w Korbielowie, Zawoi i Lalikach
+porównany z grubością śniegu mierzoną codziennie przez IMGW (średni błąd w cm, różnica długości
+zalegania w dniach). Niżej: wykresy każdej z tych zim (pomiar i model), zimy z generatora obok
+prawdziwych zim 2001–2025 (dni z pokrywą, maksimum, pojawienie się i zanik pokrywy – każda zima
+jako kropka, żeby było widać też słabe zimy), sprawdzenie promieniowania na
+pomiarach z Bielska-Białej i Kasprowego Wierchu, grubość śniegu dzień po dniu w 8 punktach
+kontrolnych (zima 2026/27 na tle 30 zim), mapy grubości 1 XII – 1 IV, mapa liczby dni z pokrywą
+≥ 30 cm (średnio z 30 zim), rozkład śniegu z wysokością obok pomiarów Łajczaka (Pilsko 1993/94),
+bilans wody i czas obliczeń. Lokalnie: `npm run winter-report` → `reports/raport-zimy.html`
+(ok. 8–10 minut; szybki podgląd na 4 zimach: `npm run winter-report -- reports/raport-zimy.html 4`).
+
 ### Jednorazowa konfiguracja publikacji (zrobione przy etapie 0)
 
 W repozytorium na GitHubie: **Settings → Pages → Build and deployment → Source:
@@ -105,6 +131,11 @@ Co sprawdzają testy (katalog `tests/`):
   i przy górze poza mapą wyliczony zgodnie z geometrią,
 - **promieniowanie:** w grudniu stok północny 30 % dostaje kilka razy mniej energii niż południowy
   (5×), w czerwcu różnica mała; sumy dobowe w realnym zakresie; chmury je osłabiają,
+- **śnieg:** bilans wody się zgadza (opad = śnieg w pokrywie + odpływ + parowanie + wywiane);
+  przy +5 °C śniegu ubywa, przy −10 °C i opadzie przybywa; grubość nigdy ujemna; stok północny
+  trzyma śnieg dłużej niż południowy; deszcz, a potem mróz → śnieg zlodzony; gęstość rośnie
+  z czasem; ten sam seed = ten sam śnieg; wiatr przenosi śnieg z grzbietu na stronę zawietrzną;
+  las zatrzymuje część opadu; czas liczenia dnia na całej mapie,
 - **pogoda:** ten sam seed = ta sama zima; 30 zim zgodnych z danymi IMGW (temperatura, opad,
   dni z opadem w tolerancji); śnieg na górze i deszcz na dole, gdy izoterma 0 °C leży pomiędzy;
   minimum temperatury nad ranem, maksimum po południu; błąd prognozy rośnie z każdym dniem,
@@ -139,6 +170,14 @@ Wszystkie liczby są w plikach `data/*.json` – każda z jednostką i źródłe
   `data/climate/pilsko-sources.json` – okres referencyjny i wybór stacji,
 - `data/weather-generator.json` – parametry generatora pogody i prognozy, tolerancje raportu,
 - `data/radiation.json` – parametry horyzontu i promieniowania słonecznego,
+- `data/snow.json` – parametry modelu śniegu (opad, gęstnienie, albedo, bilans energii, las,
+  przewiewanie, stany śniegu); skalibrowane wartości oznaczone „SKALIBROWANE (było …)”,
+- `data/winter-report.json` – progi werdyktu raportu zimy, punkty kontrolne, daty map,
+- `data/calibration/` – pomiary do kalibracji: grubość śniegu i pogoda ze stacji IMGW
+  (`npm run snow-calibration-data`), promieniowanie (`npm run radiation-validation-data`),
+  wartości z pracy Łajczaka (1996),
+- `data/maps/pilsko/landcover.u8` – las, kosodrzewina i zabudowa w każdej komórce
+  (ESA WorldCover 2021, `npm run import-landcover`),
 - `data/terrain-generator.json` – generator proceduralny z etapu 0 (zapas do testów).
 
 ### Ponowne pobranie terenu z Geoportalu
@@ -173,16 +212,21 @@ Potem otworzyć w przeglądarce adres wypisany w Terminalu (zwykle http://localh
 | `npm run import-nmt` | pobiera teren z Geoportalu i zapisuje mapę gry |
 | `npm run import-horizon-dem` | pobiera model terenu okolicy (Copernicus, 15 × 15 km) do liczenia cieni |
 | `npm run import-climate` | pobiera dane IMGW i liczy profil klimatyczny |
-| `npm run climate-report` | raport „przewiń zimy” (`reports/raport-klimatu.html`) |
+| `npm run climate-report` | raport klimatu (`reports/raport-klimatu.html`) |
+| `npm run winter-report` | raport „przewiń zimę” – śnieg (`reports/raport-zimy.html`) |
+| `npm run import-landcover` | pobiera mapę pokrycia terenu (las) ESA WorldCover |
+| `npm run snow-calibration-data` | pobiera z IMGW pomiary grubości śniegu i pogodę stacji do kalibracji |
+| `npm run radiation-validation-data` | pobiera z IMGW pomiary promieniowania do sprawdzenia modelu |
 
 ## Budowa projektu
 
 ```
 src/sim/       symulacja (bez grafiki): siatka terenu, nachylenie, ekspozycja, warstwice, profil,
-               współrzędne PUWG 1992, Słońce, horyzont, promieniowanie, klimat, generator pogody
+               współrzędne PUWG 1992, Słońce, horyzont, promieniowanie, klimat, generator pogody,
+               model śniegu, kalibracja
 src/render/    widok (PixiJS): mapa bazowa, nakładki, legenda, profil, kamera, pasek stanu
 src/worker/    wątek w tle (Web Worker), w którym liczy się teren
-src/tools/     narzędzia poza grą: konwerter NMT, model terenu okolicy, dane IMGW, raport klimatu
+src/tools/     narzędzia poza grą: konwerter NMT, model terenu okolicy, las, dane IMGW, raporty
 data/          pliki z parametrami i mapy
 tests/         testy automatyczne
 ```

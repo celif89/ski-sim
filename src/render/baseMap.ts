@@ -10,6 +10,7 @@ import {
   CONTOUR_MINOR_CSS,
   OUTSIDE_COLOR,
   OUTSIDE_HATCH_COLOR,
+  FOREST_COLOR,
   elevationTint,
 } from './colors';
 import type { Rgb } from './colors';
@@ -33,6 +34,8 @@ export interface BaseMapInput {
   /** Linie granicy w metrach lokalnych [[x, y], …]. */
   borderLinesLocal: number[][][];
   style: MapStyle;
+  /** Udział lasu 0–1 w komórkach (null – brak danych o pokryciu). */
+  forest: Float32Array | null;
 }
 
 export function createBaseMapCanvas(input: BaseMapInput): HTMLCanvasElement {
@@ -69,6 +72,17 @@ export function createBaseMapCanvas(input: BaseMapInput): HTMLCanvasElement {
         continue;
       }
       elevationTint((h - style.tintLowM) / relief, tint);
+      if (input.forest) {
+        // Las: ciemniejsza zieleń (najbliższa komórka – granica lasu ostra jak na mapie).
+        const ci = Math.min(grid.widthCells - 1, (xM / grid.cellSizeM) | 0);
+        const cj = Math.min(grid.heightCells - 1, (yM / grid.cellSizeM) | 0);
+        const f = input.forest[cj * grid.widthCells + ci] * style.forestTintStrength;
+        if (f > 0) {
+          tint[0] += (FOREST_COLOR[0] - tint[0]) * f;
+          tint[1] += (FOREST_COLOR[1] - tint[1]) * f;
+          tint[2] += (FOREST_COLOR[2] - tint[2]) * f;
+        }
+      }
       const shade = grid.sampleLayer(hillshade, xM, yM);
       // 1 = teren płaski; > 1 stok oświetlony, < 1 stok w cieniu.
       const factor = 1 - strength * (1 - shade / flatShade);

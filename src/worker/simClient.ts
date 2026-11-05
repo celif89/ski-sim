@@ -7,6 +7,8 @@ import type {
   EnvironmentReadyMessage,
   EnvironmentStateMessage,
   InitEnvironmentRequest,
+  SnowProgressMessage,
+  SnowStateMessage,
   WorkerRequest,
   WorkerResponse,
 } from './protocol';
@@ -25,10 +27,16 @@ export class SimClient {
   private nextId = 1;
   private readonly pending = new Map<number, { resolve: (m: WorkerResponse) => void; reject: (e: Error) => void }>();
   private oneShot: { resolve: (m: WorkerResponse) => void; reject: (e: Error) => void } | null = null;
+  /** Postęp liczenia śniegu (pasek postępu). */
+  onSnowProgress: ((p: SnowProgressMessage) => void) | null = null;
 
   constructor() {
     this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
       const m = event.data;
+      if (m.type === 'snowProgress') {
+        this.onSnowProgress?.(m);
+        return;
+      }
       const id = 'requestId' in m ? m.requestId : undefined;
       const target = id !== undefined ? this.pending.get(id) : this.oneShot;
       if (id !== undefined) this.pending.delete(id);
@@ -71,6 +79,18 @@ export class SimClient {
   async environmentState(date: CalendarDate, hour: number): Promise<EnvironmentStateMessage> {
     const m = await this.send({ type: 'environmentState', requestId: this.nextId++, date, hour });
     if (m.type !== 'environmentState') throw new Error('Nieoczekiwana odpowiedź wątku');
+    return m;
+  }
+
+  async initSnow(forest: Float32Array, shrub: Float32Array, snowJson: unknown): Promise<void> {
+    const m = await this.send({ type: 'initSnow', forest, shrub, snowJson });
+    if (m.type !== 'snowReady') throw new Error('Nieoczekiwana odpowiedź wątku');
+  }
+
+  /** Stan śniegu na koniec dnia. Starsze, niedokończone pytania zostają zastąpione nowszymi. */
+  async snowState(date: CalendarDate): Promise<SnowStateMessage> {
+    const m = await this.send({ type: 'snowState', requestId: this.nextId++, date });
+    if (m.type !== 'snowState') throw new Error('Nieoczekiwana odpowiedź wątku');
     return m;
   }
 

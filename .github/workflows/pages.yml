@@ -1,7 +1,8 @@
 # Testy i publikacja gry na GitHub Pages.
 #
-# - Po każdej zmianie na gałęzi main: testy → budowanie → raport klimatu → publikacja
-#   pod adresem https://celif89.github.io/ski-sim/ (raport: …/ski-sim/raport-klimatu.html)
+# - Po każdej zmianie na gałęzi main: testy → budowanie → raporty klimatu i zimy → publikacja
+#   pod adresem https://celif89.github.io/ski-sim/ (raporty: …/ski-sim/raport-klimatu.html,
+#   …/ski-sim/raport-zimy.html)
 # - Jeśli testy nie przejdą, kolejne kroki się nie wykonują i gra NIE jest publikowana
 #   (na stronie zostaje poprzednia, sprawna wersja).
 # - Przy propozycjach zmian (pull request) uruchamiane są tylko testy i budowanie, bez publikacji.
@@ -49,6 +50,9 @@ jobs:
 
       - name: Raport klimatu (npm run climate-report) – publikowany obok gry
         run: npm run climate-report -- dist/raport-klimatu.html
+
+      - name: Raport zimy (npm run winter-report) – model śniegu, kalibracja, 30 zim; ok. 10 min
+        run: npm run winter-report -- dist/raport-zimy.html
 
       - name: Przygotowanie plików do publikacji
         if: github.event_name != 'pull_request'

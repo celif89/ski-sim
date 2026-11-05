@@ -19,184 +19,33 @@
  *  – wilgotność, zachmurzenie (osobno w dni z opadem i bez), prędkość wiatru – stacje odniesienia;
  *  – kierunki wiatru i przyrost prędkości z wysokością – stacja windAloft.
  */
-import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { unzipSync } from 'fflate';
 import { readNumber } from '../sim/params';
+import { BASE, Store, dayKey, download, fiveYearGroup, ingestDailyMain, ingestKlimatT, ingestOpad, ingestSynopT, ingestSynopTerm, keyMonth, keyYear, nextDayKey, unzipCsv } from './imgwData';
+import type { DayRecord } from './imgwData';
 
-const BASE = 'https://danepubliczne.imgw.pl/data/dane_pomiarowo_obserwacyjne/dane_meteorologiczne';
 const API_STATIONS = 'https://danepubliczne.imgw.pl/api/data/meteo/';
-const CACHE = '.cache/imgw/raw';
 const SOURCES_FILE = 'data/climate/pilsko-sources.json';
 const OUTPUT_FILE = 'data/climate/pilsko.json';
 const PARALLEL = 6;
 const MONTHS = 12;
-const DECODER = new TextDecoder('windows-1250');
+
+/** Nachylenie prostej regresji y względem x (pary [x, y]). */
+function regressionSlope(pairs: [number, number][]): number {
+  if (pairs.length < 3) return 0;
+  const mx = pairs.reduce((a, p) => a + p[0], 0) / pairs.length;
+  const my = pairs.reduce((a, p) => a + p[1], 0) / pairs.length;
+  let num = 0;
+  let den = 0;
+  for (const [x, y] of pairs) {
+    num += (x - mx) * (y - my);
+    den += (x - mx) ** 2;
+  }
+  return den > 0 ? num / den : 0;
+}
 
 function log(message: string): void {
   console.log(`[import-climate] ${message}`);
-}
-
-// ---------------------------------------------------------------- pobieranie i odczyt plików
-
-async function download(url: string, file: string): Promise<Uint8Array | null> {
-  const path = join(CACHE, file);
-  if (existsSync(path)) return new Uint8Array(await readFile(path));
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const response = await fetch(url);
-      if (response.status === 404) return null;
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = new Uint8Array(await response.arrayBuffer());
-      await mkdir(CACHE, { recursive: true });
-      await writeFile(path, data);
-      return data;
-    } catch (error) {
-      if (attempt === 3) throw new Error(`Nie udało się pobrać ${url}: ${String(error)}`);
-      await new Promise((r) => setTimeout(r, 2000 * attempt));
-    }
-  }
-  return null;
-}
-
-/** Zawartość plików CSV z archiwum ZIP (kodowanie Windows-1250). */
-function unzipCsv(zip: Uint8Array): Map<string, string> {
-  const files = unzipSync(zip);
-  const out = new Map<string, string>();
-  for (const [name, data] of Object.entries(files)) if (name.toLowerCase().endsWith('.csv')) out.set(name, DECODER.decode(data));
-  return out;
-}
-
-function parseCsvLine(line: string): string[] {
-  const fields: string[] = [];
-  let current = '';
-  let quoted = false;
-  for (let k = 0; k < line.length; k++) {
-    const ch = line[k];
-    if (ch === '"') quoted = !quoted;
-    else if (ch === ',' && !quoted) {
-      fields.push(current);
-      current = '';
-    } else current += ch;
-  }
-  fields.push(current);
-  return fields.map((f) => f.trim());
-}
-
-function* csvRows(text: string): Generator<string[]> {
-  for (const line of text.split(/\r?\n/)) if (line.length > 0) yield parseCsvLine(line);
-}
-
-/** Grupa pięcioletnia katalogów IMGW dla lat ≤ 2000 (np. 1996_2000). */
-function fiveYearGroup(year: number): string {
-  const start = Math.floor((year - 1) / 5) * 5 + 1;
-  return `${start}_${start + 4}`;
-}
-
-// ---------------------------------------------------------------- struktury danych
-
-interface DayRecord {
-  tMax?: number;
-  tMin?: number;
-  tMean?: number;
-  precipMm?: number;
-  humidity?: number;
-  windMs?: number;
-  cloudOktas?: number;
-  windDirDeg?: number[];
-}
-
-type StationDays = Map<number, DayRecord>;
-const dayKey = (y: number, m: number, d: number) => y * 10000 + m * 100 + d;
-const keyYear = (k: number) => Math.floor(k / 10000);
-const keyMonth = (k: number) => Math.floor(k / 100) % 100;
-
-function nextDayKey(k: number): number {
-  const date = new Date(Date.UTC(keyYear(k), keyMonth(k) - 1, k % 100) + 86_400_000);
-  return dayKey(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
-}
-
-function num(value: string, status: string | undefined): number | undefined {
-  if (status === '8' || value === '') return undefined;
-  const v = Number(value);
-  return Number.isFinite(v) ? v : undefined;
-}
-
-class Store {
-  readonly stations = new Map<string, StationDays>();
-  readonly names = new Map<string, string>();
-  /** Miesiące (rrrr·100+mm), w których posterunek opadowy przysłał dane. */
-  readonly precipMonths = new Map<string, Set<number>>();
-
-  day(code: string, key: number): DayRecord {
-    let s = this.stations.get(code);
-    if (!s) this.stations.set(code, (s = new Map()));
-    let r = s.get(key);
-    if (!r) s.set(key, (r = {}));
-    return r;
-  }
-}
-
-/** k_d / s_d: TMAX(5) WTMAX TMIN(7) WTMIN STD(9) WSTD TMNG WTMNG SMDB(13) WSMDB(14). */
-function ingestDailyMain(store: Store, text: string): void {
-  for (const f of csvRows(text)) {
-    if (f.length < 15 || !/^\d{4}$/.test(f[2])) continue;
-    const r = store.day(f[0], dayKey(+f[2], +f[3], +f[4]));
-    store.names.set(f[0], f[1]);
-    r.tMax = num(f[5], f[6]);
-    r.tMin = num(f[7], f[8]);
-    r.tMean = num(f[9], f[10]);
-    r.precipMm = f[14] === '9' ? 0 : num(f[13], f[14]);
-  }
-}
-
-/** k_d_t: TEMP(5) WTEMP WLGS(7) WWLGS FWS(9) WFWS NOS(11) WNOS. */
-function ingestKlimatT(store: Store, text: string): void {
-  for (const f of csvRows(text)) {
-    if (f.length < 13 || !/^\d{4}$/.test(f[2])) continue;
-    const r = store.day(f[0], dayKey(+f[2], +f[3], +f[4]));
-    r.humidity = num(f[7], f[8]);
-    r.windMs = num(f[9], f[10]);
-    r.cloudOktas = num(f[11], f[12]);
-  }
-}
-
-/** s_d_t: NOS(5) WNOS FWS(7) WFWS TEMP(9) WTEMP CPW(11) WCPW WLGS(13) WWLGS. */
-function ingestSynopT(store: Store, text: string): void {
-  for (const f of csvRows(text)) {
-    if (f.length < 15 || !/^\d{4}$/.test(f[2])) continue;
-    const r = store.day(f[0], dayKey(+f[2], +f[3], +f[4]));
-    r.cloudOktas = num(f[5], f[6]);
-    r.windMs = num(f[7], f[8]);
-    r.humidity = num(f[13], f[14]);
-  }
-}
-
-/** o_d: SMDB(5) WSMDB(6). Brak wiersza w miesiącu z danymi = brak opadu. Status Z (opad zbiorczy) = brak. */
-function ingestOpad(store: Store, text: string): void {
-  for (const f of csvRows(text)) {
-    if (f.length < 7 || !/^\d{4}$/.test(f[2])) continue;
-    const code = f[0];
-    store.names.set(code, f[1]);
-    let months = store.precipMonths.get(code);
-    if (!months) store.precipMonths.set(code, (months = new Set()));
-    months.add(+f[2] * 100 + +f[3]);
-    const r = store.day(code, dayKey(+f[2], +f[3], +f[4]));
-    r.precipMm = f[6] === 'Z' ? Number.NaN : f[6] === '9' ? 0 : num(f[5], f[6]) ?? Number.NaN;
-  }
-}
-
-/** s_t: KRWR(23) WKRWR(24) FWR(25). Kierunki z terminów pomiarowych → do dnia. */
-function ingestSynopTerm(store: Store, text: string): void {
-  for (const f of csvRows(text)) {
-    if (f.length < 26 || !/^\d{4}$/.test(f[2])) continue;
-    const dir = num(f[23], f[24]);
-    const speed = num(f[25], f[26]);
-    if (dir === undefined || speed === undefined || speed < 0.5 || dir <= 0 || dir > 360) continue;
-    const r = store.day(f[0], dayKey(+f[2], +f[3], +f[4]));
-    (r.windDirDeg ??= []).push(dir);
-  }
 }
 
 // ---------------------------------------------------------------- statystyka
@@ -408,6 +257,8 @@ async function main(): Promise<void> {
     lagPairs: Array.from({ length: MONTHS }, () => [] as [number, number][]),
     wetAnom: Array.from({ length: MONTHS }, () => [] as number[]),
     dryAnom: Array.from({ length: MONTHS }, () => [] as number[]),
+    /** Pary (percentyl sumy opadu wśród dni mokrych miesiąca, odchylenie temperatury). */
+    wetAmount: Array.from({ length: MONTHS }, () => [] as [number, number][]),
     dtrWet: Array.from({ length: MONTHS }, () => [] as number[]),
     dtrDry: Array.from({ length: MONTHS }, () => [] as number[]),
     rhWet: Array.from({ length: MONTHS }, () => [] as number[]),
@@ -449,6 +300,14 @@ async function main(): Promise<void> {
       if (wet === undefined) continue;
       (wet ? refStats.wetAnom : refStats.dryAnom)[monthOf(k)].push(a);
     }
+    // Percentyl sumy opadu wśród dni mokrych tego miesiąca (wszystkie lata) – do zależności
+    // temperatury od wielkości opadu (silny opad zimą przychodzi z cieplejszym powietrzem).
+    const percentileOf = new Map<number, number>();
+    for (let mo = 0; mo < MONTHS; mo++) {
+      const wetDays = [...anomalyOf.keys()].filter((k) => monthOf(k) === mo && wetState(days.get(k)!) === true).sort((x, y) => days.get(x)!.precipMm! - days.get(y)!.precipMm!);
+      wetDays.forEach((k, i) => percentileOf.set(k, (i + 0.5) / wetDays.length));
+    }
+    for (const [k, q] of percentileOf) refStats.wetAmount[monthOf(k)].push([q, anomalyOf.get(k)!]);
     for (const [k, r] of days) {
       if (!inPeriod(k)) continue;
       const mo = monthOf(k);
@@ -460,11 +319,13 @@ async function main(): Promise<void> {
     // Reszty po usunięciu efektu dnia mokrego/suchego: rozrzut i autokorelacja.
     const wetMeanPerMonth = refStats.wetAnom.map((a) => (a.length ? mean(a) : 0));
     const dryMeanPerMonth = refStats.dryAnom.map((a) => (a.length ? mean(a) : 0));
+    const amountSlope = refStats.wetAmount.map(regressionSlope);
     const residual = new Map<number, number>();
     for (const [k, a] of anomalyOf) {
       const wet = wetState(days.get(k)!);
       if (wet === undefined) continue;
-      residual.set(k, a - (wet ? wetMeanPerMonth[monthOf(k)] : dryMeanPerMonth[monthOf(k)]));
+      const mo = monthOf(k);
+      residual.set(k, a - (wet ? wetMeanPerMonth[mo] + amountSlope[mo] * (percentileOf.get(k)! - 0.5) : dryMeanPerMonth[mo]));
     }
     for (const [k, v] of residual) {
       refStats.anomaly[monthOf(k)].push(v);
@@ -643,6 +504,11 @@ async function main(): Promise<void> {
       anomalyAutocorrelation: arr(roundAll(autocorr, 3), '-', 'autokorelacja tych odchyleń z dnia na dzień (pamięć pogody) – stacje odniesienia'),
       wetDayAnomalyC: arr(roundAll(refStats.wetAnom.map(mean), 2), '°C', 'średnie odchylenie temperatury w dni z opadem – stacje odniesienia'),
       dryDayAnomalyC: arr(roundAll(refStats.dryAnom.map(mean), 2), '°C', 'średnie odchylenie temperatury w dni bez opadu – stacje odniesienia'),
+      wetDayAnomalyPerPercentileC: arr(
+        roundAll(refStats.wetAmount.map(regressionSlope), 2),
+        '°C na cały zakres percentyla',
+        'różnica odchylenia temperatury między dniem z najsilniejszym a najsłabszym opadem w miesiącu (regresja względem percentyla sumy dobowej) – stacje odniesienia; zimą dodatnia: silny opad przychodzi z cieplejszym powietrzem',
+      ),
       observedMonthlyMeanStdC: arr(roundAll(refMonthlyMeans.map(std), 2), '°C', 'odchylenie standardowe średniej miesięcznej z roku na rok – stacje odniesienia; do oceny zgodności w raporcie'),
       diurnalRangeDryC: arr(roundAll(refStats.dtrDry.map(mean), 2), '°C', 'średnia amplituda dobowa (Tmax − Tmin) w dni bez opadu – stacje odniesienia'),
       diurnalRangeWetC: arr(roundAll(refStats.dtrWet.map(mean), 2), '°C', 'średnia amplituda dobowa w dni z opadem – stacje odniesienia'),

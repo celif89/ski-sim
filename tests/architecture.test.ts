@@ -38,7 +38,9 @@ describe('Architektura: symulacja oddzielona od grafiki', () => {
   it.each(simFiles.map((f) => [relative(ROOT, f), f]))('%s nie używa obiektów przeglądarki', (_name, file) => {
     const code = stripComments(readFileSync(file, 'utf8'));
     for (const word of ['window', 'document', 'navigator', 'localStorage', 'HTMLElement', 'requestAnimationFrame', 'Math.random']) {
-      expect(code.includes(word), `użycie „${word}”`).toBe(false);
+      // Całe słowa (np. „windowRadiation” – okno czasu – nie jest obiektem przeglądarki).
+      const re = new RegExp(`(^|[^A-Za-z0-9_])${word.replace('.', '\\.')}([^A-Za-z0-9_]|$)`);
+      expect(re.test(code), `użycie „${word}”`).toBe(false);
     }
   });
 });

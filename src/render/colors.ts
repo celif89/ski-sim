@@ -120,3 +120,28 @@ export const TEMPERATURE_STOPS: Stop[] = [
   { t: 0.7, color: [240, 140, 80] },
   { t: 1, color: [175, 40, 40] },
 ];
+
+/** Las na mapie bazowej – ciemna zieleń mieszana z barwą terenu. */
+export const FOREST_COLOR: Rgb = [92, 128, 82];
+
+/** Grubość śniegu: od cienkiej (jasnoszary błękit) przez biel do głębokiego niebieskiego i fioletu. */
+export const SNOW_DEPTH_STOPS: Stop[] = [
+  { t: 0, color: [214, 205, 186] },
+  { t: 0.1, color: [236, 240, 245] },
+  { t: 0.3, color: [168, 206, 240] },
+  { t: 0.55, color: [86, 148, 220] },
+  { t: 0.8, color: [52, 82, 180] },
+  { t: 1, color: [88, 40, 140] },
+];
+
+/** Kolory stanów śniegu (kolejność jak SNOW_QUALITY_CODES: brak, puch, przewiany, osiadły, firn, breja, zlodzony, przetarty). */
+export const SNOW_QUALITY_COLORS: Rgb[] = [
+  [0, 0, 0],
+  [250, 252, 255],
+  [150, 190, 230],
+  [196, 206, 220],
+  [240, 205, 120],
+  [110, 160, 150],
+  [60, 120, 210],
+  [176, 150, 110],
+];

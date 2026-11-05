@@ -121,7 +121,50 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
   - `Environment` (`environment.ts`) łączy wszystko dla wątku obliczeń;
   - raport `npm run climate-report` (publikowany jako `raport-klimatu.html`);
   - widok: panel daty/godziny z „odtwórz dzień”, nakładki 4–6, panel pogody.
-- **Następny: etap 3 – model śniegu + raport „przewiń zimę” (grubość śniegu).**
+- **Etap 3 – zrobiony** (listopad 2026):
+  - pokrycie terenu: `npm run import-landcover` → `data/maps/pilsko/landcover.u8` (3 pasma: % lasu,
+    kosodrzewiny/zarośli, zabudowy; ESA WorldCover 2021, 10 m, CC BY 4.0); las na mapie bazowej;
+  - model śniegu (`snow.ts`, parametry `data/snow.json`): w każdej komórce 2 warstwy (SWE, woda
+    ciekła, gęstość, temperatura, lód), krok 6 h; opad z poprawką na niedobór deszczomierza,
+    gęstość świeżego śniegu Hedstrom–Pomeroy, gęstnienie Verseghy, albedo malejące z wiekiem,
+    bilans energii z temperaturą powierzchni (krótkofalowe z cieniami, Brutsaert, turbulencja,
+    sublimacja, ciepło z gruntu), deszcz wsiąka i zamarza (skorupa → „zlodzony”), las (korony
+    zatrzymują 30 % opadu, 25 % promieniowania, wiatr × 0,3), przewiewanie (Winstral Sx w 8
+    kierunkach, raz na dobę), 7 stanów jakości; `addSnow`/`removeSnow` – miejsce na naśnieżanie
+    i ratraki (etap 7), bilans wody `SnowBalance`;
+  - `snowSeason.ts` (sezon na mapie, promieniowanie bezchmurne co 14 dni i interpolowane),
+    `snowWorld.ts` (w wątku obliczeń gry, stany zapamiętywane co 15 dni), `snowPoint.ts`
+    i `snowCalibration.ts` (model w punkcie stacji na prawdziwej pogodzie),
+    `radiationValidation.ts` (promieniowanie vs pomiary aktynometryczne);
+  - dane kalibracyjne: `npm run snow-calibration-data` → `data/calibration/imgw-stations.json`
+    (Korbielów 8 zim, Zawoja 10, Laliki 10; 2009/10–2018/19), `npm run radiation-validation-data`
+    → `data/calibration/radiation-stations.json` (Bielsko-Biała, Kasprowy 2007–2014),
+    `data/calibration/lajczak-1996.json` (Pilsko 1993/94);
+  - kalibracja (4 parametry): poprawka opadu śniegu 1,0 → 1,3; gęstość graniczna mokrego śniegu
+    700 → 500 kg/m³; tempo gęstnienia suchego 0,0025 → 0,001 1/h; wykładnik chmur Kastena–Czeplaka
+    3,4 → 2,5. Wynik: średni błąd 6,3 → 4,5 cm, zaniżenie −5,9 → −1,3 cm, długość zalegania
+    −13,6 → +0,2 dnia;
+  - widok: nakładki 7 (grubość) i 8 (stan), „Przewiń sezon” (1/5/20 dni/s), odczyt pod kursorem;
+  - raport `npm run winter-report` (`winter-report.ts`, sezony w wątkach `winterWorker.ts`),
+    ustawienia `data/winter-report.json`, publikowany jako `raport-zimy.html` (ok. 8–10 min w CI).
+- **Etap 3b – zrobiony** (listopad 2026): nadwyżka śniegu w wygenerowanych zimach.
+  - dane kalibracyjne rozszerzone do zim 2001/02–2024/25 (Korbielów mierzy śnieg od 2010; od ok. 2020
+    Zawoja i Laliki tylko opad i śnieg – temperatura z Bielska-Białej z poprawką miesięczną, pole
+    `temperatureFromBielskoDays`; do kalibracji tylko zimy z mierzoną temperaturą: 49 zim 2001–2021);
+  - przyczyny nadwyżki (model na pogodzie z generatora 94,4 dnia z pokrywą wobec 86,8 w pomiarach):
+    (1) opad z prawdziwych dni był ustawiany „w południe” (najcieplejsza pora → za dużo deszczu), co
+    kalibracja wyrównała poprawką deszczomierza 1,3 – w generatorze pora opadu jest losowa, więc ten
+    sam mnożnik dawał za dużo śniegu; teraz opad z prawdziwych dni rozłożony na całą dobę
+    (`observedToDailyWeather`), poprawka 1,3 → 1,2; (2) w generatorze temperatura dnia z opadem nie
+    zależała od wielkości opadu – w danych IMGW zimą silny opad przychodzi z cieplejszym powietrzem
+    (styczeń: różnica 3,75 °C między najsłabszym a najsilniejszym opadem); nowe pole profilu
+    `wetDayAnomalyPerPercentileC` (import-climate), w generatorze przesunięcie liniowe względem
+    percentyla sumy dobowej (`gammaCdf`);
+  - wynik: generator 87,9 dnia wobec 86,8 w pomiarach; kalibracja na 49 zimach: błąd 5,66 → 5,03 cm;
+  - raport zimy: rozkład zim z generatora (100 zim) obok prawdziwych 2001–2025 i modelu na prawdziwej
+    pogodzie (dni z pokrywą, maksimum, pojawienie się, zanik; kropka = zima) i tabela pogody „jak
+    widzi ją model” (temperatura opadu, śnieg, odwilże); testy `tests/snowClimate.test.ts`.
+- **Następny: etap 4 – budowa wyciągów i tras.**
 
 Uwagi techniczne:
 - Usługa WCS Geoportalu przy pobieraniu w obniżonej rozdzielczości (SCALESIZE) zwraca mapę
@@ -141,6 +184,32 @@ Uwagi techniczne:
   były zawyżone o ~20 %.
 - `npm run climate-report` liczy horyzont w Node (ok. 10 s); test zgodności 30 zim używa tolerancji
   3 × błąd średniej z 30 lat (z rzeczywistej zmienności z roku na rok).
+- Model śniegu: jeden dzień na pełnej mapie ok. 100–170 ms (1 wątek). Przyspieszenia: kroki liczone
+  w pasach wysokości co 5 m (pogoda wspólna dla pasa), tablica ciśnienia pary nasyconej, pamięć
+  wschodów Słońca w `hourlyAt` (bez niej kalibracja trwała 43 s zamiast 2 s).
+- Pomiar grubości IMGW (godz. 7 UTC dnia d) porównujemy ze stanem modelu na koniec dnia d − 1.
+- Prawdziwa pogoda dla modelu: suma dobowa opadu rozłożona równo na 24 h (godzin opadu nie znamy;
+  ustawienie „w południe” zawyżało temperaturę opadu o ok. 2–3 °C).
+- Porównując generator z pomiarami, liczyć ≥ 100 zim: 30 zim gry (2026–2055) jest przypadkiem
+  o ok. 9 % bardziej mokrych w XI–IV niż średnia generatora.
+- Posterunek Korbielów nie mierzy temperatury – w danych kalibracji temperatura z Zawoi i Lalik
+  przeniesiona gradientem na 650 m.
+- Słabe strony (do poprawy później): przewiewanie nie odtwarza kontrastu „zagłębienia ~2× więcej
+  niż wypukłości” (Łajczak) – śnieg wywiany odkłada się głównie na skraju lasu; parametry wiatru
+  i lasu z literatury, bez kalibracji; gradient opadu z wysokością słabo określony (R² 0,09);
+  stan „zlodzony” częsty (ok. 1/4 dni I–II na 1250 m) – skorupa znika dopiero po ≥ 5 mm świeżego
+  śniegu; maksimum grubości na Hali Miziowej wypada w modelu w połowie lutego,
+  a wg Łajczaka pod koniec marca, zanik ok. 3 V (Łajczak: 10 V w 1994, norma 24 V);
+  po etapie 3b: w zimach z generatora maksimum grubości przy stacjach ok. 44 cm wobec 62 cm
+  w pomiarach (model na prawdziwej pogodzie 53 cm) – generator losuje opad dzień po dniu bez
+  wielodniowych śnieżyc; pierwszy śnieg ok. 1–2 tygodnie za wcześnie (ok. 31 X wobec 10–20 XI);
+  słabych zim nieco za mało (10 % najsłabszych: do 59 dni wobec 53).
+
+## Na później
+
+- Dopracowanie przewiewania śniegu na podstawie zdjęć Sentinel-2 (mapy pokrywy śnieżnej
+  po zamieciach – gdzie śnieg znika z grzbietów i gdzie zalega w zagłębieniach).
+- Generator pogody: wielodniowe epizody silnego opadu (śnieżyce) – za niskie maksima grubości.
 
 ## Ustalenia rozgrywki
 

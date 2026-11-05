@@ -1,0 +1,160 @@
+{
+  "_opis": "Ustawienia raportu „przewiń zimę” (npm run winter-report): progi werdyktu, liczba zim, daty map, punkty kontrolne. Wartości progów – przyjęte (do dyskusji), nie z literatury.",
+  "verdict": {
+    "maxMaeCm": {
+      "value": 6,
+      "unit": "cm",
+      "source": "przyjęte: średni błąd bezwzględny grubości śniegu na stacjach IMGW (XI–IV); naturalna zmienność grubości w obrębie ogródka meteorologicznego to kilka cm"
+    },
+    "maxCoverDaysBias": {
+      "value": 10,
+      "unit": "dni",
+      "source": "przyjęte: średnia różnica liczby dni z pokrywą ≥ 1 cm w sezonie (model − pomiar)"
+    },
+    "maxStationBiasCm": {
+      "value": 5,
+      "unit": "cm",
+      "source": "przyjęte: średnie zawyżenie/zaniżenie grubości na żadnej stacji nie większe niż tyle"
+    }
+  },
+  "generatedWinters": {
+    "count": {
+      "value": 30,
+      "unit": "zim",
+      "source": "jak w raporcie klimatu – średnia z 30 lat"
+    },
+    "firstSeasonStartYear": {
+      "value": 2026,
+      "unit": "rok",
+      "source": "pierwszy sezon gry (2026/27) – ta sama zima, którą widać w przeglądarce; kolejne 29 to następne sezony gry"
+    },
+    "runUntilMonth": {
+      "value": 6,
+      "unit": "miesiąc",
+      "source": "liczymy do końca czerwca, żeby uchwycić zanik śniegu w najwyższych partiach (Hala Miziowa – maj)"
+    },
+    "deepCoverThresholdCm": {
+      "value": 30,
+      "unit": "cm",
+      "source": "pokrywa wystarczająca do jazdy po naturalnym śniegu (przyjęte; Łajczak 1996 podaje 50 cm jako bezpieczne dla narciarstwa)"
+    },
+    "distributionWinters": {
+      "value": 100,
+      "unit": "zim",
+      "source": "zimy z generatora do porównania rozkładu z prawdziwymi zimami 2001–2025 (model w punkcie stacji – szybki; 30 zim to za mało, żeby ocenić skrajne zimy)"
+    }
+  },
+  "mapDates": {
+    "_opis": "Daty map grubości (stan o północy na początku dnia), miesiąc-dzień.",
+    "dates": [
+      "12-01",
+      "01-01",
+      "02-01",
+      "03-01",
+      "04-01"
+    ]
+  },
+  "points": {
+    "_opis": "Punkty kontrolne (PUWG 1992). Dobrane na mapie gry: nachylenie, ekspozycja, krzywizna i las z siatki 10 m.",
+    "list": [
+      {
+        "id": "miziowa",
+        "name": "Hala Miziowa",
+        "eastingM": 522980,
+        "northingM": 185950,
+        "note": "wypłaszczenie przy schronisku, teren otwarty"
+      },
+      {
+        "id": "northSlope",
+        "name": "Stok N pod szczytem",
+        "eastingM": 522955,
+        "northingM": 185435,
+        "note": "hala nad schroniskiem, teren otwarty"
+      },
+      {
+        "id": "ridge",
+        "name": "Grzbiet pod granicą",
+        "eastingM": 523315,
+        "northingM": 184995,
+        "note": "wierzchowina pod granicą, forma wypukła – miejsce wywiewania wg Łajczaka"
+      },
+      {
+        "id": "southSlope",
+        "name": "Stok S w lesie",
+        "eastingM": 522455,
+        "northingM": 187705,
+        "note": "stromy stok o ekspozycji S (SSE) w lesie"
+      },
+      {
+        "id": "northForest",
+        "name": "Stok N w lesie (para do S)",
+        "eastingM": 522305,
+        "northingM": 188245,
+        "note": "stok N w lesie na tej samej wysokości co stok S – para do porównania"
+      },
+      {
+        "id": "valley",
+        "name": "Dolina potoku",
+        "eastingM": 523085,
+        "northingM": 189085,
+        "note": "dno wcięcia potoku (forma wklęsła) w lesie"
+      },
+      {
+        "id": "clearing",
+        "name": "Przecinka w lesie",
+        "eastingM": 522665,
+        "northingM": 189035,
+        "note": "pas bez drzew otoczony lasem"
+      },
+      {
+        "id": "korbielow",
+        "name": "Dolne partie – Korbielów",
+        "eastingM": 524900,
+        "northingM": 189200,
+        "note": "teren otwarty przy potoku, najniżej na mapie"
+      }
+    ]
+  },
+  "calibration": {
+    "_opis": "Wartości parametrów przed kalibracją (z literatury) – raport liczy model także z nimi, żeby pokazać, co dała kalibracja. Wartości po kalibracji są w data/snow.json i data/radiation.json.",
+    "before": [
+      {
+        "file": "snow",
+        "param": "snowfallCatchCorrection",
+        "label": "poprawka na niedobór opadu śniegu w deszczomierzu",
+        "value": 1.0,
+        "unit": "×",
+        "source": "bez poprawki"
+      },
+      {
+        "file": "snow",
+        "param": "maxDensityWet",
+        "label": "gęstość graniczna mokrego śniegu",
+        "value": 700,
+        "unit": "kg/m³",
+        "source": "Verseghy 1991"
+      },
+      {
+        "file": "snow",
+        "param": "rateColdPerHour",
+        "label": "tempo gęstnienia suchego śniegu",
+        "value": 0.0025,
+        "unit": "1/h",
+        "source": "wartość startowa (Verseghy 1991 podaje 0,01)"
+      },
+      {
+        "file": "radiation",
+        "param": "kastenCzeplakB",
+        "label": "wykładnik wpływu chmur na promieniowanie",
+        "value": 3.4,
+        "unit": "–",
+        "source": "Kasten i Czeplak 1980"
+      }
+    ],
+    "maxSubstitutedTemperatureDays": {
+      "value": 10,
+      "unit": "dni",
+      "source": "zima liczy się do kalibracji, jeśli temperatura z Bielska-Białej (zamiast Zawoi/Lalik) uzupełnia najwyżej tyle dni; od ok. 2020 r. Zawoja i Laliki nie mierzą temperatury"
+    }
+  }
+}

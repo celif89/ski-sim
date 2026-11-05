@@ -1,0 +1,321 @@
+{
+  "_opis": "Parametry modelu śniegu naturalnego (src/sim/snow.ts). Każda liczba: value, unit, source. „do kalibracji” = wartość startowa z literatury, sprawdzana na pomiarach IMGW (npm run snow-calibration).",
+  "time": {
+    "stepsPerDay": {
+      "value": 4,
+      "unit": "kroki",
+      "source": "krok 6 h: noc, przedpołudnie, popołudnie, wieczór – wystarcza do topnienia w dzień i zamarzania w nocy"
+    }
+  },
+  "freshSnow": {
+    "hedstromA": {
+      "value": 67.92,
+      "unit": "kg/m³",
+      "source": "Hedstrom i Pomeroy 1998: ρ = 67,92 + 51,25·exp(T/2,59)"
+    },
+    "hedstromB": {
+      "value": 51.25,
+      "unit": "kg/m³",
+      "source": "Hedstrom i Pomeroy 1998"
+    },
+    "hedstromC": {
+      "value": 2.59,
+      "unit": "°C",
+      "source": "Hedstrom i Pomeroy 1998"
+    },
+    "maxDensity": {
+      "value": 200,
+      "unit": "kg/m³",
+      "source": "górna granica gęstości świeżego śniegu (mokry śnieg przy dodatniej temperaturze)"
+    },
+    "snowfallCatchCorrection": {
+      "value": 1.2,
+      "unit": "×",
+      "source": "SKALIBROWANE (było 1,0; w etapie 3 – 1,3, gdy opad z prawdziwych dni był ustawiany „w południe”): poprawka na niedobór łapania śniegu przez deszczomierz Hellmanna – literatura: zimą +10…+30 %, w górach i przy wietrze więcej (Chomicz 1976; WMO SPICE 2018); dopasowane do grubości śniegu Korbielów/Zawoja/Laliki, 49 zim 2001–2021 z mierzoną temperaturą"
+    },
+    "windDensityPerMs": {
+      "value": 8,
+      "unit": "kg/m³ na m/s",
+      "source": "śnieg padający przy wietrze jest gęstszy (powyżej 2 m/s); do kalibracji"
+    },
+    "windDensityThresholdMs": {
+      "value": 2,
+      "unit": "m/s",
+      "source": "j.w."
+    }
+  },
+  "layers": {
+    "topMaxSweMm": {
+      "value": 20,
+      "unit": "mm wody",
+      "source": "warstwa powierzchniowa: do ok. 10–20 cm śniegu; nadmiar przechodzi do warstwy spodniej"
+    },
+    "newLayerSnowfallMm": {
+      "value": 5,
+      "unit": "mm wody",
+      "source": "opad, który przykrywa starą powierzchnię nową warstwą (stara – np. skorupa – trafia pod spód)"
+    },
+    "minSweMm": {
+      "value": 0.05,
+      "unit": "mm wody",
+      "source": "poniżej – brak śniegu (zaokrąglenie numeryczne)"
+    }
+  },
+  "densification": {
+    "maxDensityColdKgM3": {
+      "value": 450,
+      "unit": "kg/m³",
+      "source": "Verseghy 1991 (model CLASS): gęstość graniczna suchego śniegu"
+    },
+    "maxDensityWetKgM3": {
+      "value": 500,
+      "unit": "kg/m³",
+      "source": "SKALIBROWANE (było 700, Verseghy 1991): gęstość graniczna mokrego śniegu; typowo 400–550 kg/m³ dla mokrej pokrywy sezonowej"
+    },
+    "depthTermA": {
+      "value": 20.47,
+      "unit": "kg/m²",
+      "source": "Verseghy 1991: ρmax − (A/h)·(1 − exp(−h/B)) – płytki śnieg gęstnieje słabiej"
+    },
+    "depthTermB": {
+      "value": 0.673,
+      "unit": "m",
+      "source": "Verseghy 1991"
+    },
+    "rateColdPerHour": {
+      "value": 0.001,
+      "unit": "1/h",
+      "source": "SKALIBROWANE (było 0,0025; Verseghy 1991 podaje 0,01): tempo gęstnienia suchego śniegu – przy 0,01 śnieg w środku zimy miałby ok. 400 kg/m³ zamiast typowych 200–300; dopasowane do pomiarów grubości IMGW"
+    },
+    "rateWetPerHour": {
+      "value": 0.01,
+      "unit": "1/h",
+      "source": "Verseghy 1991: mokry śnieg gęstnieje szybko"
+    }
+  },
+  "albedo": {
+    "fresh": {
+      "value": 0.85,
+      "unit": "-",
+      "source": "albedo świeżego śniegu (Verseghy 1991; Essery i in. 2013)"
+    },
+    "min": {
+      "value": 0.5,
+      "unit": "-",
+      "source": "albedo starego, mokrego śniegu (Essery i in. 2013)"
+    },
+    "coldDecayPerDay": {
+      "value": 0.008,
+      "unit": "1/dzień",
+      "source": "spadek albedo zimnego śniegu (Douville i in. 1995; Essery i in. 2013)"
+    },
+    "meltDecayPerDay": {
+      "value": 0.24,
+      "unit": "1/dzień",
+      "source": "wykładniczy spadek do min. przy topnieniu (Douville i in. 1995)"
+    },
+    "refreshSnowfallMm": {
+      "value": 10,
+      "unit": "mm wody",
+      "source": "opad, który w pełni odnawia albedo (Essery i in. 2013)"
+    }
+  },
+  "energy": {
+    "snowEmissivity": {
+      "value": 0.99,
+      "unit": "-",
+      "source": "emisyjność śniegu w podczerwieni"
+    },
+    "brutsaertCoefficient": {
+      "value": 1.24,
+      "unit": "-",
+      "source": "Brutsaert 1975: emisyjność bezchmurnego nieba = 1,24·(e/T)^(1/7)"
+    },
+    "unsworthCloudCoefficient": {
+      "value": 0.84,
+      "unit": "-",
+      "source": "Unsworth i Monteith 1975: ε = (1 − 0,84·C)·ε_bezchm + 0,84·C"
+    },
+    "turbulentExchangeCoefficient": {
+      "value": 0.0015,
+      "unit": "-",
+      "source": "współczynnik wymiany ciepła i pary nad śniegiem (neutralny 0,001–0,003); do kalibracji"
+    },
+    "stableExchangeFactor": {
+      "value": 0.6,
+      "unit": "-",
+      "source": "osłabienie wymiany przy stabilnej warstwie (powietrze cieplejsze niż śnieg); do kalibracji"
+    },
+    "minWindForExchangeMs": {
+      "value": 1,
+      "unit": "m/s",
+      "source": "wymiana turbulencyjna nie zanika do zera przy ciszy (konwekcja swobodna)"
+    },
+    "groundHeatFluxWm2": {
+      "value": 2,
+      "unit": "W/m²",
+      "source": "strumień ciepła z niezamarzniętego gruntu pod śniegiem (1–5 W/m²)"
+    },
+    "interLayerTimeConstantHours": {
+      "value": 48,
+      "unit": "h",
+      "source": "wyrównywanie temperatur warstw przez przewodzenie; do kalibracji"
+    },
+    "minSnowTemperatureC": {
+      "value": -30,
+      "unit": "°C",
+      "source": "granica numeryczna temperatury warstwy"
+    }
+  },
+  "water": {
+    "holdingCapacityFraction": {
+      "value": 0.05,
+      "unit": "część masy",
+      "source": "zdolność zatrzymania wody ciekłej w śniegu 3–5 % (Coléou i Lesaffre 1998)"
+    }
+  },
+  "forest": {
+    "canopySnowLossFraction": {
+      "value": 0.3,
+      "unit": "część opadu śniegu",
+      "source": "śnieg zatrzymany w koronach świerków i odparowany (Hedstrom i Pomeroy 1998; Pomeroy i in. 1998: 25–45 %)"
+    },
+    "canopyShortwaveTransmission": {
+      "value": 0.25,
+      "unit": "-",
+      "source": "część promieniowania słonecznego docierająca pod gęsty las świerkowy (Pomeroy i Dion 1996)"
+    },
+    "canopyWindFactor": {
+      "value": 0.3,
+      "unit": "-",
+      "source": "prędkość wiatru pod koronami względem terenu otwartego; do kalibracji"
+    },
+    "shrubSnowLossFraction": {
+      "value": 0.1,
+      "unit": "część opadu śniegu",
+      "source": "kosodrzewina zatrzymuje mniej śniegu niż las; do kalibracji"
+    },
+    "shrubWindFactor": {
+      "value": 0.6,
+      "unit": "-",
+      "source": "do kalibracji"
+    }
+  },
+  "wind": {
+    "transportThresholdMs": {
+      "value": 6,
+      "unit": "m/s",
+      "source": "prędkość, od której wiatr przenosi suchy śnieg (Li i Pomeroy 1997: 4–11 m/s)"
+    },
+    "erosionMmPerDayPerMs": {
+      "value": 0.6,
+      "unit": "mm wody na dzień na m/s",
+      "source": "intensywność wywiewania powyżej progu; do kalibracji (Łajczak 1996: wklęsłe formy mają do 2× więcej śniegu niż wypukłe)"
+    },
+    "transportableMaxDensity": {
+      "value": 250,
+      "unit": "kg/m³",
+      "source": "gęstszy (osiadły, zlodzony) śnieg nie jest przenoszony"
+    },
+    "exposureDistanceM": {
+      "value": 100,
+      "unit": "m",
+      "source": "zasięg wskaźnika osłonięcia od wiatru (Winstral i in. 2002: Sx, 100 m)"
+    },
+    "exposureSpeedUpPerTan": {
+      "value": 10,
+      "unit": "na jednostkę tangensa",
+      "source": "wywiewanie × (1 − k·Sx): na grzbiecie (Sx = −0,1) dwa razy silniejsze, w zagłębieniu (Sx ≥ 0,1) zanika; do kalibracji"
+    },
+    "depositBaseFraction": {
+      "value": 0.08,
+      "unit": "1/komórka",
+      "source": "część niesionego śniegu odkładana w każdej komórce terenu otwartego"
+    },
+    "depositShelterCoeff": {
+      "value": 3,
+      "unit": "-",
+      "source": "dodatkowe odkładanie w miejscach osłoniętych (zagłębienia, stoki zawietrzne): × tan(kąta osłonięcia); do kalibracji"
+    },
+    "depositForestFraction": {
+      "value": 0.5,
+      "unit": "1/komórka",
+      "source": "skraj lasu wyłapuje niesiony śnieg (Łajczak 1996: akumulacja w lesie wokół polan)"
+    },
+    "blowingSublimationPerCell": {
+      "value": 0.005,
+      "unit": "część strumienia na komórkę",
+      "source": "sublimacja śniegu niesionego przez wiatr (Pomeroy i in. 1993: kilkanaście–kilkadziesiąt % na 1 km); do kalibracji"
+    },
+    "windPackDensity": {
+      "value": 300,
+      "unit": "kg/m³",
+      "source": "gęstość śniegu nawianego (przewianego)"
+    },
+    "dailyMaxWindFactor": {
+      "value": 1.6,
+      "unit": "-",
+      "source": "porywy i godziny silnego wiatru: przewiewanie liczone dla 1,6 × średniej dobowej prędkości; do kalibracji"
+    }
+  },
+  "quality": {
+    "thinCoverDepthM": {
+      "value": 0.1,
+      "unit": "m",
+      "source": "poniżej – prześwity trawy (stan „przetarty”)"
+    },
+    "powderMaxAgeDays": {
+      "value": 2,
+      "unit": "dni",
+      "source": "świeży puch – do 2 dni po opadzie"
+    },
+    "powderMaxDensity": {
+      "value": 160,
+      "unit": "kg/m³",
+      "source": "puch – śnieg lekki"
+    },
+    "slushLiquidFraction": {
+      "value": 0.03,
+      "unit": "część masy",
+      "source": "breja – warstwa powierzchniowa nasycona wodą"
+    },
+    "iceRefreezeMm": {
+      "value": 0.5,
+      "unit": "mm wody",
+      "source": "deszcz (≥ tyle mm) na śnieg i zamarznięcie co najmniej tyle wody w warstwie powierzchniowej → skorupa lodowa (zlodzony); do kalibracji"
+    },
+    "firnMinCycles": {
+      "value": 2,
+      "unit": "cykle",
+      "source": "firn (wiosenny „szreń”): co najmniej 2 cykle topnienia i zamarzania"
+    },
+    "firnMinDensity": {
+      "value": 400,
+      "unit": "kg/m³",
+      "source": "j.w."
+    },
+    "windPackedMinDensity": {
+      "value": 260,
+      "unit": "kg/m³",
+      "source": "przewiany – śnieg zbity wiatrem"
+    },
+    "coverDepthM": {
+      "value": 0.01,
+      "unit": "m",
+      "source": "dzień z pokrywą śnieżną: grubość ≥ 1 cm (definicja IMGW)"
+    }
+  },
+  "solar": {
+    "_opis": "Przeliczanie promieniowania na kroki modelu śniegu.",
+    "referenceSpacingDays": {
+      "value": 14,
+      "unit": "dni",
+      "source": "promieniowanie bezchmurnego nieba liczone co tyle dni i interpolowane (zmienia się powoli)"
+    },
+    "integrationStepMinutes": {
+      "value": 20,
+      "unit": "min",
+      "source": "krok całkowania w oknach 6-godzinnych; błąd < 1 %"
+    }
+  }
+}

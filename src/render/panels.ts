@@ -2,7 +2,8 @@
  * Panele interfejsu (HTML nad mapą): przyciski nakładek i narzędzi oraz legenda aktywnej nakładki.
  */
 import type { SlopeClass } from '../sim';
-import { ASPECT_STOPS_DEG, FLAT_COLOR, rgbToCss } from './colors';
+import { ASPECT_STOPS_DEG, FLAT_COLOR, SNOW_QUALITY_COLORS, rgbToCss } from './colors';
+import { SNOW_QUALITY_CODES, SNOW_QUALITY_NAMES } from '../sim/snow';
 import type { FieldScale } from './fieldOverlay';
 import { scaleGradientCss } from './fieldOverlay';
 import type { OverlayKind } from './overlays';
@@ -20,6 +21,8 @@ export const OVERLAY_KEYS: { kind: OverlayKind; key: string; label: string; titl
   { kind: 'insolation', key: '4', label: 'Słońce teraz', title: 'Nasłonecznienie chwilowe [W/m²] – z cieniami terenu i zachmurzeniem' },
   { kind: 'radiationSum', key: '5', label: 'Słońce – doba', title: 'Suma dobowa promieniowania [kWh/m²]' },
   { kind: 'temperature', key: '6', label: 'Temperatura', title: 'Temperatura powietrza w tej chwili (zależna od wysokości)' },
+  { kind: 'snowDepth', key: '7', label: 'Śnieg – grubość', title: 'Grubość pokrywy śnieżnej [cm] na koniec wybranego dnia' },
+  { kind: 'snowQuality', key: '8', label: 'Śnieg – stan', title: 'Stan śniegu: puch, przewiany, osiadły, firn, breja, zlodzony, przetarty' },
 ];
 
 export class Toolbar {
@@ -76,7 +79,7 @@ export class Legend {
   setFieldInfo(scale: FieldScale | null, info: string): void {
     this.fieldScaleValue = scale;
     this.fieldInfo = info;
-    if (this.kind === 'insolation' || this.kind === 'radiationSum' || this.kind === 'temperature') this.show(this.kind);
+    if (this.kind !== 'none' && this.kind !== 'slope' && this.kind !== 'aspect') this.show(this.kind);
   }
 
   show(kind: OverlayKind): void {
@@ -108,7 +111,15 @@ export class Legend {
         <div class="legend-note">S – ciepłe barwy, N – zimne</div>`;
       return;
     }
+    if (kind === 'snowQuality') {
+      const rows = SNOW_QUALITY_CODES.slice(1)
+        .map((q, i) => `<div class="legend-row"><span class="legend-swatch" style="background:${rgbToCss(SNOW_QUALITY_COLORS[i + 1])}"></span>${SNOW_QUALITY_NAMES[q]}</div>`)
+        .join('');
+      this.element.innerHTML = `<div class="legend-title">Stan śniegu (powierzchnia)</div>${rows}<div class="legend-note">${this.fieldInfo}</div>`;
+      return;
+    }
     const titles: Record<string, [string, string]> = {
+      snowDepth: ['Grubość śniegu', 'cm'],
       insolation: ['Nasłonecznienie teraz', 'W/m²'],
       radiationSum: ['Suma dobowa promieniowania', 'kWh/m²'],
       temperature: ['Temperatura powietrza', '°C'],

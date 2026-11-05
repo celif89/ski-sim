@@ -16,6 +16,8 @@ export interface ClimateProfile {
     anomalyAutocorrelation: number[];
     wetDayAnomalyC: number[];
     dryDayAnomalyC: number[];
+    /** Zmiana odchylenia temperatury dnia z opadem między najsłabszym a najsilniejszym opadem (percentyl 0 → 1) [°C]. */
+    wetDayAnomalyPerPercentileC: number[];
     diurnalRangeDryC: number[];
     diurnalRangeWetC: number[];
     diurnalRangeChangePer100m: number[];
@@ -71,6 +73,7 @@ export function parseClimateProfile(raw: unknown, file = 'data/climate/pilsko.js
       anomalyAutocorrelation: a(t, 'anomalyAutocorrelation', { min: -1, max: 1 }),
       wetDayAnomalyC: a(t, 'wetDayAnomalyC'),
       dryDayAnomalyC: a(t, 'dryDayAnomalyC'),
+      wetDayAnomalyPerPercentileC: a(t, 'wetDayAnomalyPerPercentileC'),
       diurnalRangeDryC: a(t, 'diurnalRangeDryC', { min: 0 }),
       diurnalRangeWetC: a(t, 'diurnalRangeWetC', { min: 0 }),
       diurnalRangeChangePer100m: a(t, 'diurnalRangeChangePer100m'),

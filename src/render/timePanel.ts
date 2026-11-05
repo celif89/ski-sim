@@ -42,6 +42,10 @@ export class TimePanel {
   private readonly playButton: HTMLButtonElement;
   private playing: { startMs: number; fromHour: number; toHour: number } | null = null;
   private sunrise: number | null = null;
+  private readonly seasonButton: HTMLButtonElement;
+  private readonly seasonSpeed: HTMLSelectElement;
+  /** Przewijanie sezonu (dzień po dniu) – sterowane z zewnątrz (main), tu tylko stan przycisku. */
+  seasonPlaying = false;
   private sunset: number | null = null;
 
   constructor(
@@ -64,6 +68,14 @@ export class TimePanel {
       </div>
       <input type="range" class="time-slider" min="0" max="24" step="${HOUR_STEP}" />
       <div class="time-sun"></div>
+      <div class="time-row time-season">
+        <button type="button" data-act="season" class="season-play" title="Przewijaj sezon dzień po dniu do 30 kwietnia – śnieg zmienia się na mapie">▶▶ Przewiń sezon</button>
+        <label>tempo <select class="season-speed">
+          <option value="1">1 dzień/s</option>
+          <option value="5" selected>5 dni/s</option>
+          <option value="20">20 dni/s (maks.)</option>
+        </select></label>
+      </div>
       <div class="time-status"></div>`;
     parent.appendChild(this.element);
     this.dateInput = this.element.querySelector('.time-date')!;
@@ -86,6 +98,9 @@ export class TimePanel {
     this.element.querySelector('[data-act="prev"]')!.addEventListener('click', () => this.setDate(addDays(this.date, -1)));
     this.element.querySelector('[data-act="next"]')!.addEventListener('click', () => this.setDate(addDays(this.date, 1)));
     this.playButton.addEventListener('click', () => (this.playing ? this.stop() : this.play()));
+    this.seasonButton = this.element.querySelector('.season-play')!;
+    this.seasonSpeed = this.element.querySelector('.season-speed')!;
+    this.seasonButton.addEventListener('click', () => this.setSeasonPlaying(!this.seasonPlaying));
     // Klawisze w panelu nie mają przesuwać mapy.
     this.element.addEventListener('keydown', (e) => e.stopPropagation());
     this.refresh();
@@ -149,6 +164,16 @@ export class TimePanel {
     this.dateInput.value = formatIsoDate(this.date);
     this.slider.value = String(this.hour);
     if (!this.timeLabel.textContent) this.timeLabel.textContent = formatHour(this.hour);
+  }
+
+  setSeasonPlaying(playing: boolean): void {
+    this.seasonPlaying = playing;
+    this.seasonButton.textContent = playing ? '■ Zatrzymaj sezon' : '▶▶ Przewiń sezon';
+  }
+
+  /** Tempo przewijania sezonu [dni/s]. */
+  get seasonSpeedDaysPerS(): number {
+    return Number(this.seasonSpeed.value);
   }
 
   get isPlaying(): boolean {
