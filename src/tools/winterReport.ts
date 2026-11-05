@@ -517,9 +517,9 @@ async function main(): Promise<void> {
   log('Rysuję raport…');
   const hillshade = computeHillshade(grid, { lightAzimuthDeg: 315, lightAltitudeDeg: 45, zFactor: 1.5 });
   const png = (values: ArrayLike<number>, maxV: number, emptyBelow: number) => encodePng(grid.widthCells, grid.heightCells, makeMapImage(values, maxV, hillshade, forest, emptyBelow));
-  let deepMax = 30;
-  for (const x of meanDeep) if (x > deepMax) deepMax = x;
-  deepMax = Math.ceil(deepMax / 30) * 30;
+  // Skala do 98. percentyla (pojedyncze zaspy nie spłaszczają kolorów reszty mapy).
+  const deepSorted = Array.from(meanDeep).filter((x) => !Number.isNaN(x)).sort((a, b) => a - b);
+  const deepMax = Math.max(10, Math.ceil(quantile(deepSorted, 0.98) / 10) * 10);
 
   // Punkty kontrolne – opis i statystyki z wielu zim.
   const pointStats = points.map((p, i) => {
@@ -793,7 +793,7 @@ ${scaleBar(maxDepthScaleCm, 'cm')}
 <div class="grid2"><div class="bigmap"><img src="${png(meanDeep, deepMax, 0.5)}" alt="Liczba dni z pokrywą co najmniej ${g.deepCoverThresholdCm.value} cm">${scaleBar(deepMax, 'dni')}</div>
 <div><p>Okres 1 XI – 30 IV (${statsTo - statsFrom} dni). Tyle dni w przeciętnym sezonie dałoby się jeździć po samym naturalnym śniegu (bez naśnieżania i ubijania).</p>
 <p>Średnio na całej mapie: <b>${fmt(mean(Array.from(meanDeep).filter((x) => !Number.isNaN(x))), 0)} dni</b>; Hala Miziowa: <b>${fmt(pointStats[mizIdx]?.deep ?? 0, 0)}</b>; dolne partie przy Korbielowie: <b>${fmt(pointStats[points.findIndex((p) => p.id === 'korbielow')]?.deep ?? 0, 0)}</b>.</p>
-<p class="muted small">Widać: wzrost z wysokością, stoki północne i zagłębienia (nawiewanie) z dłuższym sezonem, grzbiety i wypukłości (wywiewanie) z krótszym, las – mniej śniegu niż polany na tej samej wysokości (korony drzew zatrzymują część opadu).</p></div></div>
+<p class="muted small">Widać: wzrost z wysokością (najdłużej pod granicą i na Hali Miziowej), las – mniej dni niż polany na tej samej wysokości (korony drzew zatrzymują część opadu), stoki północne – nieco dłużej niż południowe. Wpływ zagłębień i grzbietów (nawiewanie, wywiewanie) jest w modelu słaby – patrz punkt 6.</p></div></div>
 
 <h2>6. Rozkład z wysokością – porównanie z pracą Łajczaka (1996)</h2>
 <p>Łajczak mierzył pokrywę na północnym stoku Pilska w sezonie 1993/94 (640–1557 m). Ten sezon był wg autora cieplejszy i uboższy w śnieg od średniej z wielolecia; nasz model ma klimat z lat 2001–2025, też cieplejszy od dawnych norm. Porównanie jest więc jakościowe.</p>
@@ -828,7 +828,7 @@ ${avg(concave, meanMax) / avg(convex, meanMax) < 1.2 ? `<p class="small"><b>Sła
 <tr><td>${winters} sezonów w ${threads} wątkach</td><td>${fmt(wintersMs / 1000, 0)} s</td></tr>
 <tr><td>kalibracja (${cal.winters.length} zim w punktach stacji)</td><td>${fmt(calMs / 1000, 1)} s</td></tr>
 <tr><td>cały raport</td><td>${fmt(totalS, 0)} s</td></tr></tbody></table>
-<p class="small muted">W grze: przy prędkości ×20 jeden dzień gry trwa ok. 30 s, a model śniegu potrzebuje na dzień ułamka sekundy.</p></div>
+<p class="small muted">W grze dzień śniegu liczy się w ułamku sekundy w wątku w tle – przy zwykłym tempie (10 min na dzień gry, ×20 – 30 s) to znikomy koszt. „Przewiń sezon” jest ograniczone tym czasem do kilku dni na sekundę.</p></div>
 </div>
 <p class="muted small">Stany śniegu w grze: ${SNOW_QUALITY_CODES.slice(1).map((c) => SNOW_QUALITY_NAMES[c]).join(', ')}.</p>
 

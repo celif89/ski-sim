@@ -177,7 +177,10 @@ Uwagi techniczne:
   niż wypukłości” (Łajczak) – śnieg wywiany odkłada się głównie na skraju lasu; parametry wiatru
   i lasu z literatury, bez kalibracji; gradient opadu z wysokością słabo określony (R² 0,09);
   stan „zlodzony” częsty (ok. 1/4 dni I–II na 1250 m) – skorupa znika dopiero po ≥ 5 mm świeżego
-  śniegu.
+  śniegu; na pogodzie z generatora w punktach stacji (650–700 m) wychodzi o 5–21 dni pokrywy więcej
+  niż w pomiarach 2009–2019 (na prawdziwej pogodzie zgodnie) – sprawdzić na dłuższej serii
+  pomiarów 2001–2025; maksimum grubości na Hali Miziowej wypada w modelu w połowie lutego,
+  a wg Łajczaka pod koniec marca, zanik ok. 3 V (Łajczak: 10 V w 1994, norma 24 V).
 
 ## Ustalenia rozgrywki
 
