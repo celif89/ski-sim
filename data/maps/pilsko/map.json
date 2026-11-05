@@ -32,6 +32,19 @@
   },
   "elevationFile": "elevation.f32",
   "elevationEncoding": "Float32 little-endian; wiersze od północy, w wierszu kolumny od zachodu; wartość = średnia wysokość komórki [m n.p.m.]; NaN = poza mapą (Słowacja)",
+  "horizonDemRequest": {
+    "_opis": "Parametry modelu terenu okolicy do liczenia cieni (npm run import-horizon-dem).",
+    "sizeM": {
+      "value": 15000,
+      "unit": "m",
+      "source": "zadanie etapu 2: ok. 15 × 15 km wokół mapy"
+    },
+    "cellSizeM": {
+      "value": 30,
+      "unit": "m",
+      "source": "rozdzielczość Copernicus GLO-30 (1″ ≈ 31 m N–S, 20 m E–W)"
+    }
+  },
   "controlPoints": [
     {
       "name": "Hala Miziowa – wypłaszczenie przy schronisku",
@@ -271,5 +284,48 @@
         ]
       ]
     ]
+  },
+  "horizonDem": {
+    "_opis": "Model terenu okolicy (także Słowacja) – TYLKO do liczenia horyzontu i cieni. Wypełnia src/tools/importHorizonDem.ts.",
+    "file": "horizon-dem.f32",
+    "encoding": "Float32 little-endian; wiersze od północy, kolumny od zachodu; wysokość środka komórki [m n.p.m.]",
+    "westEastingM": {
+      "value": 516000,
+      "unit": "m, PUWG 1992 E",
+      "source": "kwadrat wyśrodkowany na mapie gry"
+    },
+    "northNorthingM": {
+      "value": 194610,
+      "unit": "m, PUWG 1992 N",
+      "source": "kwadrat wyśrodkowany na mapie gry"
+    },
+    "cellSizeM": {
+      "value": 30,
+      "unit": "m",
+      "source": "horizonDemRequest.cellSizeM"
+    },
+    "widthCells": {
+      "value": 500,
+      "unit": "komórki",
+      "source": "sizeM / cellSizeM"
+    },
+    "heightCells": {
+      "value": 500,
+      "unit": "komórki",
+      "source": "sizeM / cellSizeM"
+    },
+    "minElevationM": {
+      "value": 471.4,
+      "unit": "m n.p.m.",
+      "source": "policzone przy imporcie"
+    },
+    "maxElevationM": {
+      "value": 1554.2,
+      "unit": "m n.p.m.",
+      "source": "policzone przy imporcie"
+    },
+    "source": "Copernicus DEM GLO-30 (DSM, geoida EGM2008), kafel Copernicus_DSM_COG_10_N49_00_E019_00_DEM, https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N49_00_E019_00_DEM/Copernicus_DSM_COG_10_N49_00_E019_00_DEM.tif; interpolacja dwuliniowa do PUWG 1992",
+    "license": "Copernicus DEM: © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA; all rights reserved",
+    "date": "2026-11-05"
   }
 }

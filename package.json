@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.sim.json --noEmit",
-    "import-nmt": "tsx src/tools/importNmt.ts"
+    "import-nmt": "tsx src/tools/importNmt.ts",
+    "import-horizon-dem": "tsx src/tools/importHorizonDem.ts"
   },
   "engines": {
     "node": ">=22"
@@ -21,6 +22,8 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "fflate": "^0.8.3",
+    "geotiff": "^3.0.5",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.6",

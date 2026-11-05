@@ -4,6 +4,7 @@
  * wywołujący (przeglądarka pobiera je przez sieć, testy czytają z dysku).
  */
 import { readNumber, readSection } from './params';
+import type { HorizonDem } from './horizon';
 import { TerrainGrid } from './terrainGrid';
 
 export interface ControlPoint {
@@ -28,6 +29,8 @@ export interface MapDefinition {
   controlPoints: ControlPoint[];
   /** Linie granicy państwa w PUWG 1992: [[E, N], …]. */
   borderLines: number[][][];
+  /** Opis modelu terenu okolicy (do horyzontu); null, gdy brak. */
+  horizonDem: Omit<HorizonDem, 'elevationM'> & { file: string } | null;
 }
 
 const FILE = 'map.json';
@@ -76,6 +79,20 @@ export function parseMapDefinition(raw: unknown): MapDefinition {
     }
   }
 
+  let horizonDem: MapDefinition['horizonDem'] = null;
+  if (isRecord(raw.horizonDem)) {
+    const hd = raw.horizonDem;
+    if (typeof hd.file !== 'string') throw new Error(`${FILE}: horizonDem bez pola file`);
+    horizonDem = {
+      file: hd.file,
+      westEastingM: readNumber(hd, 'westEastingM', FILE),
+      northNorthingM: readNumber(hd, 'northNorthingM', FILE),
+      cellSizeM: readNumber(hd, 'cellSizeM', FILE, { min: 1 }),
+      widthCells: readNumber(hd, 'widthCells', FILE, { integer: true, min: 2 }),
+      heightCells: readNumber(hd, 'heightCells', FILE, { integer: true, min: 2 }),
+    };
+  }
+
   return {
     name: typeof raw.name === 'string' ? raw.name : 'mapa',
     crs: raw.crs,
@@ -87,7 +104,23 @@ export function parseMapDefinition(raw: unknown): MapDefinition {
     elevationFile: raw.elevationFile,
     controlPoints,
     borderLines,
+    horizonDem,
   };
+}
+
+/** Model terenu okolicy z opisu mapy i zawartości pliku (Float32, little-endian). */
+export function createHorizonDem(def: MapDefinition, buffer: ArrayBuffer): HorizonDem {
+  const d = def.horizonDem;
+  if (!d) throw new Error('Mapa nie ma modelu terenu okolicy (horizonDem) – uruchom npm run import-horizon-dem');
+  return { ...d, elevationM: readFloat32LE(buffer, d.widthCells * d.heightCells) };
+}
+
+function readFloat32LE(buffer: ArrayBuffer, count: number): Float32Array {
+  if (buffer.byteLength !== count * 4) throw new Error(`Plik ma ${buffer.byteLength} B, oczekiwano ${count * 4} B`);
+  const view = new DataView(buffer);
+  const out = new Float32Array(count);
+  for (let k = 0; k < count; k++) out[k] = view.getFloat32(k * 4, true);
+  return out;
 }
 
 /**
@@ -98,9 +131,7 @@ export function createGridFromMap(def: MapDefinition, elevationBuffer: ArrayBuff
   if (elevationBuffer.byteLength !== expectedBytes) {
     throw new Error(`Plik wysokości ma ${elevationBuffer.byteLength} B, oczekiwano ${expectedBytes} B`);
   }
-  const view = new DataView(elevationBuffer);
-  const elevation = new Float32Array(def.widthCells * def.heightCells);
-  for (let k = 0; k < elevation.length; k++) elevation[k] = view.getFloat32(k * 4, true);
+  const elevation = readFloat32LE(elevationBuffer, def.widthCells * def.heightCells);
   return new TerrainGrid(def.widthCells, def.heightCells, def.cellSizeM, elevation, {
     crs: 'EPSG:2180',
     westEastingM: def.westEastingM,
