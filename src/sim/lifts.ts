@@ -137,6 +137,8 @@ export interface LiftDesign {
   towers: Tower[];
   /** true – gracz zmieniał podpory ręcznie (nie rozstawiamy ich od nowa). */
   manualTowers: boolean;
+  /** Wyciąg zamknięty (goście z niego nie korzystają). */
+  closed?: boolean;
 }
 
 export interface GroundSample {

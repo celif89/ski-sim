@@ -116,6 +116,11 @@
       "value": 150,
       "unit": "cm",
       "source": "górna granica skali grubości śniegu (Hala Miziowa: średnio ok. 80 cm w marcu – Hess i in. 1967)"
+    },
+    "trafficMaxPerHour": {
+      "value": 400,
+      "unit": "przejazdów/h przez komórkę 10 m",
+      "source": "górna granica skali natężenia ruchu (etap 5); trasa obciążona w pełni – kilkaset narciarzy na godzinę; do wyczucia"
     }
   },
   "forest": {

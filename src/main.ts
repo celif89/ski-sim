@@ -37,16 +37,20 @@ import type { CalendarDate, HorizonDem, Location, MapDefinition } from './sim';
 import { createBaseMapCanvas } from './render/baseMap';
 import { TerrainRenderer } from './render/terrainRenderer';
 import { MoverLayer } from './render/movers';
-import { DemoScene } from './render/demoScene';
-import type { DemoPath } from './render/demoScene';
+import { GuestController } from './render/guestController';
+import { GuestClient } from './worker/guestClient';
+import guestsJson from '../data/guests.json';
+import { parseGuestParams } from './sim/guestParams';
+import { buildGuestNet } from './sim/guestNetwork';
+import { layoutFromOsm } from './sim/resort';
+import { designLift } from './sim/lifts';
 import { WeatherFx } from './render/weatherFx';
 import { DevMenu } from './render/devMenu';
-import { compareRealPistes } from './sim/resort';
 import { BuildController } from './render/buildController';
 import type { MapContextData, MapLabel } from './render/resortLayer';
 import { parseLiftParams } from './sim/lifts';
 import { parsePisteParams } from './sim/pistes';
-import type { OsmResort } from './sim/resort';
+import type { OsmResort, ResortAnalysis, ResortLayout } from './sim/resort';
 import { parseConstructionParams } from './sim/resort';
 import { SNOW_QUALITY_COLORS } from './render/colors';
 import type { SnowReadoutData } from './render/hud';
@@ -207,8 +211,21 @@ async function start(): Promise<void> {
     let radiationSum: { date: CalendarDate; values: Float32Array } | null = null;
     let radiationRequest = 0;
     const isField = (k: OverlayKind): k is FieldKind | 'snowQuality' =>
-      k === 'insolation' || k === 'radiationSum' || k === 'temperature' || k === 'snowDepth' || k === 'snowQuality';
-    let lastSnow: (SnowReadoutData & { date: CalendarDate }) | null = null;
+      k === 'insolation' || k === 'radiationSum' || k === 'temperature' || k === 'snowDepth' || k === 'snowQuality' || k === 'traffic';
+    // Natężenie ruchu gości (nakładka 9) – odświeżane co sekundę z wątku gości.
+    let trafficTimer = 0;
+    let trafficValues: Float32Array | null = null;
+    function trafficTick(dtS: number): void {
+      trafficTimer -= dtS;
+      if (trafficTimer > 0) return;
+      trafficTimer = 1;
+      void guestsRef.current?.traffic().then((v) => {
+        trafficValues = v;
+        if (overlay === 'traffic') refreshField();
+      });
+    }
+    const guestsRef: { current: GuestController | null } = { current: null };
+    let lastSnow: (SnowReadoutData & { date: CalendarDate; moguls?: Uint8Array }) | null = null;
     const fmtDate = (d: CalendarDate) => `${d.day}.${String(d.month).padStart(2, '0')}.${d.year}`;
     const sameDate = (a: CalendarDate, b: CalendarDate) => a.year === b.year && a.month === b.month && a.day === b.day;
 
@@ -282,6 +299,8 @@ async function start(): Promise<void> {
 
     // ---------------------------------------------------------------- budowa ośrodka
     let onLandCoverChange: (forest: Float32Array, shrub: Float32Array) => void = () => {};
+    // Goście dostają sieć ośrodka po każdej zmianie układu (ustawiane niżej, gdy kontroler gości gotowy).
+    let onGuestLayout: (layout: ResortLayout, analysis: ResortAnalysis) => void = () => {};
     const liftParams = parseLiftParams(liftsJson);
     const build = new BuildController({
       grid,
@@ -302,8 +321,10 @@ async function start(): Promise<void> {
       labels: ((MAP_LABELS[`../data/maps/${simSettings.mapName}/labels.json`] as { labels?: MapLabel[] } | undefined)?.labels ?? []),
       borderLinesLocal,
       onLandCover: (f, sh) => onLandCoverChange(f, sh),
-      onLayoutChange: (layout, analysis) =>
-        terrain.setLayout(layout, new Map([...analysis.pistes].map(([id, a]) => [id, a.axis.filter((x) => !Number.isNaN(x.elevationM))])), liftParams),
+      onLayoutChange: (layout, analysis) => {
+        terrain.setLayout(layout, new Map([...analysis.pistes].map(([id, a]) => [id, a.axis.filter((x) => !Number.isNaN(x.elevationM))])), liftParams);
+        onGuestLayout(layout, analysis);
+      },
       onToolChange: (tool) => {
         buildBar.setTool(tool);
         app.canvas.classList.toggle('tool-build', tool !== 'select');
@@ -313,6 +334,12 @@ async function start(): Promise<void> {
 
     function refreshField(): void {
       if (!isField(overlay)) return;
+      if (overlay === 'traffic') {
+        const scale = fieldScale('traffic', style);
+        if (trafficValues) field.update(trafficValues, scale, 1);
+        legend.setFieldInfo(scale, trafficValues ? 'przejazdy gości przez miejsce na godzinę (ostatnie pół godziny); przezroczyste – mniej niż 1/h' : 'czekam na gości…');
+        return;
+      }
       if (overlay === 'snowDepth' || overlay === 'snowQuality') {
         if (!lastSnow) {
           legend.setFieldInfo(null, 'liczę śnieg…');
@@ -373,7 +400,8 @@ async function start(): Promise<void> {
 
     function setOverlay(kind: OverlayKind): void {
       overlay = kind;
-      if (kind === 'none') {
+      if (guestsRef.current) guestsRef.current.showWaits = kind === 'liftWait';
+      if (kind === 'none' || kind === 'liftWait') {
         overlaySprite.visible = false;
       } else if (isField(kind)) {
         overlaySprite.texture = field.texture;
@@ -416,6 +444,17 @@ async function start(): Promise<void> {
           terrain.setSun(s.sun.elevationDeg, s.sun.azimuthDeg);
           weatherPanel.update(s);
           topBar.setWeather(s, snowAtStations());
+          guests?.setConditions({
+            bottomElevM: s.bottom.elevationM,
+            topElevM: s.top.elevationM,
+            tempBottomC: s.bottom.now.temperatureC,
+            tempTopC: s.top.now.temperatureC,
+            windBottomMs: s.bottom.now.windMs,
+            windTopMs: s.top.now.windMs,
+            precipMmH: s.top.now.precipitationMm,
+            rain: s.top.now.phase === 'rain' || s.bottom.now.phase === 'rain',
+            cloud: s.cloudFraction,
+          });
           timePanel.setSun({ ...s.sun, summerTime: s.summerTime });
           if (overlay === 'radiationSum' && radiationSum && !sameDate(radiationSum.date, t.date)) radiationSum = null;
           refreshField();
@@ -451,8 +490,9 @@ async function start(): Promise<void> {
         .snowState(date)
         .then((m) => {
           if (id !== latestSnowRequest) return;
-          lastSnow = { date: m.date, depthCm: m.depthCm, sweMm: m.sweMm, densityKgM3: m.densityKgM3, quality: m.quality };
-          terrain.setSnow(m.depthCm, m.quality);
+          lastSnow = { date: m.date, depthCm: m.depthCm, sweMm: m.sweMm, densityKgM3: m.densityKgM3, quality: m.quality, moguls: m.moguls };
+          guests?.setSnow(m.quality, m.depthCm, m.moguls);
+          terrain.setSnow(m.depthCm, m.quality, m.moguls);
           if (lastState) topBar.setWeather(lastState, snowAtStations());
           // Śnieg na dachach: gdy w dolnych partiach (do ok. 750 m) zwykle leży śnieg.
           let low = 0;
@@ -499,6 +539,8 @@ async function start(): Promise<void> {
     const clockParams = { gameDayDurationS: simSettings.gameDayDurationS, nightSpeedup: simSettings.nightSpeedup };
     function clockTick(dtS: number): void {
       if (gameSpeed === 0 || timePanel.isPlaying || timePanel.seasonPlaying) return;
+      // Wątek gości nie nadąża (np. ×20 przy kilku tysiącach gości) – zegar czeka.
+      if (guests?.holdClock(timePanel.hour)) return;
       // Nowy dzień dopiero, gdy śnieg poprzedniego jest policzony (przy ×20 model nie nadąża za zegarem).
       const { sunrise, sunset } = timePanel.sunHours;
       const step = advanceClock(timePanel.hour, Math.min(dtS, 0.25), gameSpeed, clockParams, sunrise, sunset);
@@ -567,7 +609,7 @@ async function start(): Promise<void> {
         refreshField();
         const n = grid.cellCount;
         const cover = build.currentLandCover();
-        await sim.initSnow(cover?.forest ?? landCover?.forest.slice() ?? new Float32Array(n), cover?.shrub ?? landCover?.shrub.slice() ?? new Float32Array(n), snowJson);
+        await sim.initSnow(cover?.forest ?? landCover?.forest.slice() ?? new Float32Array(n), cover?.shrub ?? landCover?.shrub.slice() ?? new Float32Array(n), snowJson, guestsJson);
         snowReady = true;
         // Wycinka pod wyciągi i trasy zmienia pokrycie – model śniegu liczy sezon od nowa.
         onLandCoverChange = (f, sh) => {
@@ -585,42 +627,83 @@ async function start(): Promise<void> {
     })();
     requestState({ date: timePanel.date, hour: timePanel.hour });
 
-    // ---------------------------------------------------------------- obiekty ruchome, scena demonstracyjna, pogoda
-    const movers = new MoverLayer(world);
-    const demo = new DemoScene(simSettings.seed, terrain.groom, terrain.ski, style.illustrated.surface.groomerWidthM);
+    // ---------------------------------------------------------------- goście (etap 5), pogoda na ekranie
+    // Postacie nad liniami tras i wyciągów (warstwa ekranu) – osobny kontener z przekształceniem świata.
+    const worldOver = new Container();
+    app.stage.addChild(worldOver);
+    const movers = new MoverLayer(worldOver);
+    const guestOverlay = new Container(); // ikony wypadków, kolejki – nad postaciami
+    app.stage.addChild(guestOverlay);
     const weatherFx = new WeatherFx(screenLayer);
-    let demoOn = false;
-    const demoPaths = (): DemoPath[] => {
-      const { layout, analysis } = build.current;
-      const built = layout.pistes.map((p) => ({ points: (analysis.pistes.get(p.id)?.axis ?? []).filter((x) => !Number.isNaN(x.elevationM)) }));
-      if (built.some((b) => b.points.length >= 2)) return built;
-      // Brak tras w grze – prawdziwe trasy Pilska z OSM.
-      const osm = OSM_RESORTS[`../data/maps/${simSettings.mapName}/osm-resort.json`] as OsmResort | undefined;
-      if (!osm) return [];
-      const pp = parsePisteParams(pistesJson);
-      return compareRealPistes(osm, grid, pp, (e, n) => grid.puwg92ToLocal(e, n)).map((r) => ({ points: r.analysis.axis.filter((x) => !Number.isNaN(x.elevationM)) }));
-    };
-    const devMenu = new DevMenu(document.body, {
-      onDemo: (on, skiers) => {
-        demoOn = on;
-        if (on) demo.setup(demoPaths(), skiers);
-        else movers.setMovers([]);
+    const guestParams = parseGuestParams(guestsJson);
+    const guestClient = new GuestClient();
+    guestClient.init(guestsJson, simSettings.seed, grid.elevationM.slice());
+    guestClient.onError = (msg) => timePanel.setStatus(`Błąd symulacji gości: ${msg}`);
+    const pisteParamsAll = parsePisteParams(pistesJson);
+    const hutPoints = ((MAP_LABELS[`../data/maps/${simSettings.mapName}/labels.json`] as { labels?: MapLabel[] } | undefined)?.labels ?? [])
+      .filter((l) => l.kind === 'hut')
+      .map((l) => {
+        const p = grid.puwg92ToLocal(l.point[0], l.point[1]);
+        return p ? { ...p, name: l.text } : null;
+      })
+      .filter((p): p is { xM: number; yM: number; name: string } => p !== null);
+    const urlGuests = Number(new URLSearchParams(window.location.search).get('goscie'));
+    // eslint-disable-next-line prefer-const
+    let guests: GuestController | null = null;
+    const guestCtl = new GuestController({
+      client: guestClient,
+      params: guestParams,
+      movers,
+      ski: terrain.ski,
+      screenLayer: guestOverlay,
+      camera,
+      panelParent: rightColumn,
+      cardParent: document.body,
+      initialGuests: Number.isFinite(urlGuests) && urlGuests > 0 ? urlGuests : guestParams.scenario.guestsPerDay,
+      onDayTraffic: (date, passes) => {
+        // Przejazdy dnia → model śniegu (ubijanie, zsuwanie, muldy); śnieg na mapie od nowa.
+        sim.setTraffic(date, passes);
+        lastSnow = null;
+        snowRequestedDate = null;
+        requestSnow(timePanel.date);
+      },
+      onLoadOsm: () => {
+        const osm = OSM_RESORTS[`../data/maps/${simSettings.mapName}/osm-resort.json`] as OsmResort | undefined;
+        if (!osm) return;
+        const ctx = OSM_CONTEXTS[`../data/maps/${simSettings.mapName}/osm-context.json`] as MapContextData | undefined;
+        const parkings = (ctx?.parkings ?? []).map((pk) => {
+          const pts = pk.points.map(([e, n]) => grid.puwg92ToLocal(e, n)).filter((q): q is { xM: number; yM: number } => q !== null);
+          return pts.length ? { xM: pts.reduce((a, q) => a + q.xM, 0) / pts.length, yM: pts.reduce((a, q) => a + q.yM, 0) / pts.length } : null;
+        }).filter((q): q is { xM: number; yM: number } => q !== null);
+        const layout = layoutFromOsm(osm, grid, liftParams, pisteParamsAll, (e, n) => grid.puwg92ToLocal(e, n), { snapToStationM: 150, parkings }, (id, t, name, b, top) => designLift(grid, liftParams, id, t, name, b, top));
+        build.loadLayout(layout, 'Wczytano prawdziwy ośrodek Pilsko z OpenStreetMap (Cofnij przywraca poprzedni).');
       },
     });
-    {
-      // Adres ?demo=2000 – od razu scena demonstracyjna (do pomiarów).
-      const q = new URLSearchParams(window.location.search).get('demo');
-      if (q) {
-        const n = Number(q) || 50;
-        devMenu.setDemo(true, n);
-        demoOn = true;
-        demo.setup(demoPaths(), n);
-      }
-    }
+    guests = guestCtl;
+    guestsRef.current = guestCtl;
+    onGuestLayout = (layout, analysis) =>
+      guestCtl.setNet(
+        buildGuestNet({
+          layout,
+          lifts: analysis.lifts,
+          pistes: analysis.pistes,
+          network: analysis.network,
+          liftParams,
+          pisteParams: pisteParamsAll,
+          stationWalkRadiusM: guestParams.operation.stationWalkRadiusM,
+          foodPoints: hutPoints,
+          grid: { cellSizeM: grid.cellSizeM, widthCells: grid.widthCells, heightCells: grid.heightCells },
+        }),
+      );
+    onGuestLayout(build.current.layout, build.current.analysis);
+    const devMenu = new DevMenu(document.body);
 
     // ---------------------------------------------------------------- sterowanie
     input.onClick = (x, y) => {
-      if (!profile.handleClick(x, y)) build.handleClick(x, y);
+      if (profile.handleClick(x, y)) return;
+      // Kliknięcie postaci (gdy nie budujemy) – karta gościa.
+      if (build.currentTool === 'select' && guestCtl.handleClick(x, y, timePanel.hour * 3600)) return;
+      build.handleClick(x, y);
     };
     input.onDoubleClick = () => build.handleDoubleClick();
     input.onRightClick = () => build.handleRightClick();
@@ -641,6 +724,10 @@ async function start(): Promise<void> {
         const o = OVERLAY_KEYS[Number(digit[2]) - 1];
         if (o) setOverlay(o.kind);
         return Boolean(o);
+      }
+      if (code === 'KeyK') {
+        setOverlay(overlay === 'liftWait' ? 'none' : 'liftWait');
+        return true;
       }
       if (code === 'KeyP') {
         if (!profile.active) build.setTool('select');
@@ -666,18 +753,22 @@ async function start(): Promise<void> {
       world.scale.set(scale);
       world.rotation = camera.rotated ? Math.PI : 0;
       world.position.set(camera.viewportWidthPx / 2 - sg * camera.centerXM * scale, camera.viewportHeightPx / 2 - sg * camera.centerYM * scale);
+      worldOver.scale.copyFrom(world.scale);
+      worldOver.rotation = world.rotation;
+      worldOver.position.copyFrom(world.position);
       const nowS = performance.now() / 1000;
       const snowing = lastState && lastState.top.now.phase === 'snow' ? Math.min(1, lastState.top.now.precipitationMm) : 0;
       const night = terrain.lighting().night;
-      if (demoOn) movers.setMovers(demo.step(ticker.deltaMS / 1000, night));
+      guestCtl.sync(timePanel.date, timePanel.hour);
       terrain.update(camera, nowS, ticker.deltaMS / 1000, snowing);
-      movers.update(camera, night);
+      guestCtl.update(camera, night, timePanel.hour * 3600, ticker.deltaMS / 1000);
+      if (overlay === 'traffic') trafficTick(ticker.deltaMS / 1000);
       profile.update(input.cursor);
-      build.update(input.cursor, nowS);
+      build.update(input.cursor, guestCtl.gameTimeS ?? nowS);
       hud.update(camera, grid, input.cursor, lastSnow);
       const wx = lastState?.top.now;
       weatherFx.update(ticker.deltaMS / 1000, camera.viewportWidthPx, camera.viewportHeightPx, wx && wx.precipitationMm > 0 ? Math.min(1, 0.25 + wx.precipitationMm / 2) : 0, wx?.phase === 'rain', lastState?.cloudFraction ?? 0, wx?.windMs ?? 0);
-      devMenu.frame(performance.now() - frameStart, `kafle terenu: ${terrain.stats.visibleTiles} widocznych, ${terrain.stats.bakedTotal} policzonych · obiekty ruchome: ${movers.visibleCount} na ekranie`);
+      devMenu.frame(performance.now() - frameStart, `kafle terenu: ${terrain.stats.visibleTiles} widocznych, ${terrain.stats.bakedTotal} policzonych · goście: ${movers.personCount} w ramce, ${movers.visibleCount} na ekranie`);
     });
 
     // Do podglądu i testów w przeglądarce.
@@ -695,6 +786,8 @@ async function start(): Promise<void> {
       showTopo,
       movers,
       devMenu,
+      guests: guestCtl,
+      setSpeed: (sp: number) => setGameSpeed(sp as GameSpeed),
       build,
     };
   } catch (error) {

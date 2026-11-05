@@ -20,8 +20,10 @@ export function formatLongDate(d: CalendarDate): string {
   return `${weekdayShort(d)} ${d.day} ${MONTHS_GENITIVE[d.month - 1]} ${d.year}`;
 }
 
-export const GAME_SPEEDS = [0, 1, 5, 20] as const;
-export type GameSpeed = (typeof GAME_SPEEDS)[number];
+/** Czas rzeczywisty (1 s gry = 1 s): przy ×1 doba trwa 10 min, czyli 144 razy szybciej. */
+export const LIVE_SPEED = 1 / 144;
+export const GAME_SPEEDS = [0, LIVE_SPEED, 1, 5, 20] as const;
+export type GameSpeed = number;
 
 export interface TopBarHandlers {
   onSpeed(speed: GameSpeed): void;
@@ -79,8 +81,15 @@ export class TopBar {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'a-speed-btn';
-      b.innerHTML = s === 0 ? '<svg viewBox="0 0 16 16" width="14" height="14"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg>' : `×${s}`;
-      b.title = s === 0 ? 'Pauza (spacja)' : s === 1 ? '×1 – dzień sezonu w ok. 10 minut, noc szybciej' : `×${s} – czas ${s} razy szybciej`;
+      b.innerHTML = s === 0 ? '<svg viewBox="0 0 16 16" width="14" height="14"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg>' : s === LIVE_SPEED ? '1:1' : `×${s}`;
+      b.title =
+        s === 0
+          ? 'Pauza (spacja)'
+          : s === LIVE_SPEED
+            ? '1:1 – czas rzeczywisty: narciarze, krzesełka i kolejki w naturalnym tempie (najlepiej przy dużym przybliżeniu)'
+            : s === 1
+              ? '×1 – dzień sezonu w ok. 10 minut, noc szybciej'
+              : `×${s} – czas ${s} razy szybciej niż ×1`;
       b.addEventListener('click', () => h.onSpeed(s));
       right.appendChild(b);
       this.speedButtons.set(s, b);

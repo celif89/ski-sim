@@ -176,6 +176,15 @@ export class BuildController {
     this.refreshProfile();
   }
 
+  get currentTool(): BuildTool {
+    return this.tool;
+  }
+
+  /** Wczytanie gotowego układu (np. prawdziwy ośrodek z OSM) – z możliwością cofnięcia. */
+  loadLayout(next: ResortLayout, message: string): void {
+    this.commit(next, message);
+  }
+
   /** Nowy układ z zapamiętaniem poprzedniego (cofnij). */
   private commit(next: ResortLayout, message = ''): void {
     this.history.push(this.layout);

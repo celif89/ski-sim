@@ -82,8 +82,8 @@ export class SimClient {
     return m;
   }
 
-  async initSnow(forest: Float32Array, shrub: Float32Array, snowJson: unknown): Promise<void> {
-    const m = await this.send({ type: 'initSnow', forest, shrub, snowJson });
+  async initSnow(forest: Float32Array, shrub: Float32Array, snowJson: unknown, guestsJson?: unknown): Promise<void> {
+    const m = await this.send({ type: 'initSnow', forest, shrub, snowJson, guestsJson });
     if (m.type !== 'snowReady') throw new Error('Nieoczekiwana odpowiedź wątku');
   }
 
@@ -91,6 +91,12 @@ export class SimClient {
   setLandCover(forest: Float32Array, shrub: Float32Array): void {
     const request: WorkerRequest = { type: 'setLandCover', forest, shrub };
     this.worker.postMessage(request, [forest.buffer, shrub.buffer] as ArrayBuffer[]);
+  }
+
+  /** Przejazdy gości w dniu `date` – model śniegu dolicza ich wpływ (ubijanie, zsuwanie, muldy). */
+  setTraffic(date: CalendarDate, passes: Float32Array): void {
+    const request: WorkerRequest = { type: 'setTraffic', date, passes };
+    this.worker.postMessage(request, [passes.buffer] as ArrayBuffer[]);
   }
 
   /** Stan śniegu na koniec dnia. Starsze, niedokończone pytania zostają zastąpione nowszymi. */

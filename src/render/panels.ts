@@ -23,6 +23,8 @@ export const OVERLAY_KEYS: { kind: OverlayKind; key: string; label: string; titl
   { kind: 'temperature', key: '6', label: 'Temperatura', title: 'Temperatura powietrza w tej chwili (zależna od wysokości)' },
   { kind: 'snowDepth', key: '7', label: 'Śnieg – grubość', title: 'Grubość pokrywy śnieżnej [cm] na koniec wybranego dnia' },
   { kind: 'snowQuality', key: '8', label: 'Śnieg – stan', title: 'Stan śniegu: puch, przewiany, osiadły, firn, breja, zlodzony, przetarty' },
+  { kind: 'traffic', key: '9', label: 'Ruch na trasach', title: 'Natężenie ruchu gości: przejazdy na godzinę (ostatnie pół godziny)' },
+  { kind: 'liftWait', key: 'K', label: 'Kolejki', title: 'Czas oczekiwania i długość kolejki przy dolnych stacjach' },
 ];
 
 export class Toolbar {
@@ -124,7 +126,21 @@ export class Legend {
       this.element.innerHTML = `<div class="legend-title">Stan śniegu (powierzchnia)</div>${rows}<div class="legend-note">${this.fieldInfo}</div>`;
       return;
     }
+    if (kind === 'liftWait') {
+      const rows = [
+        ['#2f9e44', 'do 5 min'],
+        ['#f59f00', '5–15 min'],
+        ['#e8590c', '15–30 min'],
+        ['#d92b2b', 'ponad 30 min'],
+        ['#64748b', 'wyciąg stoi (wiatr, zamknięty)'],
+      ]
+        .map(([c, t]) => `<div class="legend-row"><span class="legend-swatch" style="background:${c}"></span>${t}</div>`)
+        .join('');
+      this.element.innerHTML = `<div class="legend-title">Kolejki: czas oczekiwania · liczba osób</div>${rows}<div class="legend-note">przy dolnych stacjach; szczegóły w panelu „Goście”</div>`;
+      return;
+    }
     const titles: Record<string, [string, string]> = {
+      traffic: ['Ruch na trasach', 'przejazdów/h'],
       snowDepth: ['Grubość śniegu', 'cm'],
       insolation: ['Nasłonecznienie teraz', 'W/m²'],
       radiationSum: ['Suma dobowa promieniowania', 'kWh/m²'],

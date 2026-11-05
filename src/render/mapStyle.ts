@@ -22,6 +22,7 @@ export interface MapStyle {
   radiationSumMaxKwhM2: number;
   temperatureRangeC: number;
   snowDepthMaxCm: number;
+  trafficMaxPerHour: number;
   forestTintStrength: number;
   illustrated: IllustrationStyle;
 }
@@ -61,6 +62,7 @@ export function parseMapStyle(raw: unknown): MapStyle {
     radiationSumMaxKwhM2: readNumber(scales, 'radiationSumMaxKwhM2', FILE, { min: 0.1 }),
     temperatureRangeC: readNumber(scales, 'temperatureRangeC', FILE, { min: 1 }),
     snowDepthMaxCm: readNumber(scales, 'snowDepthMaxCm', FILE, { min: 1 }),
+    trafficMaxPerHour: readNumber(scales, 'trafficMaxPerHour', FILE, { min: 1 }),
     forestTintStrength: readNumber(readSection(raw, 'forest', FILE), 'tintStrength', FILE, { min: 0, max: 1 }),
     illustrated: parseIllustration(readSection(raw, 'illustrated', FILE)),
   };
