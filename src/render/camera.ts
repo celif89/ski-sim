@@ -8,6 +8,9 @@
  *  - skala: ile metrów terenu przypada na jeden piksel ekranu (metersPerPixel),
  *  - rozmiar okna w pikselach.
  *
+ * Obrót: mapa może być obrócona o 180° (rotated = true – widok od Korbielowa: szczyt u góry,
+ * północ na dole). Wtedy kierunki ekranu są odwrócone względem osi mapy.
+ *
  * Ograniczenia:
  *  - największe oddalenie: cała mapa mieści się na ekranie,
  *  - największe przybliżenie: minMetersPerPixel (z data/settings.json, ok. 2 m/px),
@@ -34,6 +37,8 @@ export class Camera {
   private _metersPerPixel: number;
   private _viewportWidthPx: number;
   private _viewportHeightPx: number;
+  /** Mapa obrócona o 180° (północ na dole ekranu). */
+  rotated = false;
 
   constructor(
     mapWidthM: number,
@@ -87,27 +92,40 @@ export class Camera {
     this.clampCenter();
   }
 
+  /** Znak kierunku: 1 – zwykle, −1 – mapa obrócona o 180°. */
+  get sign(): number {
+    return this.rotated ? -1 : 1;
+  }
+
   /** Piksel ekranu → punkt terenu [m]. */
   screenToWorld(xPx: number, yPx: number): WorldPoint {
+    const s = this.sign;
     return {
-      xM: this._centerXM + (xPx - this._viewportWidthPx / 2) * this._metersPerPixel,
-      yM: this._centerYM + (yPx - this._viewportHeightPx / 2) * this._metersPerPixel,
+      xM: this._centerXM + s * (xPx - this._viewportWidthPx / 2) * this._metersPerPixel,
+      yM: this._centerYM + s * (yPx - this._viewportHeightPx / 2) * this._metersPerPixel,
     };
   }
 
   /** Punkt terenu [m] → piksel ekranu. */
   worldToScreen(xM: number, yM: number): ScreenPoint {
+    const s = this.sign;
     return {
-      xPx: (xM - this._centerXM) / this._metersPerPixel + this._viewportWidthPx / 2,
-      yPx: (yM - this._centerYM) / this._metersPerPixel + this._viewportHeightPx / 2,
+      xPx: (s * (xM - this._centerXM)) / this._metersPerPixel + this._viewportWidthPx / 2,
+      yPx: (s * (yM - this._centerYM)) / this._metersPerPixel + this._viewportHeightPx / 2,
     };
   }
 
   /** Przesunięcie mapy o zadaną liczbę pikseli (jak przy przeciąganiu: mapa jedzie za myszą). */
   panByPixels(dxPx: number, dyPx: number): void {
-    this._centerXM -= dxPx * this._metersPerPixel;
-    this._centerYM -= dyPx * this._metersPerPixel;
+    const s = this.sign;
+    this._centerXM -= s * dxPx * this._metersPerPixel;
+    this._centerYM -= s * dyPx * this._metersPerPixel;
     this.clampCenter();
+  }
+
+  /** Obrót mapy o 180° wokół środka widoku. */
+  toggleRotation(): void {
+    this.rotated = !this.rotated;
   }
 
   /** Ustawia środek widoku na punkt terenu [m]. */
@@ -125,8 +143,9 @@ export class Camera {
     if (!(zoomFactor > 0)) return;
     const anchor = this.screenToWorld(xPx, yPx);
     this.setMetersPerPixel(this._metersPerPixel / zoomFactor);
-    this._centerXM = anchor.xM - (xPx - this._viewportWidthPx / 2) * this._metersPerPixel;
-    this._centerYM = anchor.yM - (yPx - this._viewportHeightPx / 2) * this._metersPerPixel;
+    const s = this.sign;
+    this._centerXM = anchor.xM - s * (xPx - this._viewportWidthPx / 2) * this._metersPerPixel;
+    this._centerYM = anchor.yM - s * (yPx - this._viewportHeightPx / 2) * this._metersPerPixel;
     this.clampCenter();
   }
 

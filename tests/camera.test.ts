@@ -144,7 +144,37 @@ describe('Podziałka liniowa', () => {
 });
 
 describe('Ustawienia widoku', () => {
-  it('największe przybliżenie w data/settings.json to ok. 2 m/px', () => {
-    expect(parseViewSettings(settingsJson).minMetersPerPixel).toBe(2);
+  it('największe przybliżenie w data/settings.json to ok. 0,25 m/px (etap 4b), domyślnie mapa obrócona', () => {
+    expect(parseViewSettings(settingsJson).minMetersPerPixel).toBe(0.25);
+    expect(parseViewSettings(settingsJson).rotatedByDefault).toBe(true);
+  });
+});
+
+describe('Obrót mapy o 180°', () => {
+  it('północ na dole: punkt na północ od środka jest niżej na ekranie; przeliczenia są odwrotne', () => {
+    const cam = new Camera(4000, 4500, 0.25, 1000, 800);
+    cam.rotated = true;
+    const c = cam.worldToScreen(cam.centerXM, cam.centerYM - 100); // 100 m na północ
+    expect(c.yPx).toBeGreaterThan(400);
+    const e = cam.worldToScreen(cam.centerXM + 100, cam.centerYM); // 100 m na wschód
+    expect(e.xPx).toBeLessThan(500);
+    const w = cam.screenToWorld(123, 456);
+    const back = cam.worldToScreen(w.xM, w.yM);
+    expect(back.xPx).toBeCloseTo(123, 9);
+    expect(back.yPx).toBeCloseTo(456, 9);
+  });
+  it('zoom przy obrocie trzyma punkt pod kursorem, przeciąganie przesuwa mapę za myszą', () => {
+    const cam = new Camera(4000, 4500, 0.25, 1000, 800);
+    cam.rotated = true;
+    const before = cam.screenToWorld(300, 200);
+    cam.zoomAt(300, 200, 3);
+    const after = cam.screenToWorld(300, 200);
+    expect(after.xM).toBeCloseTo(before.xM, 6);
+    expect(after.yM).toBeCloseTo(before.yM, 6);
+    const p0 = cam.worldToScreen(2000, 2000);
+    cam.panByPixels(20, 10);
+    const p1 = cam.worldToScreen(2000, 2000);
+    expect(p1.xPx - p0.xPx).toBeCloseTo(20, 6);
+    expect(p1.yPx - p0.yPx).toBeCloseTo(10, 6);
   });
 });

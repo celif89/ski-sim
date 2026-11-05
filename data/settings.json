@@ -44,9 +44,9 @@
   },
   "view": {
     "minMetersPerPixel": {
-      "value": 2,
+      "value": 0.25,
       "unit": "m/px",
-      "source": "zadanie etapu 0: największe przybliżenie ok. 2 m na piksel"
+      "source": "etap 4b: największe przybliżenie ok. 0,25 m na piksel (detal faktury śniegu)"
     },
     "wheelZoomFactorPerNotch": {
       "value": 1.2,
@@ -62,6 +62,11 @@
       "value": 160,
       "unit": "px",
       "source": "największa długość podziałki na ekranie; kwestia czytelności"
+    },
+    "rotatedByDefault": {
+      "value": 1,
+      "unit": "0/1",
+      "source": "etap 4b: domyślnie widok od Korbielowa – szczyt u góry, północ na dole (1 = mapa obrócona o 180°)"
     }
   }
 }

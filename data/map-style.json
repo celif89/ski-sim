@@ -125,5 +125,151 @@
       "unit": "0–1",
       "source": "jak mocno las przyciemnia barwę terenu (ciemniejsza zieleń pod cieniowaniem rzeźby); do wyczucia"
     }
+  },
+  "illustrated": {
+    "_opis": "Oprawa graficzna w stylu A (ilustrowana mapa narciarska, etap 4b): poziomy szczegółowości, drzewa, faktury, ślady. Tylko wygląd – symulacja dalej na siatce 10 m.",
+    "lod": {
+      "level1AboveMpp": {
+        "value": 4,
+        "unit": "m/px",
+        "source": "zadanie etapu 4b: poziom 1 (cały ośrodek) powyżej ok. 4 m/px"
+      },
+      "level3BelowMpp": {
+        "value": 1,
+        "unit": "m/px",
+        "source": "zadanie etapu 4b: poziom 3 (detal) poniżej ok. 1 m/px"
+      },
+      "blendOctaves": {
+        "value": 0.35,
+        "unit": "oktawy (log2 skali)",
+        "source": "szerokość płynnego przejścia po obu stronach progu; do wyczucia (makieta A)"
+      }
+    },
+    "treeIcons": {
+      "spacingM": {
+        "value": 24,
+        "unit": "m",
+        "source": "poziom 1: faktura ikonek świerków co ok. 5 px przy całej mapie (nie liczba prawdziwych drzew); makieta A"
+      },
+      "heightM": {
+        "value": 28,
+        "unit": "m",
+        "source": "ikonka ok. 6 px przy całej mapie – przesadzona dla czytelności; makieta A"
+      },
+      "widthRatio": {
+        "value": 0.62,
+        "unit": "szer./wys.",
+        "source": "proporcje ikonki świerka; do wyczucia (makieta A)"
+      }
+    },
+    "trees": {
+      "spacingM": {
+        "value": 8,
+        "unit": "m",
+        "source": "poziom 2–3: pojedyncze świerki rozstawione rzadziej niż w naturze (400–800 drzew/ha), żeby było widać śnieg między nimi jak na makiecie A"
+      },
+      "heightM": {
+        "value": 14,
+        "unit": "m",
+        "source": "średnia wysokość świerka regla górnego (losowo 0,75–1,25×); do wyczucia (makieta A)"
+      },
+      "widthRatio": {
+        "value": 0.5,
+        "unit": "szer./wys.",
+        "source": "smukły świerk górski; do wyczucia (makieta A)"
+      }
+    },
+    "shrub": {
+      "spacingM": {
+        "value": 5,
+        "unit": "m",
+        "source": "kosodrzewina: odstęp kęp (poziom 2–3); do wyczucia (makieta A)"
+      },
+      "radius": {
+        "value": 0.55,
+        "unit": "ułamek odstępu",
+        "source": "promień kępy; do wyczucia (makieta A)"
+      },
+      "iconSpacingM": {
+        "value": 14,
+        "unit": "m",
+        "source": "kosodrzewina na poziomie 1; do wyczucia (makieta A)"
+      },
+      "iconRadius": {
+        "value": 0.38,
+        "unit": "ułamek odstępu",
+        "source": "promień ikonki kępy; do wyczucia (makieta A)"
+      }
+    },
+    "maskMetersPerPixel": {
+      "value": 2,
+      "unit": "m/px",
+      "source": "maska przecinek i tras oraz warstwa śladów – rozdzielczość rysowania (symulacja: 10 m)"
+    },
+    "surface": {
+      "groomedMin": {
+        "value": 0.35,
+        "unit": "0–1",
+        "source": "ślad ratraka mocniejszy niż – sztruks; do wyczucia (makieta A)"
+      },
+      "skiedMin": {
+        "value": 0.15,
+        "unit": "0–1",
+        "source": "ślady nart na puchu widoczne powyżej; do wyczucia (makieta A)"
+      },
+      "mogulsMin": {
+        "value": 0.7,
+        "unit": "0–1",
+        "source": "dużo przejazdów bez ratraka – muldy; do wyczucia (makieta A)"
+      }
+    },
+    "tracksHalfLifeS": {
+      "value": 600,
+      "unit": "s",
+      "source": "czas połowicznego zaniku śladów (czas rzeczywisty sceny); do wyczucia (makieta A)"
+    },
+    "tracksSnowfallFactor": {
+      "value": 20,
+      "unit": "×",
+      "source": "przy opadzie śniegu ślady znikają tyle razy szybciej; do wyczucia (makieta A)"
+    },
+    "reliefZFactor": {
+      "value": 1.6,
+      "unit": "-",
+      "source": "przewyższenie cieniowania rzeźby (śnieg z niebieskawymi cieniami); do wyczucia (makieta A)"
+    },
+    "tiles": {
+      "_opis": "Piramida kafli terenu: teren liczony raz do kafli w kilku rozdzielczościach i odświeżany tylko przy zmianie śniegu, wycinki lub obrotu mapy.",
+      "tilePx": {
+        "value": 256,
+        "unit": "px",
+        "source": "rozmiar kafla (typowy w mapach kafelkowych)"
+      },
+      "coarsestMpp": {
+        "value": 8,
+        "unit": "m/px",
+        "source": "najgrubszy poziom piramidy (cała mapa w kilku kaflach – zawsze pod spodem)"
+      },
+      "levels": {
+        "value": 6,
+        "unit": "poziomów",
+        "source": "8, 4, 2, 1, 0,5, 0,25 m/px – najdrobniejszy odpowiada największemu przybliżeniu"
+      },
+      "bakeBudgetMs": {
+        "value": 8,
+        "unit": "ms na klatkę",
+        "source": "czas na liczenie nowych kafli w jednej klatce (płynność przy przesuwaniu)"
+      },
+      "maxTiles": {
+        "value": 400,
+        "unit": "kafli",
+        "source": "pamięć kafli (ok. 100 MB w karcie graficznej) – najdawniej używane są usuwane"
+      },
+      "fadeInS": {
+        "value": 0.25,
+        "unit": "s",
+        "source": "nowy kafel pojawia się płynnie (bez przeskoków)"
+      }
+    }
   }
 }

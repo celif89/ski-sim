@@ -4,6 +4,12 @@
  * i pogody, obsługuje przesuwanie, zoom, panele i narzędzia.
  */
 import { Application, CanvasSource, Container, Sprite, Texture } from 'pixi.js';
+import '@fontsource/barlow/400.css';
+import '@fontsource/barlow/500.css';
+import '@fontsource/barlow/600.css';
+import '@fontsource/barlow/700.css';
+import '@fontsource/barlow-condensed/600.css';
+import '@fontsource/barlow-condensed/700.css';
 import mapStyleJson from '../data/map-style.json';
 import radiationJson from '../data/radiation.json';
 import settingsJson from '../data/settings.json';
@@ -28,7 +34,9 @@ import {
 } from './sim';
 import type { CalendarDate, HorizonDem, Location, MapDefinition } from './sim';
 import { createBaseMapCanvas } from './render/baseMap';
+import { TerrainRenderer } from './render/terrainRenderer';
 import { BuildController } from './render/buildController';
+import type { MapContextData, MapLabel } from './render/resortLayer';
 import { parseLiftParams } from './sim/lifts';
 import { parsePisteParams } from './sim/pistes';
 import type { OsmResort } from './sim/resort';
@@ -58,6 +66,8 @@ const MAP_JSONS = import.meta.glob('../data/maps/*/map.json', { eager: true, imp
 const MAP_BINARY_URLS = import.meta.glob('../data/maps/*/*.{f32,u8}', { eager: true, query: '?url', import: 'default' });
 const CLIMATE_JSONS = import.meta.glob('../data/climate/*.json', { eager: true, import: 'default' });
 const OSM_RESORTS = import.meta.glob('../data/maps/*/osm-resort.json', { eager: true, import: 'default' });
+const OSM_CONTEXTS = import.meta.glob('../data/maps/*/osm-context.json', { eager: true, import: 'default' });
+const MAP_LABELS = import.meta.glob('../data/maps/*/labels.json', { eager: true, import: 'default' });
 
 function binaryUrl(mapName: string, file: string): string {
   const url = MAP_BINARY_URLS[`../data/maps/${mapName}/${file}`] as string | undefined;
@@ -135,18 +145,35 @@ async function start(): Promise<void> {
         return [p.xM, p.yM];
       }),
     );
-    const baseCanvas = createBaseMapCanvas({ grid, hillshade, contours, borderLinesLocal, style, forest: landCover?.forest ?? null });
-    timingsMs['mapa bazowa (rysowanie)'] = Math.round(performance.now() - t0);
+    // Czcionki oprawy (etykiety na mapie rysuje PixiJS – muszą być wczytane wcześniej).
+    try {
+      await Promise.all([document.fonts.load('700 16px "Barlow Condensed"'), document.fonts.load('700 14px Barlow'), document.fonts.load('600 14px Barlow')]);
+    } catch {
+      /* bez czcionek – zastępcze */
+    }
     message.remove();
 
-    // Świat w metrach: tekstury rozciągnięte na wymiar mapy.
+    // Świat w metrach. Teren w stylu A rysuje shader (TerrainRenderer); dawna mapa topograficzna
+    // (warstwice, barwy wysokości) jest nakładką do włączenia w menu „Nakładki”.
     const world = new Container();
     const fitToMap = (sprite: Sprite) => {
       sprite.width = grid.widthM;
       sprite.height = grid.heightM;
       return sprite;
     };
-    world.addChild(fitToMap(new Sprite(textureFromCanvas(baseCanvas))));
+    const terrain = new TerrainRenderer(world, app.renderer, grid, style.illustrated, simSettings.seed, landCover?.forest ?? null, landCover?.shrub ?? null);
+    let topoSprite: Sprite | null = null;
+    const showTopo = (on: boolean) => {
+      if (on && !topoSprite) {
+        const t1 = performance.now();
+        const baseCanvas = createBaseMapCanvas({ grid, hillshade, contours, borderLinesLocal, style, forest: landCover?.forest ?? null });
+        timingsMs['mapa topograficzna (rysowanie)'] = Math.round(performance.now() - t1);
+        topoSprite = fitToMap(new Sprite(textureFromCanvas(baseCanvas)));
+        world.addChildAt(topoSprite, 1);
+      }
+      if (topoSprite) topoSprite.visible = on;
+    };
+    void t0;
     const overlaySprite = new Sprite();
     overlaySprite.alpha = style.overlayOpacity;
     world.addChild(overlaySprite);
@@ -155,6 +182,7 @@ async function start(): Promise<void> {
     app.stage.addChild(screenLayer);
 
     const camera = new Camera(grid.widthM, grid.heightM, viewSettings.minMetersPerPixel, app.screen.width, app.screen.height);
+    camera.rotated = viewSettings.rotatedByDefault;
     const input = new MapInput(app.canvas, camera, viewSettings);
     const hud = new Hud(document.body, viewSettings.scaleBarMaxWidthPx, style.flatSlopePercent);
     const rightColumn = document.createElement('div');
@@ -197,6 +225,7 @@ async function start(): Promise<void> {
 
     // ---------------------------------------------------------------- budowa ośrodka
     let onLandCoverChange: (forest: Float32Array, shrub: Float32Array) => void = () => {};
+    const liftParams = parseLiftParams(liftsJson);
     const build = new BuildController({
       grid,
       camera,
@@ -204,14 +233,20 @@ async function start(): Promise<void> {
       screenLayer,
       panelParent: rightColumn,
       profileParent: document.body,
-      liftParams: parseLiftParams(liftsJson),
+      liftParams,
       pisteParams: parsePisteParams(pistesJson),
       clearing: parseConstructionParams(constructionJson).clearing,
       forest: landCover?.forest ?? null,
       shrub: landCover?.shrub ?? null,
       osm: (OSM_RESORTS[`../data/maps/${simSettings.mapName}/osm-resort.json`] as OsmResort | undefined) ?? null,
       storageKey: `ski-sim:osrodek:${simSettings.mapName}`,
+      lod: style.illustrated.lod,
+      context: (OSM_CONTEXTS[`../data/maps/${simSettings.mapName}/osm-context.json`] as MapContextData | undefined) ?? null,
+      labels: ((MAP_LABELS[`../data/maps/${simSettings.mapName}/labels.json`] as { labels?: MapLabel[] } | undefined)?.labels ?? []),
+      borderLinesLocal,
       onLandCover: (f, sh) => onLandCoverChange(f, sh),
+      onLayoutChange: (layout, analysis) =>
+        terrain.setLayout(layout, new Map([...analysis.pistes].map(([id, a]) => [id, a.axis.filter((x) => !Number.isNaN(x.elevationM))])), liftParams),
       onToolChange: (tool) => {
         app.canvas.classList.toggle('tool-build', tool !== 'select');
         if (tool !== 'select') profile.setActive(false);
@@ -320,6 +355,7 @@ async function start(): Promise<void> {
         .environmentState(t.date, t.hour)
         .then((s) => {
           lastState = s;
+          terrain.setSun(s.sun.elevationDeg, s.sun.azimuthDeg);
           weatherPanel.update(s);
           timePanel.setSun({ ...s.sun, summerTime: s.summerTime });
           if (overlay === 'radiationSum' && radiationSum && !sameDate(radiationSum.date, t.date)) radiationSum = null;
@@ -357,6 +393,17 @@ async function start(): Promise<void> {
         .then((m) => {
           if (id !== latestSnowRequest) return;
           lastSnow = { date: m.date, depthCm: m.depthCm, sweMm: m.sweMm, densityKgM3: m.densityKgM3, quality: m.quality };
+          terrain.setSnow(m.depthCm, m.quality);
+          // Śnieg na dachach: gdy w dolnych partiach (do ok. 750 m) zwykle leży śnieg.
+          let low = 0;
+          let snowy = 0;
+          for (let k = 0; k < m.depthCm.length; k++) {
+            if (grid.elevationM[k] < 750) {
+              low++;
+              if (m.depthCm[k] > 3) snowy++;
+            }
+          }
+          build.setRoofSnow(low === 0 || snowy / low > 0.5);
           timePanel.setStatus('');
           refreshField();
         })
@@ -474,10 +521,15 @@ async function start(): Promise<void> {
       input.update(ticker.deltaMS / 1000);
       // Przeliczenie metrów na piksele: świat jest w metrach, kamera mówi, ile pikseli to metr.
       const scale = camera.pixelsPerMeter;
+      const sg = camera.sign;
       world.scale.set(scale);
-      world.position.set(camera.viewportWidthPx / 2 - camera.centerXM * scale, camera.viewportHeightPx / 2 - camera.centerYM * scale);
+      world.rotation = camera.rotated ? Math.PI : 0;
+      world.position.set(camera.viewportWidthPx / 2 - sg * camera.centerXM * scale, camera.viewportHeightPx / 2 - sg * camera.centerYM * scale);
+      const nowS = performance.now() / 1000;
+      const snowing = lastState && lastState.top.now.phase === 'snow' ? Math.min(1, lastState.top.now.precipitationMm) : 0;
+      terrain.update(camera, nowS, ticker.deltaMS / 1000, snowing);
       profile.update(input.cursor);
-      build.update(input.cursor);
+      build.update(input.cursor, nowS);
       hud.update(camera, grid, input.cursor, lastSnow);
     });
 
@@ -492,6 +544,8 @@ async function start(): Promise<void> {
       getState: () => lastState,
       isEnvironmentReady: () => environmentReady,
       getSnow: () => lastSnow,
+      terrain,
+      showTopo,
       build,
     };
   } catch (error) {

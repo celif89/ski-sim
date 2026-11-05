@@ -21,6 +21,8 @@ const TILE_LON_DEG = 0.02;
 const TILE_LAT_DEG = 0.015;
 /** Rodzaje aerialway, które nie są liniami wyciągów (stacje, podpory). */
 const NOT_LIFTS = new Set(['station', 'pylon', 'goods']);
+/** Drogi rysowane na mapie (bez ścieżek i szlaków). */
+const ROAD_KINDS = new Set(['primary', 'secondary', 'tertiary', 'unclassified', 'residential', 'service', 'track', 'living_street']);
 
 function log(m: string): void {
   console.log(`[import-osm-resort] ${m}`);
@@ -35,8 +37,22 @@ interface OsmWay {
 const decodeEntities = (s: string) => s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
 /** Prosty odczyt XML z API OSM (węzły, drogi i ich znaczniki). */
-function parseOsmXml(xml: string, nodes: Map<number, [number, number]>, ways: Map<number, OsmWay>): void {
+interface OsmNamedNode {
+  id: number;
+  lat: number;
+  lon: number;
+  tags: Record<string, string>;
+}
+
+function parseOsmXml(xml: string, nodes: Map<number, [number, number]>, ways: Map<number, OsmWay>, named?: Map<number, OsmNamedNode>): void {
   for (const m of xml.matchAll(/<node id="(\d+)"[^>]*?lat="([-\d.]+)" lon="([-\d.]+)"/g)) nodes.set(Number(m[1]), [Number(m[2]), Number(m[3])]);
+  if (named) {
+    for (const m of xml.matchAll(/<node id="(\d+)"[^>]*?lat="([-\d.]+)" lon="([-\d.]+)"[^>]*>([\s\S]*?)<\/node>/g)) {
+      const tags: Record<string, string> = {};
+      for (const t of m[4].matchAll(/<tag k="([^"]*)" v="([^"]*)"/g)) tags[decodeEntities(t[1])] = decodeEntities(t[2]);
+      if (tags.name) named.set(Number(m[1]), { id: Number(m[1]), lat: Number(m[2]), lon: Number(m[3]), tags });
+    }
+  }
   for (const m of xml.matchAll(/<way id="(\d+)"[^>]*>([\s\S]*?)<\/way>/g)) {
     const body = m[2];
     const nd = [...body.matchAll(/<nd ref="(\d+)"/g)].map((x) => Number(x[1]));
@@ -84,11 +100,12 @@ async function main(): Promise<void> {
   const maxLon = Math.max(...corners.map((c) => c.lonDeg)) + 0.002;
   const nodes = new Map<number, [number, number]>();
   const ways = new Map<number, OsmWay>();
+  const named = new Map<number, OsmNamedNode>();
   let tiles = 0;
   for (let lat = minLat; lat < maxLat; lat += TILE_LAT_DEG) {
     for (let lon = minLon; lon < maxLon; lon += TILE_LON_DEG) {
       const xml = await fetchTile(lon, lat, Math.min(lon + TILE_LON_DEG, maxLon), Math.min(lat + TILE_LAT_DEG, maxLat));
-      parseOsmXml(xml, nodes, ways);
+      parseOsmXml(xml, nodes, ways, named);
       tiles++;
     }
   }
@@ -134,6 +151,46 @@ async function main(): Promise<void> {
   };
   await writeFile(join(dir, 'osm-resort.json'), JSON.stringify(out, null, 1) + '\n');
   log(`Zapisano ${join(dir, 'osm-resort.json')}.`);
+
+  // Otoczenie do oprawy graficznej: budynki, drogi, parkingi, nazwy miejsc.
+  const buildings: { name: string; kind: string; points: number[][] }[] = [];
+  const roads: { kind: string; name: string; points: number[][] }[] = [];
+  const parkings: { points: number[][] }[] = [];
+  for (const w of [...ways.values()].sort((a, b) => a.id - b.id)) {
+    const pts = toPuwg(w);
+    if (pts.length < 2 || !inside(pts)) continue;
+    const t = w.tags;
+    const closed = w.nodes.length > 3 && w.nodes[0] === w.nodes[w.nodes.length - 1];
+    if (t.building && closed) buildings.push({ name: t.name ?? '', kind: t.building, points: pts });
+    else if (t.amenity === 'parking' && closed) parkings.push({ points: pts });
+    else if (t.highway && ROAD_KINDS.has(t.highway)) roads.push({ kind: t.highway, name: t.name ?? '', points: pts });
+  }
+  const places = [...named.values()]
+    .filter((n) => n.tags.place || n.tags.natural === 'peak' || n.tags.natural === 'saddle' || n.tags.tourism === 'alpine_hut' || n.tags.amenity === 'shelter')
+    .map((n) => {
+      const p = latLonToPuwg92(n.lat, n.lon);
+      return { name: n.tags.name, kind: n.tags.place ?? n.tags.natural ?? n.tags.tourism ?? n.tags.amenity ?? '', ele: n.tags.ele ?? '', point: [Math.round(p.eastingM), Math.round(p.northingM)] };
+    })
+    .filter((p) => p.point[0] >= def.westEastingM - 1500 && p.point[0] <= eastM + 1500 && p.point[1] >= southM - 1500 && p.point[1] <= def.northNorthingM + 1500);
+  log(`Otoczenie: budynki ${buildings.length}, drogi ${roads.length}, parkingi ${parkings.length}, nazwy ${places.length}`);
+  await writeFile(
+    join(dir, 'osm-context.json'),
+    JSON.stringify(
+      {
+        _opis: 'Otoczenie z OpenStreetMap do oprawy graficznej (budynki, drogi, parkingi, nazwy miejsc). Wynik npm run import-osm-resort – nie edytować ręcznie.',
+        source: out.source,
+        downloaded: out.downloaded,
+        units: 'punkty: [E, N] w PUWG 1992 [m]',
+        buildings,
+        roads,
+        parkings,
+        places,
+      },
+      null,
+      0,
+    ) + '\n',
+  );
+  log(`Zapisano ${join(dir, 'osm-context.json')}.`);
 }
 
 main().catch((e) => {
