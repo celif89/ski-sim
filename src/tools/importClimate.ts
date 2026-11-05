@@ -621,6 +621,7 @@ async function main(): Promise<void> {
     referenceElevationM: { value: zRef, unit: 'm n.p.m.', source: SOURCES_FILE },
     stations: {
       reference: refNames,
+      humidity: humidityNames,
       precipitation: `${describe(st.precipitation)}, lata ${period}`,
       homogenization: describe(st.homogenization),
       windAloft: describe(st.windAloft),

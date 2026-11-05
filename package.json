@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.sim.json --noEmit",
     "import-nmt": "tsx src/tools/importNmt.ts",
     "import-horizon-dem": "tsx src/tools/importHorizonDem.ts",
-    "import-climate": "tsx src/tools/importClimate.ts"
+    "import-climate": "tsx src/tools/importClimate.ts",
+    "climate-report": "tsx src/tools/climateReport.ts"
   },
   "engines": {
     "node": ">=22"

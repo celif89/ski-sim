@@ -21,6 +21,7 @@
   },
   "stations": {
     "reference": "ZAWOJA (697 m n.p.m., 16.5 km), lata 2001–2019; LALIKI (680 m n.p.m., 21.8 km), lata 2001–2021",
+    "humidity": "BIELSKO-BIAŁA (396 m n.p.m., 37.3 km); ZAKOPANE (852 m n.p.m., 54 km)",
     "precipitation": "KORBIELÓW (650 m n.p.m., 3.8 km), lata 2001–2025",
     "homogenization": "BIELSKO-BIAŁA (396 m n.p.m., 37.3 km)",
     "windAloft": "KASPROWY WIERCH (1990 m n.p.m., 59 km)",

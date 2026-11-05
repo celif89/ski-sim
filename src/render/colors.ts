@@ -11,12 +11,13 @@ export function rgbToCss([r, g, b]: Rgb, alpha = 1): string {
   return alpha >= 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-interface Stop {
+export interface Stop {
   t: number;
   color: Rgb;
 }
 
 function sampleStops(stops: Stop[], t: number, out: Rgb): Rgb {
+  if (Number.isNaN(t)) t = 0;
   if (t <= stops[0].t) {
     out[0] = stops[0].color[0];
     out[1] = stops[0].color[1];
@@ -91,3 +92,29 @@ export function compassName(aspectDeg: number): string {
   const names = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
   return names[Math.round((((aspectDeg % 360) + 360) % 360) / 45) % 8];
 }
+
+/** Kolor ze skali (t = 0…1, poza zakresem – kolor skrajny). */
+export function sampleColorStops(stops: Stop[], t: number, out: Rgb): Rgb {
+  return sampleStops(stops, t, out);
+}
+
+/** Skala promieniowania (suma dobowa i chwilowe): ciemny fiolet → czerwień → pomarańcz → jasna żółć. */
+export const RADIATION_SUM_STOPS: Stop[] = [
+  { t: 0, color: [26, 16, 60] },
+  { t: 0.2, color: [86, 30, 110] },
+  { t: 0.4, color: [158, 42, 99] },
+  { t: 0.6, color: [221, 81, 58] },
+  { t: 0.8, color: [250, 155, 40] },
+  { t: 1, color: [252, 236, 140] },
+];
+
+/** Skala temperatury (rozbieżna, 0 °C = biel): niebieski mróz, czerwone ciepło. */
+export const TEMPERATURE_STOPS: Stop[] = [
+  { t: 0, color: [40, 60, 150] },
+  { t: 0.25, color: [80, 140, 210] },
+  { t: 0.45, color: [190, 220, 245] },
+  { t: 0.5, color: [245, 245, 245] },
+  { t: 0.55, color: [250, 220, 190] },
+  { t: 0.75, color: [235, 130, 80] },
+  { t: 1, color: [170, 40, 40] },
+];
