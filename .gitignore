@@ -1,0 +1,22 @@
+# Zależności (instalowane przez npm install)
+node_modules/
+
+# Wersja zbudowana do publikacji (npm run build)
+dist/
+
+# Raporty generowane przez program
+reports/
+
+# Logi i pliki tymczasowe
+*.log
+npm-debug.log*
+.vite/
+coverage/
+*.tsbuildinfo
+
+# Pliki systemowe i edytorów
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
