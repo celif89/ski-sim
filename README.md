@@ -3,7 +3,7 @@
 Realistyczny symulator budowy i prowadzenia ośrodka narciarskiego na północnych stokach Pilska.
 Zasady projektu i plan etapów: plik [CLAUDE.md](CLAUDE.md).
 
-**Stan: etap 3 – model śniegu.** Mapa to Numeryczny Model Terenu z Geoportalu (GUGiK)
+**Stan: etap 4 – budowa wyciągów i tras.** (Etap 3 – model śniegu.) Mapa to Numeryczny Model Terenu z Geoportalu (GUGiK)
 w siatce 10 m: od granicy ze Słowacją pod Pilskiem do dna doliny w Korbielowie, z lasem
 (ESA WorldCover). Na mapie widać cienie terenu w dowolnym dniu i godzinie, nasłonecznienie,
 temperaturę, grubość i stan śniegu; pogodę daje generator oparty na danych IMGW z lat 2001–2025.
@@ -45,6 +45,27 @@ zostaje poprzednia, sprawna wersja.
 | Przewijanie sezonu (śnieg zmienia się dzień po dniu do 30 kwietnia) | panel po lewej: „▶▶ Przewiń sezon”, prędkość 1 / 5 / 20 dni na sekundę |
 | Dzień i godzina | panel po lewej: data, strzałki ◀ ▶, suwak godziny, „▶ Odtwórz dzień” |
 | Profil terenu | przycisk „Profil terenu” lub klawisz `P`, potem kliknij punkt A i punkt B; `Esc` zamyka |
+
+### Budowa ośrodka (panel „Budowa ośrodka” po prawej)
+
+| Czynność | Jak |
+|---|---|
+| Wyciąg | wybierz typ, przycisk „Wyciąg” lub klawisz `L`; kliknij **dolną**, potem **górną** stację. W trakcie na dole widać profil terenu z liną, podporami i ostrzeżeniami. |
+| Trasa pędzlem | „Trasa – pędzel” lub `T`: przeciągnij myszą wzdłuż trasy (mapę przesuwasz wtedy prawym przyciskiem lub klawiszami) |
+| Trasa po osi | „Trasa – oś” lub `O`: klikaj kolejne punkty osi; podwójne kliknięcie lub `Enter` – koniec, `Backspace` – cofnij punkt |
+| Szerokość trasy | suwak w panelu lub klawisze `[` i `]` |
+| Baza (parking, wioska) | „Baza” lub `B`, kliknij miejsce – trasy mogą się tam kończyć |
+| Wybór obiektu | „Wybierz” lub `V`, kliknij wyciąg lub trasę na mapie albo w liście – profil i liczby na dole |
+| Podpory wyciągu | na wykresie profilu: przeciągnij podporę w bok (położenie) lub w górę/dół (wysokość); podwójne kliknięcie – nowa podpora; prawy przycisk – usuń; przycisk „Rozstaw podpory automatycznie” |
+| Usuń | `Delete` lub przycisk „Usuń” |
+| Cofnij / ponów | `Ctrl+Z` / `Ctrl+Y` (na Macu `Cmd`) lub przyciski |
+| Sieć ośrodka | `N` – strzałki kierunku zjazdu, numery, połączenia, ostrzeżenia o trasach „donikąd” |
+| Prawdziwy ośrodek Pilsko | `R` – wyciągi i trasy z OpenStreetMap (półprzezroczyste, nie do edycji) i tabela: oficjalny kolor trasy a nasza klasyfikacja |
+| Zapis | układ zapisuje się sam w przeglądarce; „Zapisz plik” / „Wczytaj plik” – plik JSON |
+
+Budowa jest na razie natychmiastowa i bez pieniędzy (to etap 6), ale każdy obiekt ma policzony koszt
+i czas budowy. Wycinka lasu pod wyciągiem i na trasie zmienia pokrycie terenu – model śniegu liczy
+wtedy sezon od nowa (na przecince więcej słońca i wiatru, brak zatrzymywania śniegu w koronach).
 
 ### Co widać
 
@@ -131,6 +152,13 @@ Co sprawdzają testy (katalog `tests/`):
   i przy górze poza mapą wyliczony zgodnie z geometrią,
 - **promieniowanie:** w grudniu stok północny 30 % dostaje kilka razy mniej energii niż południowy
   (5×), w czerwcu różnica mała; sumy dobowe w realnym zakresie; chmury je osłabiają,
+- **wyciągi i trasy:** stoki 8 / 20 / 35 / 50 % dają trasy zielone / niebieskie / czerwone / czarne;
+  krótki stromy fragment (< 50 m) nie zmienia koloru; trawers – ostrzeżenie o spadku poprzecznym;
+  orczyk na stoku 60 % odrzucony z komunikatem („za stromo… 60 % na … m od dolnej stacji,
+  dopuszczalne 45 %”); podpory zawsze dają minimalny prześwit (losowe garby i doliny); czas
+  przejazdu = długość / prędkość; nie da się budować przez granicę ani przez inny wyciąg; sieć
+  wykrywa trasy bez połączenia i wyciągi bez zjazdu; wycinka zmienia pokrycie i śnieg na przecince;
+  zapis, cofnij/ponów; prawdziwe trasy Pilska – nasza klasyfikacja zgodna w większości,
 - **śnieg:** bilans wody się zgadza (opad = śnieg w pokrywie + odpływ + parowanie + wywiane);
   przy +5 °C śniegu ubywa, przy −10 °C i opadzie przybywa; grubość nigdy ujemna; stok północny
   trzyma śnieg dłużej niż południowy; deszcz, a potem mróz → śnieg zlodzony; gęstość rośnie
@@ -173,6 +201,13 @@ Wszystkie liczby są w plikach `data/*.json` – każda z jednostką i źródłe
 - `data/snow.json` – parametry modelu śniegu (opad, gęstnienie, albedo, bilans energii, las,
   przewiewanie, stany śniegu); skalibrowane wartości oznaczone „SKALIBROWANE (było …)”,
 - `data/winter-report.json` – progi werdyktu raportu zimy, punkty kontrolne, daty map,
+- `data/lifts.json` – typy wyciągów (taśma, talerzyk, orczyk, kanapy 2/4 stałe, 4/6 wyprzęgane,
+  gondola): przepustowość, prędkość, maks. długość, nachylenie i przechył toru, prześwit, przęsła,
+  wiatr, moc, koszt, czas budowy; zwis liny,
+- `data/pistes.json` – klasy trudności tras (progi nachylenia), odcinek 50 m, ostrzeżenia, koszty,
+  połączenia w sieci, porównanie z OSM; `data/construction.json` – koszt i czas wycinki,
+- `data/maps/pilsko/osm-resort.json` – prawdziwe wyciągi i trasy z OpenStreetMap
+  (`npm run import-osm-resort`),
 - `data/calibration/` – pomiary do kalibracji: grubość śniegu i pogoda ze stacji IMGW
   (`npm run snow-calibration-data`), promieniowanie (`npm run radiation-validation-data`),
   wartości z pracy Łajczaka (1996),
@@ -214,6 +249,8 @@ Potem otworzyć w przeglądarce adres wypisany w Terminalu (zwykle http://localh
 | `npm run import-climate` | pobiera dane IMGW i liczy profil klimatyczny |
 | `npm run climate-report` | raport klimatu (`reports/raport-klimatu.html`) |
 | `npm run winter-report` | raport „przewiń zimę” – śnieg (`reports/raport-zimy.html`) |
+| `npm run import-osm-resort` | pobiera z OpenStreetMap prawdziwe wyciągi i trasy w obszarze mapy |
+| `npm run piste-check` | zestawienie: nasza klasyfikacja prawdziwych tras Pilska a ich oficjalne kolory |
 | `npm run import-landcover` | pobiera mapę pokrycia terenu (las) ESA WorldCover |
 | `npm run snow-calibration-data` | pobiera z IMGW pomiary grubości śniegu i pogodę stacji do kalibracji |
 | `npm run radiation-validation-data` | pobiera z IMGW pomiary promieniowania do sprawdzenia modelu |

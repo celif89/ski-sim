@@ -87,6 +87,12 @@ export class SimClient {
     if (m.type !== 'snowReady') throw new Error('Nieoczekiwana odpowiedź wątku');
   }
 
+  /** Nowe pokrycie terenu po wycince – model śniegu liczy sezon od nowa. */
+  setLandCover(forest: Float32Array, shrub: Float32Array): void {
+    const request: WorkerRequest = { type: 'setLandCover', forest, shrub };
+    this.worker.postMessage(request, [forest.buffer, shrub.buffer] as ArrayBuffer[]);
+  }
+
   /** Stan śniegu na koniec dnia. Starsze, niedokończone pytania zostają zastąpione nowszymi. */
   async snowState(date: CalendarDate): Promise<SnowStateMessage> {
     const m = await this.send({ type: 'snowState', requestId: this.nextId++, date });

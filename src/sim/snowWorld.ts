@@ -38,7 +38,9 @@ interface SeasonRun {
 }
 
 export class SnowWorld {
-  readonly domain: SnowDomain;
+  domain: SnowDomain;
+  /** Rośnie przy każdej zmianie pokrycia – liczenie zaczęte na starym pokryciu jest nieważne. */
+  version = 0;
   private current: SeasonRun | null = null;
 
   constructor(
@@ -101,6 +103,30 @@ export class SnowWorld {
       }
       yield { phase: 'days', fraction: (cur.run.dayIndex - from) / Math.max(1, target - from), date: cur.run.date };
     }
+  }
+
+  /**
+   * Nowe pokrycie terenu (np. po wycince pod wyciąg lub trasę): sezon liczy się od nowa, ale
+   * promieniowanie bezchmurnego nieba (zależne tylko od terenu) zostaje.
+   */
+  setLandCover(forest: Float32Array, shrub: Float32Array): void {
+    this.domain = { ...this.domain, forest, shrub };
+    this.version++;
+    const cur = this.current;
+    if (!cur) return;
+    const env = this.env;
+    const { series } = env.weatherDay({ year: cur.startYear, month: env.weatherParams.seasonStartMonth, day: 1 });
+    const run = new SnowSeason({
+      domain: this.domain,
+      solar: cur.solar,
+      weather: series,
+      profile: env.profile,
+      weatherParams: env.weatherParams,
+      snowParams: this.sp,
+      radiationParams: env.radiationParams,
+      location: env.location,
+    });
+    this.current = { startYear: cur.startYear, solar: cur.solar, run, snapshots: new Map([[0, { state: run.state.clone(), balance: { ...run.balance } }]]) };
   }
 
   /** Bieżący stan śniegu do pokazania na mapie. */

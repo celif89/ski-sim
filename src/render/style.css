@@ -507,3 +507,219 @@ body {
 .status-snow {
   color: #cfe3ff;
 }
+
+/* ---------------------------------------------------------------- budowa ośrodka (etap 4) */
+.right-column {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  width: 400px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - var(--status-bar-height) - 24px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  pointer-events: none;
+}
+
+.right-column .legend {
+  position: static;
+  max-width: none;
+}
+
+#app canvas.tool-build {
+  cursor: crosshair;
+}
+
+.build-panel {
+  pointer-events: auto;
+  background: var(--hud-bg);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.build-toggle {
+  width: 100%;
+  text-align: left;
+  font-weight: 600;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 0 6px;
+}
+
+.build-panel.collapsed .build-content {
+  display: none;
+}
+
+.build-tools,
+.build-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.build-panel button,
+.build-panel .file-button,
+.build-profile button {
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  padding: 3px 7px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.build-panel button:hover:not(:disabled),
+.build-panel .file-button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.build-panel button.active {
+  background: #1c64d8;
+  border-color: #4d8df0;
+}
+
+.build-panel button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.build-panel kbd {
+  font-size: 10px;
+  opacity: 0.7;
+  margin-right: 2px;
+}
+
+.file-button input {
+  display: none;
+}
+
+.build-row {
+  margin-top: 6px;
+}
+
+.build-row select {
+  max-width: 220px;
+  font: inherit;
+}
+
+.build-row input[type='range'] {
+  width: 130px;
+  vertical-align: middle;
+}
+
+.build-message {
+  margin-top: 6px;
+  color: #ffd43b;
+}
+
+.build-message.empty {
+  display: none;
+}
+
+.build-section {
+  margin-top: 8px;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+.build-list {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+
+.build-list td,
+.build-list th {
+  padding: 2px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.build-list tr[data-kind] {
+  cursor: pointer;
+}
+
+.build-list tr[data-kind]:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.build-list tr.selected {
+  background: rgba(255, 212, 0, 0.18);
+}
+
+.build-list tr.bad td:first-child::after {
+  content: ' ✗';
+  color: #ff6b6b;
+}
+
+.piste-class {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 3px;
+  color: #fff;
+  font-size: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.build-total {
+  margin-top: 6px;
+  color: #c9d1d9;
+}
+
+.build-issues {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.build-issues li.error {
+  color: #ff8787;
+}
+
+.build-issues li.warning {
+  color: #ffd43b;
+}
+
+.build-ok {
+  margin-top: 6px;
+  color: #69db7c;
+}
+
+.muted {
+  color: #98a2ad;
+}
+
+.build-profile .build-title {
+  font-size: 13px;
+}
+
+.build-profile .profile-stats {
+  margin: 4px 0;
+}
+
+.build-actions {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.build-issues-box {
+  font-size: 12px;
+}
+
+/* Podgląd w trakcie rysowania – kliknięcia przechodzą do mapy pod panelem. */
+.build-profile.passthrough {
+  pointer-events: none;
+  opacity: 0.88;
+}
+
+.build-list td b {
+  color: #ffffff;
+}

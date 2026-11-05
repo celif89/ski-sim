@@ -41,6 +41,18 @@ export class MapInput {
 
   /** Kliknięcie w mapę (bez przeciągania) – piksele ekranu. */
   onClick: ((xPx: number, yPx: number) => void) | null = null;
+  /** Podwójne kliknięcie (np. koniec osi trasy). */
+  onDoubleClick: ((xPx: number, yPx: number) => void) | null = null;
+  /** Prawy przycisk (np. anuluj, usuń ostatni punkt). */
+  onRightClick: ((xPx: number, yPx: number) => void) | null = null;
+  /**
+   * Narzędzie może przejąć przeciąganie (np. malowanie trasy pędzlem): onDragStart zwraca true,
+   * wtedy mapa się nie przesuwa, a ruchy trafiają do onDragMove / onDragEnd.
+   */
+  onDragStart: ((xPx: number, yPx: number) => boolean) | null = null;
+  onDragMove: ((xPx: number, yPx: number) => void) | null = null;
+  onDragEnd: ((xPx: number, yPx: number) => void) | null = null;
+  private toolDrag = false;
   /** Dodatkowe klawisze (np. nakładki, narzędzia). Zwraca true, jeśli klawisz obsłużono. */
   onKey: ((code: string) => boolean) | null = null;
 
@@ -55,7 +67,15 @@ export class MapInput {
     element.addEventListener('pointercancel', this.onPointerUp);
     element.addEventListener('pointerleave', this.onPointerLeave);
     element.addEventListener('wheel', this.onWheel, { passive: false });
-    element.addEventListener('contextmenu', (e) => e.preventDefault());
+    element.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const p = this.localPosition(e);
+      this.onRightClick?.(p.xPx, p.yPx);
+    });
+    element.addEventListener('dblclick', (e) => {
+      const p = this.localPosition(e);
+      this.onDoubleClick?.(p.xPx, p.yPx);
+    });
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', () => this.pressedKeys.clear());
@@ -92,12 +112,18 @@ export class MapInput {
     this.downX = event.clientX;
     this.downY = event.clientY;
     this.element.setPointerCapture(event.pointerId);
-    this.element.classList.add('dragging');
+    const p = this.localPosition(event);
+    this.toolDrag = event.button === 0 && (this.onDragStart?.(p.xPx, p.yPx) ?? false);
+    if (!this.toolDrag) this.element.classList.add('dragging');
   };
 
   private onPointerMove = (event: PointerEvent): void => {
     this.cursor = this.localPosition(event);
     if (event.pointerId !== this.dragPointerId) return;
+    if (this.toolDrag) {
+      this.onDragMove?.(this.cursor.xPx, this.cursor.yPx);
+      return;
+    }
     this.camera.panByPixels(event.clientX - this.lastDragX, event.clientY - this.lastDragY);
     this.lastDragX = event.clientX;
     this.lastDragY = event.clientY;
@@ -108,6 +134,12 @@ export class MapInput {
     this.dragPointerId = null;
     if (this.element.hasPointerCapture(event.pointerId)) this.element.releasePointerCapture(event.pointerId);
     this.element.classList.remove('dragging');
+    if (this.toolDrag) {
+      this.toolDrag = false;
+      const p = this.localPosition(event);
+      this.onDragEnd?.(p.xPx, p.yPx);
+      return;
+    }
     if (event.type === 'pointerup' && Math.hypot(event.clientX - this.downX, event.clientY - this.downY) <= CLICK_MAX_MOVE_PX) {
       const p = this.localPosition(event);
       this.onClick?.(p.xPx, p.yPx);
@@ -132,6 +164,8 @@ export class MapInput {
 
   private onKeyDown = (event: KeyboardEvent): void => {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const target = event.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA')) return;
     if (this.onKey?.(event.code)) {
       event.preventDefault();
       return;

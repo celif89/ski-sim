@@ -11,6 +11,9 @@ import slopeClassesJson from '../data/slope-classes.json';
 import terrainGeneratorJson from '../data/terrain-generator.json';
 import weatherJson from '../data/weather-generator.json';
 import snowJson from '../data/snow.json';
+import liftsJson from '../data/lifts.json';
+import pistesJson from '../data/pistes.json';
+import constructionJson from '../data/construction.json';
 import {
   addDays,
   createHorizonDem,
@@ -25,6 +28,11 @@ import {
 } from './sim';
 import type { CalendarDate, HorizonDem, Location, MapDefinition } from './sim';
 import { createBaseMapCanvas } from './render/baseMap';
+import { BuildController } from './render/buildController';
+import { parseLiftParams } from './sim/lifts';
+import { parsePisteParams } from './sim/pistes';
+import type { OsmResort } from './sim/resort';
+import { parseConstructionParams } from './sim/resort';
 import { SNOW_QUALITY_COLORS } from './render/colors';
 import type { SnowReadoutData } from './render/hud';
 import { Camera } from './render/camera';
@@ -49,6 +57,7 @@ import { SimClient } from './worker/simClient';
 const MAP_JSONS = import.meta.glob('../data/maps/*/map.json', { eager: true, import: 'default' });
 const MAP_BINARY_URLS = import.meta.glob('../data/maps/*/*.{f32,u8}', { eager: true, query: '?url', import: 'default' });
 const CLIMATE_JSONS = import.meta.glob('../data/climate/*.json', { eager: true, import: 'default' });
+const OSM_RESORTS = import.meta.glob('../data/maps/*/osm-resort.json', { eager: true, import: 'default' });
 
 function binaryUrl(mapName: string, file: string): string {
   const url = MAP_BINARY_URLS[`../data/maps/${mapName}/${file}`] as string | undefined;
@@ -148,7 +157,10 @@ async function start(): Promise<void> {
     const camera = new Camera(grid.widthM, grid.heightM, viewSettings.minMetersPerPixel, app.screen.width, app.screen.height);
     const input = new MapInput(app.canvas, camera, viewSettings);
     const hud = new Hud(document.body, viewSettings.scaleBarMaxWidthPx, style.flatSlopePercent);
-    const legend = new Legend(document.body, slopeClasses, style.flatSlopePercent);
+    const rightColumn = document.createElement('div');
+    rightColumn.className = 'right-column';
+    document.body.appendChild(rightColumn);
+    const legend = new Legend(rightColumn, slopeClasses, style.flatSlopePercent);
 
     // ---------------------------------------------------------------- nakładki
     const staticTextures = new Map<OverlayKind, Texture>();
@@ -181,6 +193,29 @@ async function start(): Promise<void> {
     const profile = new ProfileTool(screenLayer, document.body, grid, camera, slopeClasses, (active) => {
       toolbar.setProfileActive(active);
       app.canvas.classList.toggle('tool-profile', active);
+    });
+
+    // ---------------------------------------------------------------- budowa ośrodka
+    let onLandCoverChange: (forest: Float32Array, shrub: Float32Array) => void = () => {};
+    const build = new BuildController({
+      grid,
+      camera,
+      world,
+      screenLayer,
+      panelParent: rightColumn,
+      profileParent: document.body,
+      liftParams: parseLiftParams(liftsJson),
+      pisteParams: parsePisteParams(pistesJson),
+      clearing: parseConstructionParams(constructionJson).clearing,
+      forest: landCover?.forest ?? null,
+      shrub: landCover?.shrub ?? null,
+      osm: (OSM_RESORTS[`../data/maps/${simSettings.mapName}/osm-resort.json`] as OsmResort | undefined) ?? null,
+      storageKey: `ski-sim:osrodek:${simSettings.mapName}`,
+      onLandCover: (f, sh) => onLandCoverChange(f, sh),
+      onToolChange: (tool) => {
+        app.canvas.classList.toggle('tool-build', tool !== 'select');
+        if (tool !== 'select') profile.setActive(false);
+      },
     });
 
     function refreshField(): void {
@@ -388,8 +423,17 @@ async function start(): Promise<void> {
         requestState(pendingTime ?? { date: timePanel.date, hour: timePanel.hour });
         refreshField();
         const n = grid.cellCount;
-        await sim.initSnow(landCover?.forest.slice() ?? new Float32Array(n), landCover?.shrub.slice() ?? new Float32Array(n), snowJson);
+        const cover = build.currentLandCover();
+        await sim.initSnow(cover?.forest ?? landCover?.forest.slice() ?? new Float32Array(n), cover?.shrub ?? landCover?.shrub.slice() ?? new Float32Array(n), snowJson);
         snowReady = true;
+        // Wycinka pod wyciągi i trasy zmienia pokrycie – model śniegu liczy sezon od nowa.
+        onLandCoverChange = (f, sh) => {
+          sim.setLandCover(f, sh);
+          lastSnow = null;
+          snowRequestedDate = null;
+          if (overlay === 'snowDepth' || overlay === 'snowQuality') refreshField();
+          requestSnow(timePanel.date);
+        };
         requestSnow(snowRequestedDate ?? timePanel.date);
       } catch (e) {
         console.error(e);
@@ -399,7 +443,14 @@ async function start(): Promise<void> {
     requestState({ date: timePanel.date, hour: timePanel.hour });
 
     // ---------------------------------------------------------------- sterowanie
-    input.onClick = (x, y) => profile.handleClick(x, y);
+    input.onClick = (x, y) => {
+      if (!profile.handleClick(x, y)) build.handleClick(x, y);
+    };
+    input.onDoubleClick = () => build.handleDoubleClick();
+    input.onRightClick = () => build.handleRightClick();
+    input.onDragStart = (x, y) => !profile.active && build.handleDragStart(x, y);
+    input.onDragMove = (x, y) => build.handleDragMove(x, y);
+    input.onDragEnd = () => build.handleDragEnd();
     input.onKey = (code) => {
       const digit = /^(Digit|Numpad)([1-9])$/.exec(code);
       if (digit) {
@@ -407,9 +458,11 @@ async function start(): Promise<void> {
         if (o) setOverlay(o.kind);
         return Boolean(o);
       }
-      if (code === 'KeyP') profile.toggle();
-      else if (code === 'Escape') profile.setActive(false);
-      else return false;
+      if (code === 'KeyP') {
+        if (!profile.active) build.setTool('select');
+        profile.toggle();
+      } else if (code === 'Escape' && profile.active) profile.setActive(false);
+      else return build.handleKey(code);
       return true;
     };
 
@@ -424,6 +477,7 @@ async function start(): Promise<void> {
       world.scale.set(scale);
       world.position.set(camera.viewportWidthPx / 2 - camera.centerXM * scale, camera.viewportHeightPx / 2 - camera.centerYM * scale);
       profile.update(input.cursor);
+      build.update(input.cursor);
       hud.update(camera, grid, input.cursor, lastSnow);
     });
 
@@ -438,6 +492,7 @@ async function start(): Promise<void> {
       getState: () => lastState,
       isEnvironmentReady: () => environmentReady,
       getSnow: () => lastSnow,
+      build,
     };
   } catch (error) {
     console.error(error);
