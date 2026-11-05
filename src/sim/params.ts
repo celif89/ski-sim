@@ -43,3 +43,27 @@ export function readNumber(
   if (options.max !== undefined && value > options.max) throw new Error(`${where} – wartość ${value} > ${options.max}`);
   return value;
 }
+
+/** Odczytuje tablicę liczb w formacie { value: [...], unit, source } (np. 12 wartości miesięcznych). */
+export function readNumberArray(
+  section: Record<string, unknown>,
+  key: string,
+  fileLabel: string,
+  options: { length?: number; min?: number; max?: number } = {},
+): number[] {
+  const entry = section[key];
+  const where = `${fileLabel}: parametr „${key}”`;
+  if (!isRecord(entry)) throw new Error(`${where} – brak lub zły format (oczekiwano { value: [...], unit, source })`);
+  const { value, unit, source } = entry;
+  if (!Array.isArray(value) || value.some((v) => typeof v !== 'number' || !Number.isFinite(v))) {
+    throw new Error(`${where} – „value” musi być tablicą liczb`);
+  }
+  if (typeof unit !== 'string' || unit.length === 0) throw new Error(`${where} – brak jednostki („unit”)`);
+  if (typeof source !== 'string' || source.length === 0) throw new Error(`${where} – brak źródła („source”)`);
+  if (options.length !== undefined && value.length !== options.length) throw new Error(`${where} – oczekiwano ${options.length} wartości`);
+  for (const v of value as number[]) {
+    if (options.min !== undefined && v < options.min) throw new Error(`${where} – wartość ${v} < ${options.min}`);
+    if (options.max !== undefined && v > options.max) throw new Error(`${where} – wartość ${v} > ${options.max}`);
+  }
+  return value as number[];
+}

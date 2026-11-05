@@ -1,0 +1,171 @@
+{
+  "_opis": "Parametry generatora pogody, których nie ma w profilu klimatycznym (data/climate/*.json). Każda liczba: value, unit, source.",
+  "season": {
+    "startMonth": {
+      "value": 10,
+      "unit": "miesiąc",
+      "source": "sezon generowany od 1 października (miesiąc rozbiegu dla pamięci pogody)"
+    },
+    "lengthDays": {
+      "value": 212,
+      "unit": "dni",
+      "source": "1 października – 30 kwietnia (212 dni w roku nieprzestępnym, przestępny: ostatni dzień 29 IV)"
+    }
+  },
+  "precipitationPhase": {
+    "snowMaxTemperatureC": {
+      "value": 0.5,
+      "unit": "°C",
+      "source": "poniżej: śnieg; typowy próg w górach 0–1 °C (np. Jennings i in. 2018, Nature Comm. – próg 50 % śniegu ok. 1 °C); do kalibracji"
+    },
+    "rainMinTemperatureC": {
+      "value": 2.5,
+      "unit": "°C",
+      "source": "powyżej: deszcz; pomiędzy – deszcz ze śniegiem; do kalibracji"
+    }
+  },
+  "hourly": {
+    "maxTemperatureHourLocal": {
+      "value": 14,
+      "unit": "h (czas lokalny zimowy)",
+      "source": "maksimum temperatury ok. 2 h po górowaniu Słońca"
+    },
+    "minPrecipitationDurationHours": {
+      "value": 3,
+      "unit": "h",
+      "source": "najkrótszy opad w ciągu doby; do kalibracji"
+    },
+    "maxPrecipitationDurationHours": {
+      "value": 18,
+      "unit": "h",
+      "source": "najdłuższy opad w ciągu doby (cała doba – w dni z dużą sumą); do kalibracji"
+    },
+    "precipitationCloudFraction": {
+      "value": 0.95,
+      "unit": "0–1",
+      "source": "zachmurzenie w godzinach z opadem"
+    },
+    "windDiurnalAmplitude": {
+      "value": 0.25,
+      "unit": "część średniej",
+      "source": "wiatr silniejszy po południu, słabszy w nocy; do kalibracji"
+    },
+    "humidityPerDegreeC": {
+      "value": 3,
+      "unit": "%/°C",
+      "source": "spadek wilgotności względnej przy wzroście temperatury w ciągu doby (ok. 5–7 % na °C przy stałej zawartości pary, w praktyce mniej); do kalibracji"
+    },
+    "precipitationDurationHalfSaturationScales": {
+      "value": 4,
+      "unit": "× skala rozkładu gamma",
+      "source": "czas trwania opadu rośnie z sumą dobową: połowa zakresu przy sumie = 4 × typowa suma; do kalibracji"
+    },
+    "precipitationDurationNoise": {
+      "value": 0.15,
+      "unit": "część zakresu",
+      "source": "losowy rozrzut czasu trwania opadu; do kalibracji"
+    },
+    "rainHumidityMinPercent": {
+      "value": 90,
+      "unit": "%",
+      "source": "w czasie opadu wilgotność względna co najmniej tyle"
+    }
+  },
+  "windDirection": {
+    "dailyJitterDeg": {
+      "value": 15,
+      "unit": "°",
+      "source": "rozrzut kierunku w obrębie sektora 45°"
+    }
+  },
+  "forecast": {
+    "days": {
+      "value": 7,
+      "unit": "dni",
+      "source": "zadanie etapu 2: prognoza na 7 dni"
+    },
+    "temperatureErrorDay1C": {
+      "value": 1.2,
+      "unit": "°C",
+      "source": "błąd średni prognozy temperatury na jutro (rząd wielkości dla modeli globalnych); do kalibracji"
+    },
+    "temperatureErrorGrowthPerDayC": {
+      "value": 0.45,
+      "unit": "°C/dzień",
+      "source": "przyrost błędu z każdym dniem wyprzedzenia (ok. 4 °C na 7. dzień); do kalibracji"
+    },
+    "precipitationMissDay1": {
+      "value": 0.08,
+      "unit": "-",
+      "source": "szansa, że prognoza na jutro pomyli dzień z opadem i bez; do kalibracji"
+    },
+    "precipitationMissGrowthPerDay": {
+      "value": 0.045,
+      "unit": "1/dzień",
+      "source": "przyrost tej szansy z każdym dniem (ok. 35 % na 7. dzień); do kalibracji"
+    },
+    "precipitationAmountErrorDay1": {
+      "value": 0.3,
+      "unit": "-",
+      "source": "rozrzut (log) prognozowanej sumy opadu na jutro; do kalibracji"
+    },
+    "precipitationAmountErrorGrowthPerDay": {
+      "value": 0.1,
+      "unit": "1/dzień",
+      "source": "przyrost rozrzutu sumy opadu; do kalibracji"
+    },
+    "cloudErrorDay1": {
+      "value": 0.1,
+      "unit": "0–1",
+      "source": "błąd prognozy zachmurzenia na jutro; do kalibracji"
+    },
+    "cloudErrorGrowthPerDay": {
+      "value": 0.04,
+      "unit": "1/dzień",
+      "source": "przyrost błędu zachmurzenia; do kalibracji"
+    },
+    "windErrorGrowthPerDay": {
+      "value": 0.075,
+      "unit": "1/dzień",
+      "source": "rozrzut (log) prognozy prędkości wiatru rośnie o tyle na dzień; do kalibracji"
+    },
+    "precipitationProbabilityMinConfidence": {
+      "value": 0.85,
+      "unit": "-",
+      "source": "przy prognozie opadu podawane prawdopodobieństwo to (85–100 %) × pewność prognozy"
+    }
+  },
+  "validation": {
+    "_opis": "Kryteria zgodności 30 wygenerowanych zim z profilem (test i raport). Średnia z 30 sezonów ma błąd losowy = (zmienność z roku na rok w danych IMGW) / √30; różnica wygenerowane − IMGW musi być mniejsza niż toleranceSigma × ten błąd.",
+    "winters": {
+      "value": 30,
+      "unit": "zimy",
+      "source": "zadanie etapu 2"
+    },
+    "toleranceSigma": {
+      "value": 3,
+      "unit": "× błąd średniej",
+      "source": "3 odchylenia standardowe: przy zgodnym modelu przekroczenie zdarza się losowo w ok. 0,3 % porównań"
+    },
+    "months": {
+      "value": [
+        11,
+        12,
+        1,
+        2,
+        3,
+        4
+      ],
+      "unit": "miesiące",
+      "source": "miesiące sezonu narciarskiego oceniane w raporcie i teście"
+    }
+  },
+  "humidity": {
+    "_opis": "Wilgotność dobowa.",
+    "dailyNoiseFraction": {
+      "value": 0.7,
+      "unit": "-",
+      "source": "część odchylenia standardowego z profilu przypisana losowemu szumowi dnia (reszta wynika z podziału na dni mokre i suche); do kalibracji"
+    }
+  }
+}
