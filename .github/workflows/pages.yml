@@ -1,0 +1,67 @@
+# Testy i publikacja gry na GitHub Pages.
+#
+# - Po każdej zmianie na gałęzi main: testy → budowanie → publikacja
+#   pod adresem https://celif89.github.io/ski-sim/
+# - Jeśli testy nie przejdą, kolejne kroki się nie wykonują i gra NIE jest publikowana
+#   (na stronie zostaje poprzednia, sprawna wersja).
+# - Przy propozycjach zmian (pull request) uruchamiane są tylko testy i budowanie, bez publikacji.
+# - Można też uruchomić ręcznie: zakładka Actions → „Testy i publikacja” → Run workflow.
+
+name: Testy i publikacja
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test-and-build:
+    name: Testy i budowanie
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pobranie kodu
+        uses: actions/checkout@v7
+
+      - name: Instalacja Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalacja zależności
+        run: npm ci
+
+      - name: Testy (npm test)
+        run: npm test
+
+      - name: Budowanie gry (npm run build)
+        run: npm run build
+
+      - name: Przygotowanie plików do publikacji
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    name: Publikacja na GitHub Pages
+    needs: test-and-build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publikacja
+        id: deployment
+        uses: actions/deploy-pages@v5
