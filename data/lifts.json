@@ -1,0 +1,802 @@
+{
+  "_opis": "Typy wyciągów i wspólne parametry budowy wyciągu. Wartości orientacyjne (koncepcja gry, karty producentów, praktyka) – do zastąpienia danymi producentów. Wyciągi powierzchniowe (kind=surface) mają kontrolę nachylenia i przechyłu toru.",
+  "common": {
+    "passengerMassKg": {
+      "value": 85,
+      "unit": "kg",
+      "source": "osoba ze sprzętem; do kalibracji"
+    },
+    "driveEfficiency": {
+      "value": 0.85,
+      "unit": "-",
+      "source": "sprawność napędu (silnik, przekładnia); do kalibracji"
+    },
+    "cableSagRatio": {
+      "value": 0.04,
+      "unit": "-",
+      "source": "zwis liny w środku przęsła / rozpiętość przęsła (uproszczenie parabolą); typowo 2–5 %; do kalibracji"
+    },
+    "profileStepM": {
+      "value": 5,
+      "unit": "m",
+      "source": "krok próbkowania profilu terenu pod linią"
+    },
+    "slopeWindowM": {
+      "value": 20,
+      "unit": "m",
+      "source": "nachylenie i przechył toru liczone jako średnie na odcinkach tej długości (pojedyncza komórka 10 m to szum NMT)"
+    },
+    "stationApproachM": {
+      "value": 25,
+      "unit": "m",
+      "source": "odcinek przy stacjach, w którym lina schodzi do wysokości stacji – nie sprawdzamy tam minimalnego prześwitu"
+    },
+    "minSpanM": {
+      "value": 15,
+      "unit": "m",
+      "source": "najkrótsze przęsło przy automatycznym rozstawianiu podpór"
+    },
+    "towerMarginM": {
+      "value": 2,
+      "unit": "m",
+      "source": "zapas wysokości podpory ponad minimalny prześwit przy rozstawianiu automatycznym"
+    },
+    "minLengthM": {
+      "value": 30,
+      "unit": "m",
+      "source": "najkrótszy wyciąg"
+    }
+  },
+  "types": [
+    {
+      "id": "tasma",
+      "name": "Taśma (dywan)",
+      "kind": "surface",
+      "capacityPerHour": {
+        "value": 1200,
+        "unit": "os./h",
+        "source": "producenci taśm (np. Sunkid): 1000–1500 os./h"
+      },
+      "speedMs": {
+        "value": 0.8,
+        "unit": "m/s",
+        "source": "typowo 0,6–1,0 m/s"
+      },
+      "maxLengthM": {
+        "value": 300,
+        "unit": "m",
+        "source": "taśmy mają zwykle do 200–300 m"
+      },
+      "minClearanceM": {
+        "value": 0,
+        "unit": "m",
+        "source": "wysokość liny nad torem (narciarz z wyprzęgnikiem pod liną); do kalibracji"
+      },
+      "maxSpanM": {
+        "value": 50,
+        "unit": "m",
+        "source": "typowe odległości podpór tego typu (karty producentów); do kalibracji"
+      },
+      "windLimitMs": {
+        "value": 25,
+        "unit": "m/s",
+        "source": "próg wiatru wstrzymujący ruch; kanapy najbardziej wrażliwe (koncepcja gry); do kalibracji"
+      },
+      "stationHeightM": {
+        "value": 0,
+        "unit": "m",
+        "source": "wysokość liny nad terenem w stacji; do kalibracji"
+      },
+      "towerMinHeightM": {
+        "value": 0,
+        "unit": "m",
+        "source": "najniższa podpora; do kalibracji"
+      },
+      "towerMaxHeightM": {
+        "value": 0,
+        "unit": "m",
+        "source": "najwyższa podpora; do kalibracji"
+      },
+      "corridorWidthM": {
+        "value": 4,
+        "unit": "m",
+        "source": "szerokość pasa wycinki lasu pod linią / wzdłuż toru; do kalibracji"
+      },
+      "baseLoadKw": {
+        "value": 10,
+        "unit": "kW",
+        "source": "moc na pusty bieg (koła, napęd, ogrzewanie stacji); do kalibracji"
+      },
+      "frictionKwPer100m": {
+        "value": 1.5,
+        "unit": "kW na 100 m długości",
+        "source": "opory ruchu liny i (dla wyciągów powierzchniowych) nart na torze; do kalibracji"
+      },
+      "stationCostPln": {
+        "value": 150000,
+        "unit": "zł",
+        "source": "obie stacje z napędem, orientacyjnie; do kalibracji"
+      },
+      "costPerMeterPln": {
+        "value": 3500,
+        "unit": "zł/m",
+        "source": "lina, montaż, fundamenty na metr długości; do kalibracji"
+      },
+      "towerCostPln": {
+        "value": 0,
+        "unit": "zł/podporę",
+        "source": "do kalibracji"
+      },
+      "buildDaysBase": {
+        "value": 14,
+        "unit": "dni",
+        "source": "budowa stacji (koncepcja gry: wyciąg – kilka miesięcy); do kalibracji"
+      },
+      "buildDaysPer100m": {
+        "value": 1,
+        "unit": "dni/100 m",
+        "source": "do kalibracji"
+      },
+      "maxTrackSlopePercent": {
+        "value": 20,
+        "unit": "%",
+        "source": "producenci: do ok. 12° (≈ 21 %)"
+      },
+      "maxCrossSlopePercent": {
+        "value": 5,
+        "unit": "%",
+        "source": "taśma wymaga wyrównanego terenu; do kalibracji"
+      }
+    },
+    {
+      "id": "talerzyk",
+      "name": "Wyciąg talerzykowy",
+      "kind": "surface",
+      "capacityPerHour": {
+        "value": 700,
+        "unit": "os./h",
+        "source": "typowo 600–900 os./h"
+      },
+      "speedMs": {
+        "value": 2.5,
+        "unit": "m/s",
+        "source": "typowo 2–3 m/s"
+      },
+      "maxLengthM": {
+        "value": 1000,
+        "unit": "m",
+        "source": "typowe długości wyciągów tego typu; do kalibracji"
+      },
+      "minClearanceM": {
+        "value": 4,
+        "unit": "m",
+        "source": "wysokość liny nad torem (narciarz z wyprzęgnikiem pod liną); do kalibracji"
+      },
+      "maxSpanM": {
+        "value": 100,
+        "unit": "m",
+        "source": "typowe odległości podpór tego typu (karty producentów); do kalibracji"
+      },
+      "windLimitMs": {
+        "value": 18,
+        "unit": "m/s",
+        "source": "próg wiatru wstrzymujący ruch; kanapy najbardziej wrażliwe (koncepcja gry); do kalibracji"
+      },
+      "stationHeightM": {
+        "value": 4,
+        "unit": "m",
+        "source": "wysokość liny nad terenem w stacji; do kalibracji"
+      },
+      "towerMinHeightM": {
+        "value": 4,
+        "unit": "m",
+        "source": "najniższa podpora; do kalibracji"
+      },
+      "towerMaxHeightM": {
+        "value": 8,
+        "unit": "m",
+        "source": "najwyższa podpora; do kalibracji"
+      },
+      "corridorWidthM": {
+        "value": 8,
+        "unit": "m",
+        "source": "szerokość pasa wycinki lasu pod linią / wzdłuż toru; do kalibracji"
+      },
+      "baseLoadKw": {
+        "value": 10,
+        "unit": "kW",
+        "source": "moc na pusty bieg (koła, napęd, ogrzewanie stacji); do kalibracji"
+      },
+      "frictionKwPer100m": {
+        "value": 1.5,
+        "unit": "kW na 100 m długości",
+        "source": "opory ruchu liny i (dla wyciągów powierzchniowych) nart na torze; do kalibracji"
+      },
+      "stationCostPln": {
+        "value": 400000,
+        "unit": "zł",
+        "source": "obie stacje z napędem, orientacyjnie; do kalibracji"
+      },
+      "costPerMeterPln": {
+        "value": 1200,
+        "unit": "zł/m",
+        "source": "lina, montaż, fundamenty na metr długości; do kalibracji"
+      },
+      "towerCostPln": {
+        "value": 25000,
+        "unit": "zł/podporę",
+        "source": "do kalibracji"
+      },
+      "buildDaysBase": {
+        "value": 30,
+        "unit": "dni",
+        "source": "budowa stacji (koncepcja gry: wyciąg – kilka miesięcy); do kalibracji"
+      },
+      "buildDaysPer100m": {
+        "value": 5,
+        "unit": "dni/100 m",
+        "source": "do kalibracji"
+      },
+      "maxTrackSlopePercent": {
+        "value": 40,
+        "unit": "%",
+        "source": "tor wyciągu talerzykowego do ok. 40 % (praktyka; EN 12929); do kalibracji"
+      },
+      "maxCrossSlopePercent": {
+        "value": 10,
+        "unit": "%",
+        "source": "przechył toru do ok. 10 %; do kalibracji"
+      }
+    },
+    {
+      "id": "orczyk",
+      "name": "Wyciąg orczykowy",
+      "kind": "surface",
+      "capacityPerHour": {
+        "value": 900,
+        "unit": "os./h",
+        "source": "typowo 720–1200 os./h (OSM: wyciągi V–VII na Pilsku 720 os./h)"
+      },
+      "speedMs": {
+        "value": 3.0,
+        "unit": "m/s",
+        "source": "typowo 2,5–3,5 m/s"
+      },
+      "maxLengthM": {
+        "value": 1500,
+        "unit": "m",
+        "source": "typowe długości wyciągów tego typu; do kalibracji"
+      },
+      "minClearanceM": {
+        "value": 4,
+        "unit": "m",
+        "source": "wysokość liny nad torem (narciarz z wyprzęgnikiem pod liną); do kalibracji"
+      },
+      "maxSpanM": {
+        "value": 100,
+        "unit": "m",
+        "source": "typowe odległości podpór tego typu (karty producentów); do kalibracji"
+      },
+      "windLimitMs": {
+        "value": 20,
+        "unit": "m/s",
+        "source": "próg wiatru wstrzymujący ruch; kanapy najbardziej wrażliwe (koncepcja gry); do kalibracji"
+      },
+      "stationHeightM": {
+        "value": 4,
+        "unit": "m",
+        "source": "wysokość liny nad terenem w stacji; do kalibracji"
+      },
+      "towerMinHeightM": {
+        "value": 4,
+        "unit": "m",
+        "source": "najniższa podpora; do kalibracji"
+      },
+      "towerMaxHeightM": {
+        "value": 10,
+        "unit": "m",
+        "source": "najwyższa podpora; do kalibracji"
+      },
+      "corridorWidthM": {
+        "value": 8,
+        "unit": "m",
+        "source": "szerokość pasa wycinki lasu pod linią / wzdłuż toru; do kalibracji"
+      },
+      "baseLoadKw": {
+        "value": 15,
+        "unit": "kW",
+        "source": "moc na pusty bieg (koła, napęd, ogrzewanie stacji); do kalibracji"
+      },
+      "frictionKwPer100m": {
+        "value": 2,
+        "unit": "kW na 100 m długości",
+        "source": "opory ruchu liny i (dla wyciągów powierzchniowych) nart na torze; do kalibracji"
+      },
+      "stationCostPln": {
+        "value": 900000,
+        "unit": "zł",
+        "source": "obie stacje z napędem, orientacyjnie; do kalibracji"
+      },
+      "costPerMeterPln": {
+        "value": 1800,
+        "unit": "zł/m",
+        "source": "lina, montaż, fundamenty na metr długości; do kalibracji"
+      },
+      "towerCostPln": {
+        "value": 35000,
+        "unit": "zł/podporę",
+        "source": "do kalibracji"
+      },
+      "buildDaysBase": {
+        "value": 45,
+        "unit": "dni",
+        "source": "budowa stacji (koncepcja gry: wyciąg – kilka miesięcy); do kalibracji"
+      },
+      "buildDaysPer100m": {
+        "value": 6,
+        "unit": "dni/100 m",
+        "source": "do kalibracji"
+      },
+      "maxTrackSlopePercent": {
+        "value": 45,
+        "unit": "%",
+        "source": "tor orczyka do ok. 45 % (praktyka; EN 12929); do kalibracji"
+      },
+      "maxCrossSlopePercent": {
+        "value": 10,
+        "unit": "%",
+        "source": "przechył toru do ok. 10 %; do kalibracji"
+      }
+    },
+    {
+      "id": "kanapa2s",
+      "name": "Kanapa 2-osobowa (stałe chwytaki)",
+      "kind": "aerial",
+      "capacityPerHour": {
+        "value": 1200,
+        "unit": "os./h",
+        "source": "ok. 1200 os./h przy prędkości do 2,5 m/s (koncepcja gry, Wikipedia: Chairlift)"
+      },
+      "speedMs": {
+        "value": 2.3,
+        "unit": "m/s",
+        "source": "stałe chwytaki – do ok. 2,3–2,5 m/s"
+      },
+      "maxLengthM": {
+        "value": 2000,
+        "unit": "m",
+        "source": "typowe długości wyciągów tego typu; do kalibracji"
+      },
+      "minClearanceM": {
+        "value": 7,
+        "unit": "m",
+        "source": "wysokość liny nad terenem w przęśle (bez śniegu): krzesełko/kabina wisi ok. 2–3 m pod liną + odstęp + pokrywa śnieżna; do kalibracji"
+      },
+      "maxSpanM": {
+        "value": 200,
+        "unit": "m",
+        "source": "typowe odległości podpór tego typu (karty producentów); do kalibracji"
+      },
+      "windLimitMs": {
+        "value": 16,
+        "unit": "m/s",
+        "source": "próg wiatru wstrzymujący ruch; kanapy najbardziej wrażliwe (koncepcja gry); do kalibracji"
+      },
+      "stationHeightM": {
+        "value": 6,
+        "unit": "m",
+        "source": "wysokość liny nad terenem w stacji; do kalibracji"
+      },
+      "towerMinHeightM": {
+        "value": 8,
+        "unit": "m",
+        "source": "najniższa podpora; do kalibracji"
+      },
+      "towerMaxHeightM": {
+        "value": 20,
+        "unit": "m",
+        "source": "najwyższa podpora; do kalibracji"
+      },
+      "corridorWidthM": {
+        "value": 14,
+        "unit": "m",
+        "source": "szerokość pasa wycinki lasu pod linią / wzdłuż toru; do kalibracji"
+      },
+      "baseLoadKw": {
+        "value": 40,
+        "unit": "kW",
+        "source": "moc na pusty bieg (koła, napęd, ogrzewanie stacji); do kalibracji"
+      },
+      "frictionKwPer100m": {
+        "value": 4,
+        "unit": "kW na 100 m długości",
+        "source": "opory ruchu liny i (dla wyciągów powierzchniowych) nart na torze; do kalibracji"
+      },
+      "stationCostPln": {
+        "value": 3000000,
+        "unit": "zł",
+        "source": "obie stacje z napędem, orientacyjnie; do kalibracji"
+      },
+      "costPerMeterPln": {
+        "value": 3500,
+        "unit": "zł/m",
+        "source": "lina, montaż, fundamenty na metr długości; do kalibracji"
+      },
+      "towerCostPln": {
+        "value": 120000,
+        "unit": "zł/podporę",
+        "source": "do kalibracji"
+      },
+      "buildDaysBase": {
+        "value": 90,
+        "unit": "dni",
+        "source": "budowa stacji (koncepcja gry: wyciąg – kilka miesięcy); do kalibracji"
+      },
+      "buildDaysPer100m": {
+        "value": 8,
+        "unit": "dni/100 m",
+        "source": "do kalibracji"
+      }
+    },
+    {
+      "id": "kanapa4s",
+      "name": "Kanapa 4-osobowa (stałe chwytaki)",
+      "kind": "aerial",
+      "capacityPerHour": {
+        "value": 1800,
+        "unit": "os./h",
+        "source": "typowo 1600–2000 os./h"
+      },
+      "speedMs": {
+        "value": 2.3,
+        "unit": "m/s",
+        "source": "stałe chwytaki – do ok. 2,3–2,5 m/s"
+      },
+      "maxLengthM": {
+        "value": 2000,
+        "unit": "m",
+        "source": "typowe długości wyciągów tego typu; do kalibracji"
+      },
+      "minClearanceM": {
+        "value": 7,
+        "unit": "m",
+        "source": "wysokość liny nad terenem w przęśle (bez śniegu): krzesełko/kabina wisi ok. 2–3 m pod liną + odstęp + pokrywa śnieżna; do kalibracji"
+      },
+      "maxSpanM": {
+        "value": 200,
+        "unit": "m",
+        "source": "typowe odległości podpór tego typu (karty producentów); do kalibracji"
+      },
+      "windLimitMs": {
+        "value": 17,
+        "unit": "m/s",
+        "source": "próg wiatru wstrzymujący ruch; kanapy najbardziej wrażliwe (koncepcja gry); do kalibracji"
+      },
+      "stationHeightM": {
+        "value": 6,
+        "unit": "m",
+        "source": "wysokość liny nad terenem w stacji; do kalibracji"
+      },
+      "towerMinHeightM": {
+        "value": 8,
+        "unit": "m",
+        "source": "najniższa podpora; do kalibracji"
+      },
+      "towerMaxHeightM": {
+        "value": 22,
+        "unit": "m",
+        "source": "najwyższa podpora; do kalibracji"
+      },
+      "corridorWidthM": {
+        "value": 16,
+        "unit": "m",
+        "source": "szerokość pasa wycinki lasu pod linią / wzdłuż toru; do kalibracji"
+      },
+      "baseLoadKw": {
+        "value": 50,
+        "unit": "kW",
+        "source": "moc na pusty bieg (koła, napęd, ogrzewanie stacji); do kalibracji"
+      },
+      "frictionKwPer100m": {
+        "value": 5,
+        "unit": "kW na 100 m długości",
+        "source": "opory ruchu liny i (dla wyciągów powierzchniowych) nart na torze; do kalibracji"
+      },
+      "stationCostPln": {
+        "value": 4500000,
+        "unit": "zł",
+        "source": "obie stacje z napędem, orientacyjnie; do kalibracji"
+      },
+      "costPerMeterPln": {
+        "value": 4500,
+        "unit": "zł/m",
+        "source": "lina, montaż, fundamenty na metr długości; do kalibracji"
+      },
+      "towerCostPln": {
+        "value": 150000,
+        "unit": "zł/podporę",
+        "source": "do kalibracji"
+      },
+      "buildDaysBase": {
+        "value": 100,
+        "unit": "dni",
+        "source": "budowa stacji (koncepcja gry: wyciąg – kilka miesięcy); do kalibracji"
+      },
+      "buildDaysPer100m": {
+        "value": 8,
+        "unit": "dni/100 m",
+        "source": "do kalibracji"
+      }
+    },
+    {
+      "id": "kanapa4d",
+      "name": "Kanapa 4-osobowa wyprzęgana",
+      "kind": "aerial",
+      "capacityPerHour": {
+        "value": 2400,
+        "unit": "os./h",
+        "source": "ok. 2400 os./h przy 5 m/s (koncepcja gry, Wikipedia: Chairlift)"
+      },
+      "speedMs": {
+        "value": 5.0,
+        "unit": "m/s",
+        "source": "wyprzęgane – do 5–6 m/s"
+      },
+      "maxLengthM": {
+        "value": 3000,
+        "unit": "m",
+        "source": "typowe długości wyciągów tego typu; do kalibracji"
+      },
+      "minClearanceM": {
+        "value": 7,
+        "unit": "m",
+        "source": "wysokość liny nad terenem w przęśle (bez śniegu): krzesełko/kabina wisi ok. 2–3 m pod liną + odstęp + pokrywa śnieżna; do kalibracji"
+      },
+      "maxSpanM": {
+        "value": 250,
+        "unit": "m",
+        "source": "typowe odległości podpór tego typu (karty producentów); do kalibracji"
+      },
+      "windLimitMs": {
+        "value": 18,
+        "unit": "m/s",
+        "source": "próg wiatru wstrzymujący ruch; kanapy najbardziej wrażliwe (koncepcja gry); do kalibracji"
+      },
+      "stationHeightM": {
+        "value": 6,
+        "unit": "m",
+        "source": "wysokość liny nad terenem w stacji; do kalibracji"
+      },
+      "towerMinHeightM": {
+        "value": 8,
+        "unit": "m",
+        "source": "najniższa podpora; do kalibracji"
+      },
+      "towerMaxHeightM": {
+        "value": 25,
+        "unit": "m",
+        "source": "najwyższa podpora; do kalibracji"
+      },
+      "corridorWidthM": {
+        "value": 16,
+        "unit": "m",
+        "source": "szerokość pasa wycinki lasu pod linią / wzdłuż toru; do kalibracji"
+      },
+      "baseLoadKw": {
+        "value": 80,
+        "unit": "kW",
+        "source": "moc na pusty bieg (koła, napęd, ogrzewanie stacji); do kalibracji"
+      },
+      "frictionKwPer100m": {
+        "value": 6,
+        "unit": "kW na 100 m długości",
+        "source": "opory ruchu liny i (dla wyciągów powierzchniowych) nart na torze; do kalibracji"
+      },
+      "stationCostPln": {
+        "value": 12000000,
+        "unit": "zł",
+        "source": "obie stacje z napędem, orientacyjnie; do kalibracji"
+      },
+      "costPerMeterPln": {
+        "value": 6000,
+        "unit": "zł/m",
+        "source": "lina, montaż, fundamenty na metr długości; do kalibracji"
+      },
+      "towerCostPln": {
+        "value": 180000,
+        "unit": "zł/podporę",
+        "source": "do kalibracji"
+      },
+      "buildDaysBase": {
+        "value": 150,
+        "unit": "dni",
+        "source": "budowa stacji (koncepcja gry: wyciąg – kilka miesięcy); do kalibracji"
+      },
+      "buildDaysPer100m": {
+        "value": 10,
+        "unit": "dni/100 m",
+        "source": "do kalibracji"
+      }
+    },
+    {
+      "id": "kanapa6d",
+      "name": "Kanapa 6-osobowa wyprzęgana",
+      "kind": "aerial",
+      "capacityPerHour": {
+        "value": 3000,
+        "unit": "os./h",
+        "source": "typowo 2800–3600 os./h; największe kanapy do 4000 os./h (Bartholet)"
+      },
+      "speedMs": {
+        "value": 5.0,
+        "unit": "m/s",
+        "source": "wyprzęgane – do 5–6 m/s"
+      },
+      "maxLengthM": {
+        "value": 3000,
+        "unit": "m",
+        "source": "typowe długości wyciągów tego typu; do kalibracji"
+      },
+      "minClearanceM": {
+        "value": 7,
+        "unit": "m",
+        "source": "wysokość liny nad terenem w przęśle (bez śniegu): krzesełko/kabina wisi ok. 2–3 m pod liną + odstęp + pokrywa śnieżna; do kalibracji"
+      },
+      "maxSpanM": {
+        "value": 250,
+        "unit": "m",
+        "source": "typowe odległości podpór tego typu (karty producentów); do kalibracji"
+      },
+      "windLimitMs": {
+        "value": 18,
+        "unit": "m/s",
+        "source": "próg wiatru wstrzymujący ruch; kanapy najbardziej wrażliwe (koncepcja gry); do kalibracji"
+      },
+      "stationHeightM": {
+        "value": 6,
+        "unit": "m",
+        "source": "wysokość liny nad terenem w stacji; do kalibracji"
+      },
+      "towerMinHeightM": {
+        "value": 8,
+        "unit": "m",
+        "source": "najniższa podpora; do kalibracji"
+      },
+      "towerMaxHeightM": {
+        "value": 25,
+        "unit": "m",
+        "source": "najwyższa podpora; do kalibracji"
+      },
+      "corridorWidthM": {
+        "value": 18,
+        "unit": "m",
+        "source": "szerokość pasa wycinki lasu pod linią / wzdłuż toru; do kalibracji"
+      },
+      "baseLoadKw": {
+        "value": 100,
+        "unit": "kW",
+        "source": "moc na pusty bieg (koła, napęd, ogrzewanie stacji); do kalibracji"
+      },
+      "frictionKwPer100m": {
+        "value": 7,
+        "unit": "kW na 100 m długości",
+        "source": "opory ruchu liny i (dla wyciągów powierzchniowych) nart na torze; do kalibracji"
+      },
+      "stationCostPln": {
+        "value": 16000000,
+        "unit": "zł",
+        "source": "obie stacje z napędem, orientacyjnie; do kalibracji"
+      },
+      "costPerMeterPln": {
+        "value": 7500,
+        "unit": "zł/m",
+        "source": "lina, montaż, fundamenty na metr długości; do kalibracji"
+      },
+      "towerCostPln": {
+        "value": 220000,
+        "unit": "zł/podporę",
+        "source": "do kalibracji"
+      },
+      "buildDaysBase": {
+        "value": 170,
+        "unit": "dni",
+        "source": "budowa stacji (koncepcja gry: wyciąg – kilka miesięcy); do kalibracji"
+      },
+      "buildDaysPer100m": {
+        "value": 10,
+        "unit": "dni/100 m",
+        "source": "do kalibracji"
+      }
+    },
+    {
+      "id": "gondola",
+      "name": "Kolej gondolowa (8-osobowa)",
+      "kind": "aerial",
+      "capacityPerHour": {
+        "value": 2400,
+        "unit": "os./h",
+        "source": "typowo 2000–3000 os./h"
+      },
+      "speedMs": {
+        "value": 6.0,
+        "unit": "m/s",
+        "source": "typowo 5–6 m/s"
+      },
+      "maxLengthM": {
+        "value": 5000,
+        "unit": "m",
+        "source": "typowe długości wyciągów tego typu; do kalibracji"
+      },
+      "minClearanceM": {
+        "value": 10,
+        "unit": "m",
+        "source": "wysokość liny nad terenem w przęśle (bez śniegu): krzesełko/kabina wisi ok. 2–3 m pod liną + odstęp + pokrywa śnieżna; do kalibracji"
+      },
+      "maxSpanM": {
+        "value": 400,
+        "unit": "m",
+        "source": "typowe odległości podpór tego typu (karty producentów); do kalibracji"
+      },
+      "windLimitMs": {
+        "value": 20,
+        "unit": "m/s",
+        "source": "próg wiatru wstrzymujący ruch; kanapy najbardziej wrażliwe (koncepcja gry); do kalibracji"
+      },
+      "stationHeightM": {
+        "value": 8,
+        "unit": "m",
+        "source": "wysokość liny nad terenem w stacji; do kalibracji"
+      },
+      "towerMinHeightM": {
+        "value": 10,
+        "unit": "m",
+        "source": "najniższa podpora; do kalibracji"
+      },
+      "towerMaxHeightM": {
+        "value": 35,
+        "unit": "m",
+        "source": "najwyższa podpora; do kalibracji"
+      },
+      "corridorWidthM": {
+        "value": 20,
+        "unit": "m",
+        "source": "szerokość pasa wycinki lasu pod linią / wzdłuż toru; do kalibracji"
+      },
+      "baseLoadKw": {
+        "value": 120,
+        "unit": "kW",
+        "source": "moc na pusty bieg (koła, napęd, ogrzewanie stacji); do kalibracji"
+      },
+      "frictionKwPer100m": {
+        "value": 8,
+        "unit": "kW na 100 m długości",
+        "source": "opory ruchu liny i (dla wyciągów powierzchniowych) nart na torze; do kalibracji"
+      },
+      "stationCostPln": {
+        "value": 25000000,
+        "unit": "zł",
+        "source": "obie stacje z napędem, orientacyjnie; do kalibracji"
+      },
+      "costPerMeterPln": {
+        "value": 9000,
+        "unit": "zł/m",
+        "source": "lina, montaż, fundamenty na metr długości; do kalibracji"
+      },
+      "towerCostPln": {
+        "value": 300000,
+        "unit": "zł/podporę",
+        "source": "do kalibracji"
+      },
+      "buildDaysBase": {
+        "value": 210,
+        "unit": "dni",
+        "source": "budowa stacji (koncepcja gry: wyciąg – kilka miesięcy); do kalibracji"
+      },
+      "buildDaysPer100m": {
+        "value": 12,
+        "unit": "dni/100 m",
+        "source": "do kalibracji"
+      }
+    }
+  ]
+}

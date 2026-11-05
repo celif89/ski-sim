@@ -1,0 +1,148 @@
+{
+  "_opis": "Trasy zjazdowe: klasyfikacja trudności, ostrzeżenia, koszty, połączenia w sieci ośrodka, porównanie z OSM.",
+  "classes": [
+    {
+      "id": "green",
+      "name": "zielona",
+      "color": "#2f9e44",
+      "maxSlopePercent": {
+        "value": 10,
+        "unit": "%",
+        "source": "jak klasy nachylenia (data/slope-classes.json); do kalibracji z normami tras"
+      }
+    },
+    {
+      "id": "blue",
+      "name": "niebieska",
+      "color": "#1c64d8",
+      "maxSlopePercent": {
+        "value": 25,
+        "unit": "%",
+        "source": "praktyka europejska: trasy niebieskie do ok. 25 %"
+      }
+    },
+    {
+      "id": "red",
+      "name": "czerwona",
+      "color": "#d92b2b",
+      "maxSlopePercent": {
+        "value": 40,
+        "unit": "%",
+        "source": "praktyka europejska: trasy czerwone do ok. 40 %"
+      }
+    },
+    {
+      "id": "black",
+      "name": "czarna",
+      "color": "#151515"
+    }
+  ],
+  "classification": {
+    "segmentLengthM": {
+      "value": 50,
+      "unit": "m",
+      "source": "o kolorze decyduje najtrudniejszy odcinek co najmniej tej długości (zadanie etapu 4)"
+    },
+    "axisStepM": {
+      "value": 5,
+      "unit": "m",
+      "source": "krok próbkowania osi trasy"
+    },
+    "widthSamples": {
+      "value": 5,
+      "unit": "punktów",
+      "source": "wysokość osi = średnia terenu w tylu punktach w poprzek trasy (wygładza szum NMT i pojedyncze komórki)"
+    },
+    "crossSlopeWarningPercent": {
+      "value": 20,
+      "unit": "%",
+      "source": "ostrzeżenie o spadku poprzecznym (trudne ratrakowanie, trawers); do kalibracji"
+    },
+    "uphillWarningPercent": {
+      "value": 2,
+      "unit": "%",
+      "source": "ostrzeżenie, gdy odcinek 50 m prowadzi pod górę bardziej niż o tyle"
+    },
+    "profileSegmentM": {
+      "value": 10,
+      "unit": "m",
+      "source": "długość odcinków profilu trasy kolorowanych nachyleniem"
+    }
+  },
+  "drawing": {
+    "defaultWidthM": {
+      "value": 30,
+      "unit": "m",
+      "source": "domyślna szerokość trasy; do kalibracji"
+    },
+    "minWidthM": {
+      "value": 8,
+      "unit": "m",
+      "source": "najwęższa trasa (dojazd, łącznik)"
+    },
+    "maxWidthM": {
+      "value": 100,
+      "unit": "m",
+      "source": "najszersza trasa"
+    },
+    "brushPointSpacingM": {
+      "value": 10,
+      "unit": "m",
+      "source": "odstęp punktów osi przy malowaniu pędzlem"
+    }
+  },
+  "costs": {
+    "gradingCostPlnPerM2": {
+      "value": 12,
+      "unit": "zł/m²",
+      "source": "profilowanie, odwodnienie i obsianie trasy; do kalibracji"
+    },
+    "gradingDaysPerHectare": {
+      "value": 3,
+      "unit": "dni/ha",
+      "source": "koncepcja gry: trasa – kilka tygodni; do kalibracji"
+    },
+    "buildDaysBase": {
+      "value": 7,
+      "unit": "dni",
+      "source": "przygotowanie budowy trasy; do kalibracji"
+    }
+  },
+  "network": {
+    "stationRadiusM": {
+      "value": 40,
+      "unit": "m",
+      "source": "koniec lub początek trasy w tej odległości od stacji wyciągu łączy się z nią"
+    },
+    "baseRadiusM": {
+      "value": 80,
+      "unit": "m",
+      "source": "promień bazy (parking, wioska)"
+    },
+    "junctionToleranceM": {
+      "value": 10,
+      "unit": "m",
+      "source": "początek/koniec trasy w tej odległości od innej trasy łączy się z nią"
+    }
+  },
+  "osmComparison": {
+    "pisteWidthM": {
+      "value": 30,
+      "unit": "m",
+      "source": "OSM opisuje trasy linią – do klasyfikacji przyjmujemy taką szerokość"
+    },
+    "chainToleranceM": {
+      "value": 15,
+      "unit": "m",
+      "source": "odcinki tej samej trasy w OSM łączone, gdy końce są bliżej niż tyle"
+    },
+    "difficultyToClass": {
+      "novice": "green",
+      "easy": "blue",
+      "intermediate": "red",
+      "advanced": "black",
+      "expert": "black",
+      "freeride": "black"
+    }
+  }
+}

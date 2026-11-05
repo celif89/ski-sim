@@ -1,0 +1,463 @@
+/**
+ * Ośrodek jako całość: układ (wyciągi, trasy, bazy), wycinka lasu, sieć (graf) do ruchu gości,
+ * sprawdzanie połączeń, historia zmian (cofnij/ponów), zapis do JSON, porównanie z OSM.
+ */
+import type { BuildIssue, LiftAnalysis, LiftDesign, LiftParams, PointM } from './lifts';
+import { analyzeLift, corridorCells, liftTypeById } from './lifts';
+import { readNumber, readSection } from './params';
+import type { AxisPoint, PisteAnalysis, PisteDesign, PisteParams } from './pistes';
+import { analyzePiste } from './pistes';
+import type { TerrainGrid } from './terrainGrid';
+
+export interface BaseDesign {
+  id: string;
+  name: string;
+  xM: number;
+  yM: number;
+}
+
+export interface ResortLayout {
+  version: 1;
+  lifts: LiftDesign[];
+  pistes: PisteDesign[];
+  bases: BaseDesign[];
+  /** Kolejne numery nowych obiektów. */
+  nextId: number;
+}
+
+export function emptyLayout(): ResortLayout {
+  return { version: 1, lifts: [], pistes: [], bases: [], nextId: 1 };
+}
+
+export interface ClearingCost {
+  forestCostPlnPerM2: number;
+  shrubCostPlnPerM2: number;
+  daysPerHectare: number;
+}
+
+export function parseConstructionParams(raw: unknown): { clearing: ClearingCost } {
+  const c = readSection(raw, 'clearing', 'data/construction.json');
+  const n = (k: string) => readNumber(c, k, 'data/construction.json', { min: 0 });
+  return { clearing: { forestCostPlnPerM2: n('forestCostPlnPerM2'), shrubCostPlnPerM2: n('shrubCostPlnPerM2'), daysPerHectare: n('daysPerHectare') } };
+}
+
+// ---------------------------------------------------------------- zapis
+
+const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
+const isPoint = (p: unknown): p is PointM => typeof p === 'object' && p !== null && isNum((p as PointM).xM) && isNum((p as PointM).yM);
+
+/** Odczyt układu z JSON (pliku lub pamięci przeglądarki) z kontrolą formatu. */
+export function parseLayout(raw: unknown): ResortLayout {
+  if (typeof raw !== 'object' || raw === null) throw new Error('Plik układu ośrodka: oczekiwano obiektu JSON');
+  const r = raw as Record<string, unknown>;
+  if (r.version !== 1) throw new Error('Plik układu ośrodka: nieznana wersja');
+  const lifts = Array.isArray(r.lifts) ? r.lifts : [];
+  const pistes = Array.isArray(r.pistes) ? r.pistes : [];
+  const bases = Array.isArray(r.bases) ? r.bases : [];
+  const out: ResortLayout = { version: 1, lifts: [], pistes: [], bases: [], nextId: isNum(r.nextId) ? r.nextId : 1 };
+  for (const l of lifts as Record<string, unknown>[]) {
+    if (typeof l.id !== 'string' || typeof l.typeId !== 'string' || !isPoint(l.bottom) || !isPoint(l.top)) throw new Error('Plik układu ośrodka: uszkodzony wyciąg');
+    const towers = Array.isArray(l.towers) ? (l.towers as Record<string, unknown>[]).filter((t) => isNum(t.distanceM) && isNum(t.heightM)).map((t) => ({ distanceM: t.distanceM as number, heightM: t.heightM as number })) : [];
+    out.lifts.push({ id: l.id, typeId: l.typeId, name: typeof l.name === 'string' ? l.name : l.id, bottom: { xM: l.bottom.xM, yM: l.bottom.yM }, top: { xM: l.top.xM, yM: l.top.yM }, towers, manualTowers: l.manualTowers === true });
+  }
+  for (const p of pistes as Record<string, unknown>[]) {
+    if (typeof p.id !== 'string' || !Array.isArray(p.points)) throw new Error('Plik układu ośrodka: uszkodzona trasa');
+    const points = (p.points as Record<string, unknown>[]).filter((q) => isPoint(q) && isNum(q.widthM)).map((q) => ({ xM: q.xM as number, yM: q.yM as number, widthM: q.widthM as number }));
+    if (points.length < 2) continue;
+    out.pistes.push({ id: p.id, name: typeof p.name === 'string' ? p.name : p.id, points });
+  }
+  for (const b of bases as Record<string, unknown>[]) {
+    if (typeof b.id === 'string' && isNum(b.xM) && isNum(b.yM)) out.bases.push({ id: b.id, name: typeof b.name === 'string' ? b.name : 'Baza', xM: b.xM, yM: b.yM });
+  }
+  const maxId = [...out.lifts, ...out.pistes, ...out.bases].reduce((m, o) => Math.max(m, Number(/\d+$/.exec(o.id)?.[0] ?? 0)), 0);
+  out.nextId = Math.max(out.nextId, maxId + 1);
+  return out;
+}
+
+export function serializeLayout(layout: ResortLayout): string {
+  return JSON.stringify(layout);
+}
+
+/** Historia zmian układu: cofnij / ponów (stany zapisane jako tekst JSON). */
+export class LayoutHistory {
+  private undoStack: string[] = [];
+  private redoStack: string[] = [];
+  constructor(private readonly limit = 200) {}
+
+  /** Zapamiętuje stan sprzed zmiany. */
+  push(before: ResortLayout): void {
+    this.undoStack.push(serializeLayout(before));
+    if (this.undoStack.length > this.limit) this.undoStack.shift();
+    this.redoStack = [];
+  }
+  undo(current: ResortLayout): ResortLayout | null {
+    const s = this.undoStack.pop();
+    if (s === undefined) return null;
+    this.redoStack.push(serializeLayout(current));
+    return parseLayout(JSON.parse(s));
+  }
+  redo(current: ResortLayout): ResortLayout | null {
+    const s = this.redoStack.pop();
+    if (s === undefined) return null;
+    this.undoStack.push(serializeLayout(current));
+    return parseLayout(JSON.parse(s));
+  }
+  get canUndo(): boolean {
+    return this.undoStack.length > 0;
+  }
+  get canRedo(): boolean {
+    return this.redoStack.length > 0;
+  }
+}
+
+// ---------------------------------------------------------------- analiza całego ośrodka
+
+export interface ResortContext {
+  grid: TerrainGrid;
+  lifts: LiftParams;
+  pistes: PisteParams;
+  clearing: ClearingCost;
+  /** Pokrycie pierwotne (przed wycinką), udziały 0–1. */
+  forest: Float32Array | null;
+  shrub: Float32Array | null;
+}
+
+export interface ResortAnalysis {
+  lifts: Map<string, LiftAnalysis>;
+  pistes: Map<string, PisteAnalysis>;
+  network: ResortNetwork;
+  /** Komórki objęte wycinką (1 – wycięte). */
+  clearedMask: Uint8Array;
+  totals: { costPln: number; buildDays: number; clearedForestM2: number };
+}
+
+export function analyzeResort(layout: ResortLayout, ctx: ResortContext): ResortAnalysis {
+  const lifts = new Map<string, LiftAnalysis>();
+  const pistes = new Map<string, PisteAnalysis>();
+  for (const l of layout.lifts) lifts.set(l.id, analyzeLift(l, { grid: ctx.grid, params: ctx.lifts, forest: ctx.forest, shrub: ctx.shrub, clearingCost: ctx.clearing, otherLifts: layout.lifts }));
+  for (const p of layout.pistes) pistes.set(p.id, analyzePiste(p, { grid: ctx.grid, params: ctx.pistes, forest: ctx.forest, shrub: ctx.shrub, clearingCost: ctx.clearing }));
+  const clearedMask = clearingMask(ctx.grid, layout, ctx.lifts, pistes);
+  let clearedForestM2 = 0;
+  const cellM2 = ctx.grid.cellSizeM ** 2;
+  if (ctx.forest) for (let k = 0; k < clearedMask.length; k++) if (clearedMask[k]) clearedForestM2 += ctx.forest[k] * cellM2;
+  let costPln = 0;
+  let buildDays = 0;
+  for (const a of lifts.values()) {
+    costPln += a.cost.totalPln;
+    buildDays += a.buildDays;
+  }
+  for (const a of pistes.values()) {
+    costPln += a.cost.totalPln;
+    buildDays += a.buildDays;
+  }
+  return { lifts, pistes, network: buildNetwork(layout, lifts, pistes, ctx.pistes), clearedMask, totals: { costPln, buildDays, clearedForestM2 } };
+}
+
+/** Maska wycinki: pasy pod wyciągami (szerokość z typu) i obrysy tras. */
+export function clearingMask(grid: TerrainGrid, layout: ResortLayout, lp: LiftParams, pistes?: Map<string, PisteAnalysis>): Uint8Array {
+  const mask = new Uint8Array(grid.cellCount);
+  for (const l of layout.lifts) {
+    const t = liftTypeById(lp, l.typeId);
+    for (const k of corridorCells(grid, l.bottom, l.top, t.corridorWidthM)) mask[k] = 1;
+  }
+  for (const p of layout.pistes) {
+    const cells = pistes?.get(p.id)?.cells;
+    if (cells) for (const k of cells) mask[k] = 1;
+  }
+  return mask;
+}
+
+/** Pokrycie po wycince: w wyciętych komórkach las i kosodrzewina = 0. */
+export function applyClearing(forest: Float32Array, shrub: Float32Array, mask: Uint8Array): { forest: Float32Array; shrub: Float32Array } {
+  const f = forest.slice();
+  const s = shrub.slice();
+  for (let k = 0; k < mask.length; k++) {
+    if (mask[k]) {
+      f[k] = 0;
+      s[k] = 0;
+    }
+  }
+  return { forest: f, shrub: s };
+}
+
+// ---------------------------------------------------------------- sieć
+
+export type NodeKind = 'liftBottom' | 'liftTop' | 'base' | 'pisteStart' | 'pisteEnd' | 'junction';
+
+export interface NetworkNode {
+  id: string;
+  kind: NodeKind;
+  xM: number;
+  yM: number;
+}
+
+export interface NetworkEdge {
+  from: string;
+  to: string;
+  kind: 'lift' | 'piste';
+  /** Id wyciągu lub trasy. */
+  objectId: string;
+  /** Odcinek trasy [m od początku] (dla tras). */
+  fromM?: number;
+  toM?: number;
+  lengthM: number;
+}
+
+export interface NetworkIssue extends BuildIssue {
+  objectId: string;
+}
+
+export interface ResortNetwork {
+  nodes: NetworkNode[];
+  edges: NetworkEdge[];
+  issues: NetworkIssue[];
+}
+
+function nearestOnAxis(axis: { xM: number; yM: number; distanceM: number; elevationM: number }[], p: PointM): { distM: number; atM: number; xM: number; yM: number } {
+  let best = { distM: Infinity, atM: 0, xM: 0, yM: 0 };
+  for (let i = 0; i < axis.length - 1; i++) {
+    const a = axis[i];
+    const b = axis[i + 1];
+    const dx = b.xM - a.xM;
+    const dy = b.yM - a.yM;
+    const len2 = dx * dx + dy * dy || 1;
+    const t = Math.min(1, Math.max(0, ((p.xM - a.xM) * dx + (p.yM - a.yM) * dy) / len2));
+    const x = a.xM + t * dx;
+    const y = a.yM + t * dy;
+    const d = Math.hypot(p.xM - x, p.yM - y);
+    if (d < best.distM) best = { distM: d, atM: a.distanceM + t * (b.distanceM - a.distanceM), xM: x, yM: y };
+  }
+  return best;
+}
+
+/**
+ * Graf ośrodka: wyciągi (dolna → górna stacja) i trasy (w dół) jako krawędzie. Trasa zaczyna się
+ * przy górnej stacji wyciągu lub na innej trasie; kończy przy dolnej stacji, w bazie lub na innej
+ * trasie. Trasy mijające stacje po drodze też się z nimi łączą.
+ */
+export function buildNetwork(layout: ResortLayout, lifts: Map<string, LiftAnalysis>, pistes: Map<string, PisteAnalysis>, p: PisteParams): ResortNetwork {
+  const nodes: NetworkNode[] = [];
+  const edges: NetworkEdge[] = [];
+  const issues: NetworkIssue[] = [];
+  const nodeById = new Map<string, NetworkNode>();
+  const addNode = (n: NetworkNode) => {
+    if (!nodeById.has(n.id)) {
+      nodeById.set(n.id, n);
+      nodes.push(n);
+    }
+    return nodeById.get(n.id)!;
+  };
+  for (const l of layout.lifts) {
+    const a = lifts.get(l.id);
+    addNode({ id: `${l.id}:dół`, kind: 'liftBottom', ...l.bottom });
+    addNode({ id: `${l.id}:góra`, kind: 'liftTop', ...l.top });
+    edges.push({ from: `${l.id}:dół`, to: `${l.id}:góra`, kind: 'lift', objectId: l.id, lengthM: a?.slopeLengthM ?? Math.hypot(l.top.xM - l.bottom.xM, l.top.yM - l.bottom.yM) });
+  }
+  for (const b of layout.bases) addNode({ id: b.id, kind: 'base', xM: b.xM, yM: b.yM });
+
+  // Punkty na trasach (odległość wzdłuż osi → węzeł).
+  const stops = new Map<string, Map<number, string>>();
+  const addStop = (pisteId: string, atM: number, nodeId: string) => {
+    let m = stops.get(pisteId);
+    if (!m) stops.set(pisteId, (m = new Map()));
+    for (const [d, id] of m) if (Math.abs(d - atM) < 1 && id === nodeId) return;
+    m.set(atM, nodeId);
+  };
+  const valid = layout.pistes.filter((x) => (pistes.get(x.id)?.axis.length ?? 0) >= 2);
+  for (const piste of valid) {
+    const a = pistes.get(piste.id)!;
+    const ax = a.axis.filter((s) => !Number.isNaN(s.elevationM));
+    if (ax.length < 2) continue;
+    const start = ax[0];
+    const end = ax[ax.length - 1];
+    const length = end.distanceM;
+    // Stacje wyciągów i bazy przy trasie (na początku, końcu i po drodze).
+    let startNode: string | null = null;
+    let endNode: string | null = null;
+    for (const l of layout.lifts) {
+      for (const [which, pt] of [
+        ['góra', l.top],
+        ['dół', l.bottom],
+      ] as const) {
+        const near = nearestOnAxis(ax, pt);
+        if (near.distM > p.stationRadiusM) continue;
+        const id = `${l.id}:${which}`;
+        if (which === 'góra' && Math.hypot(start.xM - pt.xM, start.yM - pt.yM) <= p.stationRadiusM) startNode = id;
+        if (which === 'dół' && Math.hypot(end.xM - pt.xM, end.yM - pt.yM) <= p.stationRadiusM) endNode = id;
+        addStop(piste.id, near.atM, id);
+      }
+    }
+    for (const b of layout.bases) {
+      const near = nearestOnAxis(ax, b);
+      if (near.distM > p.baseRadiusM) continue;
+      if (Math.hypot(end.xM - b.xM, end.yM - b.yM) <= p.baseRadiusM) endNode = endNode ?? b.id;
+      addStop(piste.id, near.atM, b.id);
+    }
+    // Połączenia z innymi trasami (początek lub koniec na innej trasie).
+    for (const other of valid) {
+      if (other.id === piste.id) continue;
+      const oa = pistes.get(other.id)!;
+      const oax = oa.axis.filter((s) => !Number.isNaN(s.elevationM));
+      if (oax.length < 2) continue;
+      const tolStart = p.junctionToleranceM + oax[0].widthM / 2;
+      if (!startNode) {
+        const near = nearestOnAxis(oax, start);
+        const halfW = (oax[Math.min(oax.length - 1, Math.round(near.atM / Math.max(1e-6, oax[1].distanceM - oax[0].distanceM)))]?.widthM ?? tolStart) / 2;
+        if (near.distM <= halfW + p.junctionToleranceM && near.atM < oax[oax.length - 1].distanceM - 1) {
+          const id = `${other.id}@${Math.round(near.atM)}`;
+          addNode({ id, kind: 'junction', xM: near.xM, yM: near.yM });
+          addStop(other.id, near.atM, id);
+          startNode = id;
+        }
+      }
+      if (!endNode) {
+        const near = nearestOnAxis(oax, end);
+        const halfW = (oax[Math.min(oax.length - 1, Math.round(near.atM / Math.max(1e-6, oax[1].distanceM - oax[0].distanceM)))]?.widthM ?? tolStart) / 2;
+        if (near.distM <= halfW + p.junctionToleranceM && near.atM > 1) {
+          const id = `${other.id}@${Math.round(near.atM)}`;
+          addNode({ id, kind: 'junction', xM: near.xM, yM: near.yM });
+          addStop(other.id, near.atM, id);
+          endNode = id;
+        }
+      }
+    }
+    if (!startNode) {
+      startNode = `${piste.id}:start`;
+      addNode({ id: startNode, kind: 'pisteStart', xM: start.xM, yM: start.yM });
+      issues.push({ objectId: piste.id, severity: 'warning', distanceM: 0, message: `trasa „${piste.name}” zaczyna się donikąd – nie przy górnej stacji wyciągu ani na innej trasie` });
+    }
+    if (!endNode) {
+      endNode = `${piste.id}:koniec`;
+      addNode({ id: endNode, kind: 'pisteEnd', xM: end.xM, yM: end.yM });
+      issues.push({ objectId: piste.id, severity: 'warning', distanceM: length, message: `trasa „${piste.name}” prowadzi donikąd – nie kończy się przy dolnej stacji, w bazie ani na innej trasie` });
+    }
+    addStop(piste.id, 0, startNode);
+    addStop(piste.id, length, endNode);
+  }
+  // Krawędzie tras: między kolejnymi punktami wzdłuż osi.
+  for (const piste of valid) {
+    const m = stops.get(piste.id);
+    if (!m) continue;
+    const list = [...m.entries()].sort((a, b) => a[0] - b[0]);
+    for (let i = 0; i < list.length - 1; i++) {
+      if (list[i][1] === list[i + 1][1]) continue;
+      edges.push({ from: list[i][1], to: list[i + 1][1], kind: 'piste', objectId: piste.id, fromM: list[i][0], toM: list[i + 1][0], lengthM: list[i + 1][0] - list[i][0] });
+    }
+  }
+  // Wyciągi bez zjazdu: z górnej stacji nie wychodzi żadna trasa.
+  for (const l of layout.lifts) {
+    const top = `${l.id}:góra`;
+    if (!edges.some((e) => e.kind === 'piste' && e.from === top)) {
+      issues.push({ objectId: l.id, severity: 'warning', distanceM: null, message: `wyciąg „${l.name}” nie ma zjazdu – z górnej stacji nie zaczyna się żadna trasa` });
+    }
+  }
+  return { nodes, edges, issues };
+}
+
+// ---------------------------------------------------------------- porównanie z OSM
+
+export interface OsmPiste {
+  osmId: number;
+  name: string;
+  ref: string;
+  difficulty: string;
+  area: boolean;
+  points: number[][];
+}
+
+export interface OsmResort {
+  lifts: { osmId: number; name: string; ref: string; aerialway: string; capacityPerHour: number | null; points: number[][] }[];
+  pistes: OsmPiste[];
+}
+
+export interface RealPisteComparison {
+  label: string;
+  osmIds: number[];
+  lengthM: number;
+  dropM: number;
+  maxSlopePercent: number;
+  officialClass: string | null;
+  ourClass: string;
+  agree: boolean;
+  analysis: PisteAnalysis;
+  /** Oś w układzie lokalnym (do rysowania). */
+  axis: PointM[];
+}
+
+/** Łączy odcinki tej samej trasy (te same nazwy i trudność) w ciągi, gdy końce się stykają. */
+export function chainOsmPistes(list: { key: string; points: PointM[]; ids: number[] }[], toleranceM: number): { key: string; points: PointM[]; ids: number[] }[] {
+  const pending = list.map((x) => ({ ...x, points: [...x.points], ids: [...x.ids] }));
+  const out: typeof pending = [];
+  const close = (a: PointM, b: PointM) => Math.hypot(a.xM - b.xM, a.yM - b.yM) <= toleranceM;
+  while (pending.length) {
+    const cur = pending.shift()!;
+    let merged = true;
+    while (merged) {
+      merged = false;
+      for (let i = 0; i < pending.length; i++) {
+        const o = pending[i];
+        if (o.key !== cur.key) continue;
+        const cs = cur.points[0];
+        const ce = cur.points[cur.points.length - 1];
+        const os = o.points[0];
+        const oe = o.points[o.points.length - 1];
+        let joined: PointM[] | null = null;
+        if (close(ce, os)) joined = [...cur.points, ...o.points.slice(1)];
+        else if (close(oe, cs)) joined = [...o.points, ...cur.points.slice(1)];
+        else if (close(ce, oe)) joined = [...cur.points, ...[...o.points].reverse().slice(1)];
+        else if (close(cs, os)) joined = [...[...o.points].reverse(), ...cur.points.slice(1)];
+        if (joined) {
+          cur.points = joined;
+          cur.ids.push(...o.ids);
+          pending.splice(i, 1);
+          merged = true;
+          break;
+        }
+      }
+    }
+    out.push(cur);
+  }
+  return out;
+}
+
+/**
+ * Klasyfikacja prawdziwych tras z OSM naszą metodą i porównanie z ich oficjalnymi kolorami
+ * (piste:difficulty). Trasy o tej samej nazwie łączone w ciągi; kolor trasy = najtrudniejszy ciąg.
+ */
+export function compareRealPistes(osm: OsmResort, grid: TerrainGrid, p: PisteParams, toLocal: (e: number, n: number) => PointM | null): RealPisteComparison[] {
+  const items = osm.pistes
+    // Tylko trasy z nazwą lub numerem – odcinki bez nazwy (łączniki) nie mają oficjalnego koloru.
+    .filter((x) => !x.area && (x.ref || x.name))
+    .map((x) => ({
+      key: `${x.ref || x.name}|${x.difficulty}`,
+      ids: [x.osmId],
+      points: x.points.map(([e, n]) => toLocal(e, n)).filter((q): q is PointM => q !== null),
+    }))
+    .filter((x) => x.points.length >= 2);
+  const chains = chainOsmPistes(items, p.osmChainToleranceM);
+  const byName = new Map<string, RealPisteComparison>();
+  for (const ch of chains) {
+    const [label, difficulty] = ch.key.split('|');
+    const design: PisteDesign = { id: `osm-${ch.ids[0]}`, name: label, points: ch.points.map((q): AxisPoint => ({ ...q, widthM: p.osmPisteWidthM })) };
+    const a = analyzePiste(design, { grid, params: p, forest: null, shrub: null, clearingCost: { forestCostPlnPerM2: 0, shrubCostPlnPerM2: 0, daysPerHectare: 0 } });
+    if (a.axis.filter((s) => !Number.isNaN(s.elevationM)).length < 2) continue;
+    const officialClass = p.osmDifficultyToClass[difficulty] ?? null;
+    const prev = byName.get(ch.key);
+    // Kolor trasy = najtrudniejszy z jej ciągów (jak najtrudniejszy odcinek jednej trasy).
+    const hardest = !prev || a.maxSlopePercent > prev.maxSlopePercent;
+    const ourClass = hardest ? p.classes[a.classIndex].id : prev.ourClass;
+    byName.set(ch.key, {
+      label,
+      osmIds: [...(prev?.osmIds ?? []), ...ch.ids],
+      lengthM: (prev?.lengthM ?? 0) + a.lengthM,
+      dropM: (prev?.dropM ?? 0) + a.dropM,
+      maxSlopePercent: hardest ? a.maxSlopePercent : prev.maxSlopePercent,
+      officialClass,
+      ourClass,
+      agree: officialClass === ourClass,
+      analysis: hardest ? a : prev.analysis,
+      axis: hardest ? design.points : prev.axis,
+    });
+  }
+  return [...byName.values()].sort((a, b) => a.label.localeCompare(b.label, 'pl', { numeric: true }));
+}
