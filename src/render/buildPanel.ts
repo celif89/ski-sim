@@ -8,7 +8,7 @@ import type { PisteParams } from '../sim/pistes';
 import type { RealPisteComparison, ResortAnalysis, ResortLayout } from '../sim/resort';
 import type { ThinSegment } from '../sim/snowRiding';
 
-export type BuildTool = 'select' | 'lift' | 'pisteBrush' | 'pisteAxis' | 'base' | 'pipeline' | 'gun' | 'road' | 'catwalk';
+export type BuildTool = 'select' | 'lift' | 'pisteBrush' | 'pisteAxis' | 'base' | 'pipeline' | 'supply' | 'gun' | 'road' | 'catwalk';
 
 export interface BuildPanelHandlers {
   onTool(tool: BuildTool): void;
@@ -65,6 +65,7 @@ const TOOLS: { tool: BuildTool; key: string; label: string; title: string }[] = 
   { tool: 'catwalk', key: 'U', label: 'Nartostrada', title: 'Łatwa trasa łącznikowa (wąska, łagodna) – klikaj punkty osi, Enter – koniec' },
   { tool: 'road', key: 'E', label: 'Droga', title: 'Droga dojazdowa do parkingu: od drogi publicznej (szarej) albo innej drogi; koszt za metr, zimą odśnieżanie' },
   { tool: 'pipeline', key: 'H', label: 'Rurociąg', title: 'Rurociąg naśnieżania z hydrantami: klikaj punkty od pompowni wzdłuż trasy, Enter – koniec. Wykop tylko latem' },
+  { tool: 'supply', key: 'F', label: 'Rura zasilająca', title: 'Rura zasilająca: od źródła wody (ujęcie, studnia, wodociąg) do zbiornika; pod górę – pompa (energia). Wykop tylko latem' },
   { tool: 'gun', key: 'J', label: 'Armatka', title: 'Armatka lub lanca na hydrancie: kliknij kropkę na rurociągu' },
   { tool: 'base', key: 'B', label: 'Budynek', title: 'Parking (baza – tu przyjeżdżają goście), gastronomia, wypożyczalnia, szkółka – wybierz typ i kliknij na mapie' },
 ];

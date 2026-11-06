@@ -80,6 +80,10 @@ const BUILDING_STYLE: Record<string, { color: number; letter: string }> = {
   rental: { color: 0x7048e8, letter: 'W' },
   school: { color: 0x2b8a3e, letter: 'S' },
   intake: { color: 0x1971c2, letter: 'U' },
+  mains: { color: 0x1864ab, letter: 'Wd' },
+  well100: { color: 0x0b7285, letter: 'St' },
+  well200: { color: 0x0b7285, letter: 'St' },
+  catchment: { color: 0x3b8fd9, letter: 'R' },
   reservoir20: { color: 0x1864ab, letter: 'Z' },
   reservoir50: { color: 0x1864ab, letter: 'Z' },
   reservoir100: { color: 0x1864ab, letter: 'Z' },
@@ -127,6 +131,8 @@ export class ResortLayer {
   private readonly labelPool: Text[] = [];
   private readonly contextLayer = new Container();
   private readonly roadsG = new Graphics();
+  /** Etap 6b: potoki (z OSM i z modelu terenu) – pod drogami. */
+  private readonly streamsG = new Graphics();
   private readonly buildingsFar = new Graphics();
   private readonly buildingsNear = new Graphics();
   private lastKey = '';
@@ -146,11 +152,40 @@ export class ResortLayer {
     private readonly borderLinesLocal: number[][][],
   ) {
     this.local = (p) => grid.puwg92ToLocal(p[0], p[1]);
-    this.contextLayer.addChild(this.roadsG, this.buildingsFar, this.buildingsNear);
+    this.contextLayer.addChild(this.streamsG, this.roadsG, this.buildingsFar, this.buildingsNear);
     world.addChild(this.contextLayer);
     screenLayer.addChild(this.g);
     screenLayer.addChild(this.labels);
     this.drawContext();
+  }
+
+  /**
+   * Etap 6b: potoki na mapie – niebieskie linie, grubsze przy większym przepływie (z OSM pełne,
+   * wyznaczone z modelu terenu – jaśniejsze).
+   */
+  setStreams(lines: { points: { xM: number; yM: number }[]; meanFlowM3s: number[]; osm: boolean }[]): void {
+    this.streamLines = lines;
+    this.streamMpp = -1;
+  }
+
+  private streamLines: { points: { xM: number; yM: number }[]; meanFlowM3s: number[]; osm: boolean }[] = [];
+  private streamMpp = -1;
+
+  /** Potoki rysowane w metrach świata; grubość co najmniej ok. 1,5 px – przerysowanie przy zmianie skali. */
+  private drawStreams(mpp: number): void {
+    const bucket = Math.round(Math.log2(mpp) * 4) / 4;
+    if (bucket === this.streamMpp) return;
+    this.streamMpp = bucket;
+    const px = 2 ** bucket;
+    const g = this.streamsG.clear();
+    for (const l of this.streamLines) {
+      if (l.points.length < 2) continue;
+      const q = l.meanFlowM3s.reduce((a, b) => a + b, 0) / Math.max(1, l.meanFlowM3s.length);
+      const w = Math.max(Math.min(5, 1.2 + 25 * q), (1.2 + Math.min(1.5, 12 * q)) * px);
+      g.moveTo(l.points[0].xM, l.points[0].yM);
+      for (let i = 1; i < l.points.length; i++) g.lineTo(l.points[i].xM, l.points[i].yM);
+      g.stroke({ width: w, color: l.osm ? 0x3b8fd9 : 0x74b4ec, alpha: l.osm ? 0.85 : 0.7, cap: 'round', join: 'round' });
+    }
   }
 
   /** Śnieg na dachach (z modelu śniegu przy budynkach). */
@@ -269,6 +304,7 @@ export class ResortLayer {
       this.drawContext();
     }
     const mpp = cam.metersPerPixel;
+    this.drawStreams(mpp);
     const w = lodWeights(mpp, this.lod);
     this.buildingsFar.alpha = w.w1;
     this.buildingsNear.alpha = 1 - w.w1;
@@ -586,7 +622,7 @@ export class ResortLayer {
         g.stroke({ width: 5, color: 0xffffff, alpha: 0.9, cap: 'round', join: 'round' });
         g.moveTo(pts[0].xPx, pts[0].yPx);
         for (const q of pts) g.lineTo(q.xPx, q.yPx);
-        g.stroke({ width: sel ? 3.5 : 2.5, color: sel ? SELECT_COLOR : PIPE_COLOR, cap: 'round', join: 'round' });
+        g.stroke({ width: sel ? 3.5 : pipe.supply ? 2 : 2.5, color: sel ? SELECT_COLOR : pipe.supply ? 0x0c8599 : PIPE_COLOR, cap: 'round', join: 'round' });
       }
       if (st.snowNet.draftPipe.length) {
         const pts = [...st.snowNet.draftPipe, ...(st.snowNet.cursor ? [st.snowNet.cursor] : [])].map((q) => toS(q.xM, q.yM));

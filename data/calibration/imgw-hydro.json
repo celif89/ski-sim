@@ -62,5 +62,9 @@
   0.743,
   0.875
  ],
- "lowFlowFactorP10Mean": 0.218
+ "lowFlowFactorP10Mean": {
+  "value": 0.218,
+  "unit": "× średni roczny",
+  "source": "10. percentyl przepływów dobowych / średni, średnia ze stacji (IMGW)"
+ }
 }

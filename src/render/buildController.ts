@@ -9,6 +9,8 @@ import { analyzeLift, designLift, liftPath, liftTypeById, pointAlongPath, retowe
 import type { GroundParams } from '../sim/ground';
 import type { Hydrant } from '../sim/snowmaking';
 import { pipelineCost, pipelineHydrants } from '../sim/snowmaking';
+import type { WaterContext } from '../sim/operations';
+import { reservoirCatchment, streamAt, villageCoverage } from '../sim/water';
 import type { RoadParams } from '../sim/resort';
 import { analyzeRoads } from '../sim/resort';
 import type { SnowmakingParams } from '../sim/snowmakingParams';
@@ -116,6 +118,7 @@ export class BuildController {
   private buildingTypeId = 'parking';
   /** Etap 7: rurociąg w trakcie rysowania, typ stawianej armatki, armatki pracujące teraz (chmury). */
   private pipePoints: PointM[] = [];
+  private water: WaterContext | null = null;
   /** Etap 6b: droga w trakcie rysowania. */
   private roadPoints: PointM[] = [];
   private gunTypeId = 'fan';
@@ -191,6 +194,16 @@ export class BuildController {
   currentLandCover(): { forest: Float32Array; shrub: Float32Array } | null {
     if (!this.o.forest || !this.o.shrub) return null;
     return applyClearing(this.o.forest, this.o.shrub, this.analysis.clearedMask);
+  }
+
+  /** Etap 6b: model wody – sprawdzanie miejsca ujęcia, wodociągu, rowów. */
+  setWater(w: WaterContext): void {
+    this.water = w;
+  }
+
+  /** Etap 6b: potoki na mapie. */
+  setStreams(lines: Parameters<ResortLayer['setStreams']>[0]): void {
+    this.layer.setStreams(lines);
   }
 
   /** Śnieg na dachach budynków. */
@@ -360,6 +373,8 @@ export class BuildController {
               ? `Droga: klikaj punkty od drogi publicznej (szara) albo innej drogi do parkingu; Enter lub podwójne kliknięcie – koniec. Nachylenie do ${this.o.roads?.maxSlopePercent ?? 12} %, koszt ${Math.round(this.o.roads?.costPlnPerM ?? 0)} zł/m, zimą odśnieżanie.`
               : tool === 'catwalk'
                 ? `Nartostrada: klikaj punkty osi łatwego łącznika (szerokość ${this.o.pisteParams.catwalkWidthM} m, nachylenie do ${this.o.pisteParams.catwalkMaxSlopePercent} %); Enter – koniec.`
+            : tool === 'supply'
+              ? `Rura zasilająca: klikaj punkty od źródła wody (ujęcie, studnia, wodociąg) do zbiornika; Enter – koniec. ${Math.round(this.o.snowmaking?.pipe.supplyCostPlnPerM ?? 0)} zł/m; pod górę woda jest pompowana (energia).`
             : tool === 'pipeline'
               ? 'Rurociąg: klikaj punkty od pompowni (albo od innego rurociągu) wzdłuż trasy; Enter lub podwójne kliknięcie – koniec. Hydranty stawiają się same co kilkadziesiąt metrów.'
               : tool === 'gun'
@@ -455,7 +470,7 @@ export class BuildController {
       this.updateDraftPiste(this.axisPoints, p);
       return true;
     }
-    if (this.tool === 'pipeline') {
+    if (this.tool === 'pipeline' || this.tool === 'supply') {
       this.pipePoints.push({ xM: p.xM, yM: p.yM });
       this.drawVersion++;
       return true;
@@ -484,8 +499,17 @@ export class BuildController {
         const n = next.bases.length + 1;
         next.bases.push({ id, name: t ? `${t.name} ${n}` : `Baza ${n}`, xM: p.xM, yM: p.yM, ...(t ? { typeId: t.id } : {}) });
       } else {
+        // Etap 6b: źródła wody – ujęcie tylko na potoku, wodociąg tylko przy wsi, rowy przy zbiorniku.
+        const check = this.checkWaterSite(t.id, p.xM, p.yM, next);
+        if (check.error) {
+          this.message = check.error;
+          this.refreshPanel();
+          return true;
+        }
         const n = (next.buildings ?? []).filter((b) => b.typeId === t.id).length + 1;
         (next.buildings ??= []).push({ id, typeId: t.id, name: `${t.name} ${n}`, xM: p.xM, yM: p.yM });
+        if (this.commit(next, `Postawiono: ${t.name}.${check.info ? ` ${check.info}` : ''}`)) this.select({ kind: 'base', id });
+        return true;
       }
       if (this.commit(next, t ? `Postawiono: ${t.name}.` : 'Postawiono bazę.')) this.select({ kind: 'base', id });
       return true;
@@ -494,7 +518,7 @@ export class BuildController {
   }
 
   handleDoubleClick(): void {
-    if (this.tool === 'pipeline') this.finishPipeline();
+    if (this.tool === 'pipeline' || this.tool === 'supply') this.finishPipeline();
     else if (this.tool === 'road') this.finishRoad();
     else if (this.tool === 'pisteAxis' || this.tool === 'catwalk') this.finishAxis();
     else if (this.tool === 'select' && this.hoverHandle?.kind === 'liftBend') this.toggleBendMid(this.hoverHandle.index);
@@ -589,7 +613,7 @@ export class BuildController {
         return true;
       case 'Enter':
         if (this.tool === 'pisteAxis' || this.tool === 'catwalk') this.finishAxis();
-        if (this.tool === 'pipeline') this.finishPipeline();
+        if (this.tool === 'pipeline' || this.tool === 'supply') this.finishPipeline();
         if (this.tool === 'road') this.finishRoad();
         return true;
       case 'KeyE':
@@ -602,6 +626,10 @@ export class BuildController {
       case 'KeyH':
         if (!this.o.snowmaking) return false;
         this.setTool('pipeline');
+        return true;
+      case 'KeyF':
+        if (!this.o.snowmaking) return false;
+        this.setTool('supply');
         return true;
       case 'KeyJ':
         if (!this.o.snowmaking) return false;
@@ -652,7 +680,42 @@ export class BuildController {
     return out;
   }
 
+  /** Etap 6b: czy źródło wody może tu stanąć; informacja o przepływie, zlewni, wodociągu. */
+  private checkWaterSite(typeId: string, xM: number, yM: number, layout: ResortLayout): { error?: string; info?: string } {
+    const sp = this.o.snowmaking;
+    const w = this.water;
+    const t = sp?.buildings.find((x) => x.id === typeId);
+    if (!sp || !t || !w) return {};
+    const wp = w.wp;
+    const f0 = (v: number) => Math.round(v).toLocaleString('pl-PL');
+    if (t.kind === 'intake') {
+      const hit = streamAt(w.net, xM, yM, wp.streams.intakeMaxDistanceM, wp);
+      if (!hit) return { error: `Ujęcie musi stać na potoku (niebieska linia na mapie, najwyżej ${wp.streams.intakeMaxDistanceM} m od niej).` };
+      const mean = hit.meanFlowM3s * 3600;
+      const avail = (f: number) => Math.max(0, Math.min(wp.streams.maxWithdrawalShare * mean * f, mean * f - wp.streams.ecologicalFlowShare * mean));
+      const jan = avail(wp.streams.monthlyFactor[0]);
+      const nov = avail(wp.streams.monthlyFactor[10]);
+      const apr = avail(wp.streams.monthlyFactor[3]);
+      return { info: `${hit.line.name}: średni przepływ ${f0(mean)} m³/h; wolno pobrać ok. ${f0(nov)} m³/h w listopadzie, ${f0(jan)} w styczniu, ${f0(apr)} w kwietniu (mniej w suchym miesiącu, wspólny limit z innymi ujęciami na potoku). Połącz ze zbiornikiem rurą zasilającą (F).` };
+    }
+    if (t.kind === 'mains') {
+      const v = villageCoverage(xM, yM, w.villageBuildings, wp);
+      if (!v.ok) return { error: `Przyłącze wodociągowe tylko w zasięgu sieci wsi: w promieniu ${wp.mains.villageRadiusM} m musi stać co najmniej ${wp.mains.villageMinBuildings} budynków (tu: ${v.buildings}).` };
+      return { info: `Woda z sieci ${wp.mains.pricePlnPerM3.toLocaleString('pl-PL')} zł/m³, do ${f0(t.capacity)} m³/h – zakup włączasz w panelu naśnieżania.` };
+    }
+    if (t.kind === 'well') return { info: `Wydajność studni poznasz dopiero po wierceniu – we fliszu bywa od prawie zera do kilkunastu m³/h.` };
+    if (t.kind === 'catchment') {
+      const res = (layout.buildings ?? []).filter((b) => sp.buildings.find((x) => x.id === b.typeId)?.kind === 'reservoir');
+      const near = res.find((b) => Math.hypot(b.xM - xM, b.yM - yM) <= wp.supply.directRadiusM);
+      if (!near) return { error: `Rowy zbierające spływ stawia się przy zbiorniku (najwyżej ${wp.supply.directRadiusM} m od niego).` };
+      const c = reservoirCatchment(w.net, near.xM, near.yM, t.capacity, wp, w.elevationM);
+      return { info: `Zlewnia zbiornika ${(c.areaM2 / 10000).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} ha – woda z roztopów i deszczu (najwięcej wiosną).` };
+    }
+    return {};
+  }
+
   private finishPipeline(): void {
+    const supply = this.tool === 'supply';
     const pts = this.pipePoints.filter((q, i, a) => i === 0 || Math.hypot(q.xM - a[i - 1].xM, q.yM - a[i - 1].yM) > 1);
     this.pipePoints = [];
     this.drawVersion++;
@@ -663,7 +726,14 @@ export class BuildController {
     }
     const next = this.clone();
     const id = `R${next.nextId++}`;
-    const n = (next.pipelines ?? []).length + 1;
+    if (supply) {
+      const n = (next.pipelines ?? []).filter((x) => x.supply).length + 1;
+      (next.pipelines ??= []).push({ id, name: `Rura zasilająca ${n}`, points: pts, supply: true });
+      const c = pipelineCost(next.pipelines[next.pipelines.length - 1], this.o.snowmaking!);
+      if (this.commit(next, `Rura zasilająca ${n}: ${Math.round(c.lengthM)} m. Jeden koniec przy źródle wody, drugi przy zbiorniku (do ${this.water?.wp.supply.connectRadiusM ?? 40} m). Wykop tylko latem (V–X).`)) this.select({ kind: 'pipeline', id });
+      return;
+    }
+    const n = (next.pipelines ?? []).filter((x) => !x.supply).length + 1;
     (next.pipelines ??= []).push({ id, name: `Rurociąg ${n}`, points: pts });
     const c = pipelineCost(next.pipelines[next.pipelines.length - 1], this.o.snowmaking!);
     if (this.commit(next, `Rurociąg ${n}: ${Math.round(c.lengthM)} m, ${c.hydrants} hydrantów. Wykop tylko latem (V–X). Początek musi być przy pompowni albo innym rurociągu.`)) this.select({ kind: 'pipeline', id });
@@ -890,7 +960,9 @@ export class BuildController {
       const b = [...this.layout.bases, ...(this.layout.buildings ?? [])].find((x) => x.id === hit.id);
       if (!b) return null;
       const t = this.o.buildingTypes?.find((x) => x.id === (b as { typeId?: string }).typeId);
-      return { title: b.name, lines: [t ? t.name : 'baza (miejsce przyjazdu)', `status: ${building !== undefined ? `w budowie (${Math.round(building * 100)} %)` : 'gotowy'}`] };
+      const typeId = (b as { typeId?: string }).typeId;
+      const water = typeId ? this.checkWaterSite(typeId, b.xM, b.yM, this.layout) : {};
+      return { title: b.name, lines: [t ? t.name : 'baza (miejsce przyjazdu)', `status: ${building !== undefined ? `w budowie (${Math.round(building * 100)} %)` : 'gotowy'}`, ...(water.info ? [water.info] : water.error ? [water.error] : [])] };
     }
     if (hit.kind === 'road') {
       const r = (this.layout.roads ?? []).find((x) => x.id === hit.id);
@@ -903,6 +975,7 @@ export class BuildController {
       if (!pipe || !this.o.snowmaking) return null;
       const n = pipelineHydrants(pipe, this.o.snowmaking).length;
       const guns = (this.layout.snowGuns ?? []).filter((g) => g.pipelineId === pipe.id).length;
+      if (pipe.supply) return { title: pipe.name, lines: [`rura zasilająca (źródło → zbiornik) · ${Math.round(pipelineCost(pipe, this.o.snowmaking).lengthM)} m`, `status: ${building !== undefined ? `w budowie (${Math.round(building * 100)} %)` : 'gotowa'}`] };
       return { title: pipe.name, lines: [`rurociąg naśnieżania · ${n} hydrantów, ${guns} armatek`, `status: ${building !== undefined ? `w budowie (${Math.round(building * 100)} %)` : 'gotowy'}`] };
     }
     if (hit.kind === 'gun') {

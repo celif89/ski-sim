@@ -36,6 +36,7 @@ import {
 } from '../sim/economy';
 import type { EconomyParams } from '../sim/economyParams';
 import type { DayOpsResult, Infra, OpsSnow } from '../sim/operations';
+import type { WaterContext } from '../sim/operations';
 import { acquireGroomer, blockedPistes, infraFacts, previewDayOperations, runDayOperations } from '../sim/operations';
 import type { SnowOps } from '../sim/snowOps';
 import { encodeOps } from '../sim/gameSave';
@@ -105,6 +106,8 @@ export interface GameControllerOptions {
   winterRating?(startYear: number, seed: number): SeasonReport['winter'];
   /** Ekonomia skończyła przeliczać dni – mapa może pobrać śnieg. */
   onCaughtUp?(): void;
+  /** Etap 6b: model wody (potoki, wodociąg, studnie, zlewnia zbiornika). */
+  water?: WaterContext | null;
 }
 
 const AUTOSAVE_DB = 'ski-sim-gra';
@@ -589,6 +592,7 @@ export class GameController {
       ep: this.o.ep,
       riding: this.o.riding,
       date,
+      water: this.o.water ?? null,
     };
   }
 
@@ -596,7 +600,7 @@ export class GameController {
   infra(): Infra | null {
     const sp = this.o.ep.snowmaking;
     if (!sp || !this.state || !this.analysis) return null;
-    return infraFacts(this.layout, this.analysis, this.state, sp, this.o.grid);
+    return infraFacts(this.layout, this.analysis, this.state, sp, this.o.grid, this.o.water ?? null);
   }
 
   /** Etap 7: przelicz podgląd doby (po zmianie planu, armatek, floty). */
@@ -612,6 +616,17 @@ export class GameController {
       this.preview = null;
     }
     this.o.onOps?.();
+  }
+
+  /** Etap 6b: zakup wody z wodociągu – włącz/wyłącz. */
+  setMainsOn(on: boolean): void {
+    const s = this.state;
+    if (!s) return;
+    if (!s.ops) return;
+    s.ops.mainsOn = on;
+    this.o.toast(on ? 'Zakup wody z wodociągu włączony – płacisz za każdy m³.' : 'Zakup wody z wodociągu wyłączony.');
+    this.refreshPreview();
+    this.refreshPanel(true);
   }
 
   /** Etap 7: ratrak – zakup lub leasing. */

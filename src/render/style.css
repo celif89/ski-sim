@@ -1749,3 +1749,20 @@ tr.g-closed td {
   padding-top: 5px;
   border-top: 1px solid #e2e8f0;
 }
+
+/* Etap 6b: źródła wody w panelu naśnieżania */
+.snow-panel .sn-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 2px 0 4px;
+}
+.snow-panel .sn-table th {
+  text-align: left;
+  font-weight: 600;
+  color: #64748b;
+}
+.snow-panel .sn-table td,
+.snow-panel .sn-table th {
+  padding: 1px 4px 1px 0;
+  vertical-align: top;
+}

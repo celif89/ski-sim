@@ -77,10 +77,22 @@ oglądane zegarem (×1, ×5, ×20) – **pełną symulacją gości**. W karierze
 Jak zbudować system naśnieżania (najlepiej latem – wykopy pod rurociąg i zbiornik tylko od maja do
 października):
 
-1. **Ujęcie wody z potoku** (narzędzie „Budynki”, `B`, typ w panelu budowy) – pobór ograniczony
-   (latem 60 m³/h, zimą 40 % tego; po suchym miesiącu mniej).
-2. **Zbiornik** (20, 50 lub 100 tys. m³) – napełnia się z ujęcia latem i jesienią; przy suchej jesieni
-   może nie dojść do pełna.
+1. **Źródło wody** (narzędzie „Budynki”, `B`, typ w panelu budowy):
+   - **ujęcie z potoku** – tylko na cieku (niebieskie linie na mapie; potoki z OpenStreetMap uzupełnione
+     z modelu terenu). Przy stawianiu gra podaje średni przepływ i ile wolno pobrać w listopadzie, styczniu
+     i kwietniu. Pobór tylko ponad przepływ nienaruszalny; kilka ujęć na jednym potoku ma wspólny limit.
+     Przepływ zmienia się z porą roku (najwięcej przy roztopach III–V, najmniej w sierpniu i styczniu)
+     i spada po suchym miesiącu;
+   - **przyłącze wodociągowe** – tylko przy zabudowie wsi, do 10 m³/h, 8,07 zł/m³ (taryfa MPWiK Żywiec);
+     zakup włączasz i wyłączasz w panelu „Naśnieżanie i ratraki”;
+   - **studnia głębinowa** 100 lub 200 m – wydajność poznasz dopiero po wierceniu (we fliszu zwykle
+     1–10 m³/h, bywa prawie sucha); pompa zużywa energię;
+   - **rowy zbierające spływ** – przy zbiorniku; łapią deszcz i roztopy ze zlewni zbiornika (najwięcej
+     wiosną) – zbiornik może się napełnić bez potoku.
+   Źródło łączy się ze zbiornikiem **rurą zasilającą** (klawisz `F`: klikaj od źródła do zbiornika,
+   `Enter` – koniec; 250 zł/m, wykop latem) albo stoi przy nim (do 60 m). Pod górę woda jest pompowana.
+2. **Zbiornik** (20, 50 lub 100 tys. m³) – napełnia się ze źródeł; w panelu „Źródła wody” widać ilość
+   i koszt z każdego źródła dziś i od 1 maja.
 3. **Pompownia** (150, 300 lub 600 m³/h) – postaw ją przy dolnej stacji; od niej zaczyna się rurociąg.
 4. **Przyłącze energetyczne** (500, 1000 lub 2000 kW) – ogranicza, ile armatek i pomp pracuje naraz
    (razem z wyciągami w godzinach otwarcia).
@@ -114,7 +126,8 @@ i pracujące, trasy zamknięte przez pryzmy, flota ratraków, przewidywany konie
   (przy inwersji na dole zimniej niż na górze).
 - Na mapie: rurociągi (niebieska linia), hydranty, armatki (okrągłe – śmigłowe, wąskie – lance), chmury
   śniegu pracujących armatek z wiatrem, ratraki ze światłami w nocy i sztruks za nimi; budynki: U – ujęcie,
-  Z – zbiornik, Pm – pompownia, E – przyłącze, R – garaż ratraków, K – punkt kotwienia.
+  Z – zbiornik, Pm – pompownia, E – przyłącze, R – garaż ratraków, K – punkt kotwienia, Wd – wodociąg,
+  St – studnia; potoki (niebieskie linie), rury zasilające (turkusowe).
 - Raport sezonu: śnieg (m³), woda, energia, paliwo, koszty naśnieżania i ratraków, **dni otwarte dzięki
   naśnieżaniu**.
 
@@ -145,6 +158,7 @@ i pracujące, trasy zamknięte przez pryzmy, flota ratraków, przewidywany konie
 | Gdzie można teraz naśnieżać | klawisz `M` albo „Nakładki” → „Naśnieżanie teraz” (temperatura mokra) |
 | Menu deweloperskie | przycisk „Dev” w lewym dolnym rogu lub klawisz `` ` `` – licznik klatek, czas pracy na klatkę |
 | Profil terenu | przycisk „Profil terenu” lub klawisz `P`, potem kliknij punkt A i punkt B; `Esc` zamyka |
+| Dymek przy kursorze | zatrzymaj kursor na chwilę: wysokość, nachylenie, ekspozycja, śnieg (grubość, baza ubita, stan), temperatura na tej wysokości, obiekt pod kursorem (trasa, wyciąg, budynek, droga, potok z przepływem); wyłączanie: „Nakładki” → „Dymek przy kursorze” albo klawisz `I` |
 
 ### Budowa ośrodka (dolny pasek i panel „Budowa ośrodka” po prawej)
 
@@ -157,6 +171,10 @@ naśnieżania), **Nakładki**. „Wycinka” jest wyszarzona – liczy się sama
 | Trasa pędzlem | „Trasa – pędzel” lub `T`: przeciągnij myszą wzdłuż trasy (mapę przesuwasz wtedy prawym przyciskiem lub klawiszami) |
 | Trasa po osi | „Trasa – oś” lub `O`: klikaj kolejne punkty osi; podwójne kliknięcie lub `Enter` – koniec, `Backspace` – cofnij punkt |
 | Szerokość trasy | suwak w panelu lub klawisze `[` i `]` |
+| Droga dojazdowa | klawisz `E`: klikaj od drogi publicznej (szara) do parkingu; koszt za metr, nachylenie do 12 %, zimą odśnieżanie. Parking bez drogi nie ma dojazdu, a wyciąg, do którego nie da się dojść z parkingu, stoi („niedostępny z parkingu”) |
+| Nartostrada | klawisz `U`: wąski, łagodny łącznik (6 m, do 15 %) – tylko w dół |
+| Zjazd wyciągiem w dół | w profilu kanapy lub gondoli przycisk „Włącz zjazd w dół” – goście zjeżdżają nim, gdy dolna trasa jest zamknięta lub za trudna (kanapa – część miejsc, orczyk – nie da się) |
+| Rura zasilająca | klawisz `F`: od źródła wody (ujęcie, studnia, wodociąg) do zbiornika |
 | Baza (parking, wioska) | „Baza” lub `B`, kliknij miejsce – trasy mogą się tam kończyć |
 | Wybór obiektu | „Wybierz” lub `V`, kliknij wyciąg lub trasę na mapie albo w liście – profil i liczby na dole |
 | Edycja trasy | zaznacz trasę (klik): na osi pojawiają się **kółka** (punkty osi – przeciągnij), **kwadraciki** po bokach (szerokość w tym miejscu – przeciągnij w bok) i **„+”** w połowie odcinków (klik – nowy punkt). Usuń punkt: prawy przycisk na kółku albo najedź i `Delete`. Profil, kolor trasy, wycinka i koszt przeliczają się w trakcie przeciągania |
@@ -462,6 +480,10 @@ Potem otworzyć w przeglądarce adres wypisany w Terminalu (zwykle http://localh
 | `npm run import-landcover` | pobiera mapę pokrycia terenu (las) ESA WorldCover |
 | `npm run snow-calibration-data` | pobiera z IMGW pomiary grubości śniegu i pogodę stacji do kalibracji |
 | `npm run radiation-validation-data` | pobiera z IMGW pomiary promieniowania do sprawdzenia modelu |
+| `npm run snow-diagnosis` | diagnoza śniegu naturalnego: dni z bazą do otwarcia – generator a prawdziwe zimy IMGW (`-- --klasy` zapisuje klasy zim) |
+| `npm run pilsko-economy` | ekonomia ośrodka wielkości Pilska (prawdziwy układ z OSM) w przeciętnej zimie – struktura przychodów i kosztów |
+| `npm run import-hydro` | pobiera z IMGW przepływy potoków (Ujsoły, Pewel Mała) i liczy rytm roczny |
+| `npm run water-check` | potoki na mapie: przepływy, ile wolno pobrać w miesiącach, czas napełniania zbiornika |
 
 ## Budowa projektu
 

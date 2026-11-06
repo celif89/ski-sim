@@ -25,6 +25,7 @@ import { parseEconomyParams, withRoads, withSnowmaking } from './sim/economyPara
 import { parkingCapacityPersons } from './sim/economy';
 import snowmakingJson from '../data/snowmaking.json';
 import winterClassesJson from '../data/winter-classes.json';
+import waterJson from '../data/water.json';
 import { careerSeed, parseWinterClasses, winterClass, winterPercentile, winterSkiDays } from './sim/winterClass';
 import { parseSnowmakingParams } from './sim/snowmakingParams';
 import { wetBulbC } from './sim/snowmaking';
@@ -33,6 +34,8 @@ import type { PlanPiste } from './render/snowPanels';
 import { OpsView, plumesAt } from './render/opsView';
 import { WeatherBook } from './sim/weatherBook';
 import { parseClimateProfile } from './sim/climate';
+import { annualPrecipitationMm, buildStreamNet, flowFactor, normalPrecipMm, parseWaterParams, streamAt as findStream } from './sim/water';
+import type { WaterContext } from './sim/operations';
 import { parseWeatherParams } from './sim/weather';
 import { parseRadiationParams } from './sim/radiation';
 import { parseSnowParams } from './sim/snow';
@@ -102,6 +105,7 @@ const MAP_JSONS = import.meta.glob('../data/maps/*/map.json', { eager: true, imp
 const MAP_BINARY_URLS = import.meta.glob('../data/maps/*/*.{f32,u8}', { eager: true, query: '?url', import: 'default' });
 const CLIMATE_JSONS = import.meta.glob('../data/climate/*.json', { eager: true, import: 'default' });
 const OSM_RESORTS = import.meta.glob('../data/maps/*/osm-resort.json', { eager: true, import: 'default' });
+const OSM_WATERS = import.meta.glob('../data/maps/*/osm-water.json', { eager: true, import: 'default' });
 const OSM_CONTEXTS = import.meta.glob('../data/maps/*/osm-context.json', { eager: true, import: 'default' });
 const MAP_LABELS = import.meta.glob('../data/maps/*/labels.json', { eager: true, import: 'default' });
 
@@ -871,12 +875,44 @@ async function start(): Promise<void> {
     // ---------------------------------------------------------------- gra: ekonomia i sezon (etap 6)
     const climateProfile = parseClimateProfile(climateJson);
     const weatherParamsMain = parseWeatherParams(weatherJson);
+    // Etap 6b: woda – potoki z OSM uzupełnione z modelu terenu, przepływy, zasięg wodociągu (zabudowa wsi).
+    const waterParams = parseWaterParams(waterJson);
+    const osmWater = ((OSM_WATERS[`../data/maps/${simSettings.mapName}/osm-water.json`] as { streams?: { name: string; points: [number, number][] }[] } | undefined)?.streams ?? []).map((st) => ({
+      name: st.name,
+      points: st.points.map(([e, n]) => (grid.georef ? grid.puwg92ToLocal(e, n) : null)).filter((q): q is PointM => q !== null),
+    }));
+    const tWater = performance.now();
+    const streamNet = buildStreamNet({ grid, osm: osmWater, annualPrecipMm: (zz) => annualPrecipitationMm(climateProfile, zz), params: waterParams });
+    console.info(`Sieć cieków: ${streamNet.lines.length} linii, ${(performance.now() - tWater).toFixed(0)} ms`);
+    const villageBuildings: PointM[] = (((OSM_CONTEXTS[`../data/maps/${simSettings.mapName}/osm-context.json`] as MapContextData | undefined)?.buildings) ?? [])
+      .map((b) => b.points.map(([e, n]) => (grid.georef ? grid.puwg92ToLocal(e, n) : null)).filter((q): q is PointM => q !== null))
+      .filter((pts) => pts.length > 0)
+      .map((pts) => ({ xM: pts.reduce((a, q) => a + q.xM, 0) / pts.length, yM: pts.reduce((a, q) => a + q.yM, 0) / pts.length }));
+    const waterCtx: WaterContext = { net: streamNet, wp: waterParams, villageBuildings, elevationM: grid.elevationM };
+    build.setStreams(streamNet.lines);
+    build.setWater(waterCtx);
+    streamAt = (xM, yM) => {
+      const hit = findStream(streamNet, xM, yM, 15, waterParams);
+      if (!hit) return null;
+      const q = hit.meanFlowM3s;
+      const d = game?.state?.date ?? null;
+      const lines = [`średni przepływ ${f0(q * 1000)} l/s (${f0(q * 3600)} m³/h)`, `zlewnia ${(hit.cell >= 0 ? streamNet.accM2[hit.cell] / 1e6 : 0).toLocaleString('pl-PL', { maximumFractionDigits: 2 })} km²`];
+      if (d) {
+        const f = flowFactor(d.month, weatherBook.precipitationBefore(d, waterParams.streams.precipWindowDays), normalPrecipMm(climateProfile, d.month, waterParams.streams.precipWindowDays), waterParams);
+        const mean = q * 3600;
+        const avail = Math.max(0, Math.min(waterParams.streams.maxWithdrawalShare * mean * f, mean * f - waterParams.streams.ecologicalFlowShare * mean));
+        lines.push(`dziś ok. ${f0(mean * f)} m³/h, wolno pobrać ${f0(avail)} m³/h`);
+      }
+      lines.push(hit.line.osm ? 'z mapy OpenStreetMap' : 'wyznaczony z modelu terenu');
+      return { title: hit.line.name, lines };
+    };
     const elevRange = grid.elevationRangeM();
     const weatherBook = new WeatherBook(climateProfile, weatherParamsMain, simSettings.seed, location, Math.round(elevRange.minM), Math.round(elevRange.maxM));
     const waitMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
     const winterTable = parseWinterClasses(winterClassesJson);
     const winterDeps = { profile: climateProfile, weatherParams: weatherParamsMain, snowParams: parseSnowParams(snowJson), radiationParams: parseRadiationParams(radiationJson), riding: ridingParams, location };
     game = new GameController({
+      water: waterCtx,
       ep: economyParams,
       gp: guestParams,
       lp: liftParams,
@@ -995,6 +1031,7 @@ async function start(): Promise<void> {
         nightPlanDialog.show(st, planPistes(), snowmakingParams, () => game?.preview ?? null, pisteName);
       },
       onGroomer: (typeId, leased) => game?.acquireGroomer(typeId, leased),
+      onMains: (on) => game?.setMainsOn(on),
     });
     snowPanel.setVisible(false);
     function refreshSnowOps(force: boolean): void {

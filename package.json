@@ -24,7 +24,8 @@
     "economy-report": "tsx src/tools/economyReport.ts",
     "snow-diagnosis": "tsx src/tools/snowDiagnosis.ts",
     "pilsko-economy": "tsx src/tools/pilskoEconomy.ts",
-    "import-hydro": "tsx src/tools/importHydro.ts"
+    "import-hydro": "tsx src/tools/importHydro.ts",
+    "water-check": "tsx src/tools/waterCheck.ts"
   },
   "engines": {
     "node": ">=22"

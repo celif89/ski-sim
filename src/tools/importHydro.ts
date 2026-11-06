@@ -64,7 +64,11 @@ const out = {
   generated: new Date().toISOString().slice(0, 10),
   stations,
   monthlyFactorMean: avg,
-  lowFlowFactorP10Mean: Math.round((usable.reduce((a, s) => a + s.lowFlowFactorP10, 0) / usable.length) * 1000) / 1000,
+  lowFlowFactorP10Mean: {
+    value: Math.round((usable.reduce((a, s) => a + s.lowFlowFactorP10, 0) / usable.length) * 1000) / 1000,
+    unit: '× średni roczny',
+    source: '10. percentyl przepływów dobowych / średni, średnia ze stacji (IMGW)',
+  },
 };
 writeFileSync(OUT, JSON.stringify(out, null, 1) + '\n');
 console.log(`Zapisano ${OUT}:`, stations.map((s) => `${s.name} (${s.river}) ${s.days} dni, średnio ${s.meanFlowM3s} m³/s, rytm ${s.monthlyFactor.join(' ')}`).join('\n'));
