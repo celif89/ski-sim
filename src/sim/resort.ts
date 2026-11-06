@@ -16,6 +16,17 @@ export interface BaseDesign {
   name: string;
   xM: number;
   yM: number;
+  /** Typ budynku z data/economy.json (etap 6) – „parking”; brak – baza bez parkingu (miejsce przyjazdu). */
+  typeId?: string;
+}
+
+/** Budynek z przychodem na gościa (gastronomia, wypożyczalnia, szkółka) – etap 6. */
+export interface BuildingDesign {
+  id: string;
+  typeId: string;
+  name: string;
+  xM: number;
+  yM: number;
 }
 
 export interface ResortLayout {
@@ -23,6 +34,8 @@ export interface ResortLayout {
   lifts: LiftDesign[];
   pistes: PisteDesign[];
   bases: BaseDesign[];
+  /** Budynki usługowe (etap 6). */
+  buildings?: BuildingDesign[];
   /** Kolejne numery nowych obiektów. */
   nextId: number;
   /** Ośrodek otwarty (sezon trwa) – decyduje gracz; zamknięty – nie ma gości. Brak pola = otwarty. */
@@ -82,10 +95,16 @@ export function parseLayout(raw: unknown): ResortLayout {
     out.pistes.push({ id: p.id, name: typeof p.name === 'string' ? p.name : p.id, points, ...(p.closed === true ? { closed: true } : {}), ...(p.graded === true ? { graded: true } : {}) });
   }
   for (const b of bases as Record<string, unknown>[]) {
-    if (typeof b.id === 'string' && isNum(b.xM) && isNum(b.yM)) out.bases.push({ id: b.id, name: typeof b.name === 'string' ? b.name : 'Baza', xM: b.xM, yM: b.yM });
+    if (typeof b.id === 'string' && isNum(b.xM) && isNum(b.yM)) out.bases.push({ id: b.id, name: typeof b.name === 'string' ? b.name : 'Baza', xM: b.xM, yM: b.yM, ...(typeof b.typeId === 'string' ? { typeId: b.typeId } : {}) });
+  }
+  const buildings = Array.isArray(r.buildings) ? (r.buildings as Record<string, unknown>[]) : [];
+  for (const b of buildings) {
+    if (typeof b.id === 'string' && typeof b.typeId === 'string' && isNum(b.xM) && isNum(b.yM)) {
+      (out.buildings ??= []).push({ id: b.id, typeId: b.typeId, name: typeof b.name === 'string' ? b.name : b.typeId, xM: b.xM, yM: b.yM });
+    }
   }
   if (r.resortOpen === false) out.resortOpen = false;
-  const maxId = [...out.lifts, ...out.pistes, ...out.bases].reduce((m, o) => Math.max(m, Number(/\d+$/.exec(o.id)?.[0] ?? 0)), 0);
+  const maxId = [...out.lifts, ...out.pistes, ...out.bases, ...(out.buildings ?? [])].reduce((m, o) => Math.max(m, Number(/\d+$/.exec(o.id)?.[0] ?? 0)), 0);
   out.nextId = Math.max(out.nextId, maxId + 1);
   return out;
 }
@@ -598,7 +617,7 @@ export function layoutFromOsm(
     }
     if (!best || used.has(best.id)) continue;
     used.add(best.id);
-    layout.bases.push({ id: `B${b}`, name: `Parking – ${best.name}`, xM: best.bottom.xM, yM: best.bottom.yM + 15 });
+    layout.bases.push({ id: `B${b}`, name: `Parking – ${best.name}`, xM: best.bottom.xM, yM: best.bottom.yM + 15, typeId: 'parking' });
     b++;
   }
   layout.nextId = Math.max(n, t, b) + 1;
