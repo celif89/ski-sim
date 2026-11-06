@@ -10,7 +10,10 @@ import snowJson from '../data/snow.json';
 import wxJson from '../data/weather-generator.json';
 import { parseClimateProfile } from '../src/sim/climate';
 import type { GameMode } from '../src/sim/economy';
-import { parseEconomyParams } from '../src/sim/economyParams';
+import { parseEconomyParams, withSnowmaking } from '../src/sim/economyParams';
+import snowmakingJson from '../data/snowmaking.json';
+import { parseSnowmakingParams } from '../src/sim/snowmakingParams';
+import { pipelineHydrants } from '../src/sim/snowmaking';
 import { parseGroundParams } from '../src/sim/ground';
 import type { HeadlessGameOptions } from '../src/sim/headlessGame';
 import { HeadlessGame } from '../src/sim/headlessGame';
@@ -24,7 +27,8 @@ import { parseRidingParams } from '../src/sim/snowRiding';
 import { parseWeatherParams } from '../src/sim/weather';
 import { fixtureGrid, gp, lp, pp } from './guestFixture';
 
-export const ep = parseEconomyParams(economyJson);
+export const sp = parseSnowmakingParams(snowmakingJson);
+export const ep = withSnowmaking(parseEconomyParams(economyJson), sp);
 const grid = fixtureGrid();
 const horizon = computeHorizon(grid, null, { ...parseHorizonParams(radiationJson), maxDistanceM: 1500 });
 
@@ -76,4 +80,21 @@ export function simplePolicy(g: HeadlessGame): void {
     return;
   }
   if (!g.state.seasonOpen) g.state.seasonOpen = true;
+}
+
+/** Prosty ośrodek z naśnieżaniem: ujęcie, zbiornik, pompownia, przyłącze, rurociąg wzdłuż trasy T1, armatki, garaż. */
+export function snowmakingLayout(guns: { typeId: string; every: number } = { typeId: 'fan', every: 1 }): ResortLayout {
+  const l = simpleLayout();
+  l.buildings = [
+    { id: 'I20', typeId: 'intake', name: 'Ujęcie', xM: 40, yM: 1360 },
+    { id: 'Z21', typeId: 'reservoir50', name: 'Zbiornik', xM: 60, yM: 1330 },
+    { id: 'P22', typeId: 'pump300', name: 'Pompownia', xM: 100, yM: 1340 },
+    { id: 'E23', typeId: 'grid1000', name: 'Przyłącze', xM: 130, yM: 1360 },
+    { id: 'G24', typeId: 'garage', name: 'Garaż', xM: 220, yM: 1350 },
+  ];
+  l.pipelines = [{ id: 'R30', name: 'Rurociąg 1', points: [{ xM: 100, yM: 1320 }, { xM: 95, yM: 1150 }, { xM: 80, yM: 700 }, { xM: 130, yM: 330 }] }];
+  const hydrants = pipelineHydrants(l.pipelines[0], sp);
+  l.snowGuns = hydrants.filter((_, i) => i % guns.every === 0).map((h, i) => ({ id: `A${40 + i}`, typeId: guns.typeId, pipelineId: 'R30', hydrant: h.index }));
+  l.nextId = 100;
+  return l;
 }

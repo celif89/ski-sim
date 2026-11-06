@@ -83,12 +83,11 @@ describe('Rok gry bez grafiki', () => {
     expect(rep.flows.loanIn).toBe(2_000_000);
     expect(rep.flows.interest).toBeGreaterThan(0);
     expect(rep.flows.loanPrincipal).toBeGreaterThan(0);
-    // Sezon się odbył: dni otwarte, goście, przychód z karnetów, przeglądy, ratrakowanie (tymczasowe).
+    // Sezon się odbył: dni otwarte, goście, przychód z karnetów, przeglądy.
     expect(rep.openDays).toBeGreaterThan(20);
     expect(rep.guests).toBeGreaterThan(1000);
     expect(rep.flows.passes).toBeGreaterThan(0);
     expect(rep.flows.inspections).toBeGreaterThan(0);
-    expect(rep.flows.grooming).toBeGreaterThan(0);
     expect(rep.days.some((d) => d.src === 'a')).toBe(true);
     // Budowa trwa: orczyk gotowy dopiero po ok. 100 dniach od zamówienia (1 V).
     const firstOpen = rep.days.find((d) => d.open)!;
@@ -289,7 +288,7 @@ describe('Karnety i model zgrubny dnia', () => {
     const ctx2 = goodCtx(g, g.state.date);
     const plan2 = planDay(g.state, ctx2, ep);
     const r2 = closeDay(g.state, ctx2, plan2, quickDayOutcome(g.state, plan2, ctx2, ep, gp), ep);
-    expect(r2.flows.passes + r2.flows.energy + r2.flows.liftStaff + r2.flows.grooming).toBe(0);
+    expect(r2.flows.passes + r2.flows.energy + r2.flows.liftStaff + r2.flows.snowEnergy).toBe(0);
     expect(r2.flows.insurance).toBeGreaterThan(0);
   });
 });
