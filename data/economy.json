@@ -591,11 +591,6 @@
       "unit": "1/rok",
       "source": "utrzymanie budynków; do kalibracji"
     },
-    "groomingPlnPerHa": {
-      "value": 120,
-      "unit": "zł/ha",
-      "source": "TYMCZASOWE do etapu 7 – ratrakowanie usługą zewnętrzną co noc na otwartych trasach: paliwo ok. 16–19 l/h (PistenBully 300/400/600 E+, pistenbully.com, iloveski.org) × 6,5 zł/l ÷ ok. 3 ha/h ≈ 40 zł + operator ≈ 20 zł + maszyna (wynajem, amortyzacja) ≈ 60 zł; do kalibracji"
-    },
     "winterBuildProgressFactor": {
       "value": 0.25,
       "unit": "×",
