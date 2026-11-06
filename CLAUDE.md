@@ -392,6 +392,9 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
 - **Następny: etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja.**
 
 Uwagi techniczne:
+- Przed wypchnięciem uruchamiać `npm run build` (nie tylko `npm test` i `tsc -p tsconfig.json`):
+  sprawdza też `tsconfig.sim.json`, w którym `src/sim` nie ma typów przeglądarki ani Node –
+  np. `structuredClone` nie przechodzi (etap 7: publikacja padła na tym; kopia stanu przez JSON).
 - Ekonomia (6): pytania o śnieg do wątku obliczeń idą po kolei (`snowSerial`) – równoległe się
   „zastępowały” i przerywały liczenie; promieniowania na sezon wątek już nie przerywa (wspólne dla
   sezonu). Podczas przeliczania dni mapa nie pyta o śnieg (`game.busy`), potem `onCaughtUp`.

@@ -509,5 +509,5 @@ export function acquireGroomer(state: GameState, typeId: string, leased: boolean
  * (chmury armatek na mapie), plan nocy z przewidywanym czasem zakończenia, moc chwilowa.
  */
 export function previewDayOperations(i: DayOpsInput): DayOpsResult {
-  return runDayOperations({ ...i, state: structuredClone(i.state) });
+  return runDayOperations({ ...i, state: JSON.parse(JSON.stringify(i.state)) as GameState });
 }
