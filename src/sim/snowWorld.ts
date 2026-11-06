@@ -5,7 +5,7 @@
  */
 import type { Environment } from './environment';
 import type { SnowParams } from './snow';
-import { SNOW_QUALITY_CODES, SnowState, classifySnow } from './snow';
+import { SNOW_QUALITY_CODES, SnowState, classifySnow, snowStep } from './snow';
 import type { SnowBalance, SnowDomain } from './snow';
 import type { SolarCache } from './snowSeason';
 import { SnowSeason, createSnowDomain, solarCacheBuilder } from './snowSeason';
@@ -21,7 +21,7 @@ import type { CalendarDate } from './weather';
 const SNAPSHOT_EVERY_DAYS = 15;
 
 export interface SnowProgress {
-  phase: 'radiation' | 'days';
+  phase: 'radiation' | 'days' | 'hours';
   fraction: number;
   date?: CalendarDate;
 }
@@ -216,7 +216,8 @@ export class SnowWorld {
    * promieniowanie bezchmurnego nieba (zależne tylko od terenu) zostaje.
    */
   setLandCover(forest: Float32Array, shrub: Float32Array): void {
-    this.domain = { ...this.domain, forest, shrub };
+    // Nowa domena – także osłona od wiatru (drzewa jako przeszkoda, etap 6b).
+    this.domain = createSnowDomain(this.env.grid, forest, shrub, this.sp);
     this.version++;
     const cur = this.current;
     if (!cur) return;
@@ -235,9 +236,57 @@ export class SnowWorld {
     this.current = { startYear: cur.startYear, solar: cur.solar, run, snapshots: new Map([[0, { state: run.state.clone(), balance: { ...run.balance } }]]) };
   }
 
+  /**
+   * Etap 6b: śnieg na żywo w ciągu dnia `date` do godziny `hour` – od stanu z końca poprzedniego dnia
+   * (liczonego krokami 6 h) kroki godzinowe z chwilowym nasłonecznieniem (cienie, chmury). Zapamiętuje
+   * stan, więc kolejne godziny liczą się przyrostowo. Ruch gości i operacje dnia doliczane są na koniec
+   * dnia (jak dotąd), więc o północy obraz przechodzi na stan z kroków 6 h.
+   */
+  *advanceLive(date: CalendarDate, hour: number): Generator<SnowProgress, void, void> {
+    const env = this.env;
+    const { index } = env.weatherDay(date);
+    const h = Math.max(0, Math.min(24, Math.floor(hour)));
+    if (index < 1) {
+      yield* this.advanceTo(date);
+      this.live = null;
+      return;
+    }
+    yield* this.advanceTo(addDays(date, -1));
+    const cur = this.current!;
+    const key = formatIsoDate(date);
+    const l = this.live;
+    if (!l || l.key !== key || l.hour > h || l.version !== this.version || l.baseDay !== cur.run.dayIndex) {
+      this.live = { key, date: { ...date }, hour: 0, version: this.version, baseDay: cur.run.dayIndex, state: cur.run.state.clone() };
+    }
+    const live = this.live!;
+    const scratch = { precipitationMm: 0, runoffMm: 0, sublimationMm: 0, windOutMm: 0 };
+    const startHour = live.hour;
+    while (live.hour < h) {
+      const sw = env.stateAt(date, live.hour + 0.5).insolationWm2;
+      const f = cur.run.hourlyForcing(index, live.hour, sw);
+      snowStep(live.state, this.domain, f, this.sp, scratch);
+      live.hour++;
+      yield { phase: 'hours', fraction: (live.hour - startHour) / Math.max(1, h - startHour), date };
+    }
+  }
+
+  /** Stan na żywo z advanceLive (null – brak). */
+  liveSnapshot(): (SnowSnapshot & { hour: number }) | null {
+    const l = this.live;
+    if (!l) return null;
+    return { ...this.snapshotOf(l.state, l.date), hour: l.hour };
+  }
+
+  private live: { key: string; date: CalendarDate; hour: number; version: number; baseDay: number; state: SnowState } | null = null;
+
   /** Bieżący stan śniegu do pokazania na mapie. */
   snapshot(): SnowSnapshot {
     const cur = this.current;
+    if (!cur) return this.snapshotOf(null, { year: 0, month: 1, day: 1 });
+    return this.snapshotOf(cur.run.state, cur.run.dateOfLastDay());
+  }
+
+  private snapshotOf(state: SnowState | null, date: CalendarDate): SnowSnapshot {
     const n = this.domain.cellCount;
     const depthCm = new Float32Array(n);
     const sweMm = new Float32Array(n);
@@ -247,8 +296,8 @@ export class SnowWorld {
     const pileMm = new Float32Array(n);
     const techMm = new Float32Array(n);
     const liquidMm = new Float32Array(n);
-    if (cur) {
-      const s = cur.run.state;
+    if (state) {
+      const s = state;
       for (let k = 0; k < n; k++) {
         if (this.domain.elevationM[k] !== this.domain.elevationM[k]) {
           depthCm[k] = Number.NaN;
@@ -264,8 +313,6 @@ export class SnowWorld {
         liquidMm[k] = s.topLiquid[k] + s.botLiquid[k];
       }
     }
-    // Data stanu = ostatni policzony dzień (koniec dnia).
-    const date = cur ? cur.run.dateOfLastDay() : { year: 0, month: 1, day: 1 };
     return { date, depthCm, sweMm, densityKgM3, quality, moguls, pileMm, techMm, liquidMm };
   }
 }

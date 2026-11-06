@@ -248,7 +248,7 @@ async function start(): Promise<void> {
       });
     }
     const guestsRef: { current: GuestController | null } = { current: null };
-    let lastSnow: (SnowReadoutData & { date: CalendarDate; moguls?: Uint8Array }) | null = null;
+    let lastSnow: (SnowReadoutData & { date: CalendarDate; moguls?: Uint8Array; hour?: number }) | null = null;
     const fmtDate = (d: CalendarDate) => `${d.day}.${String(d.month).padStart(2, '0')}.${d.year}`;
     const sameDate = (a: CalendarDate, b: CalendarDate) => a.year === b.year && a.month === b.month && a.day === b.day;
 
@@ -421,7 +421,7 @@ async function start(): Promise<void> {
           legend.setFieldInfo(null, 'liczę śnieg…');
           return;
         }
-        const info = `koniec dnia ${fmtDate(lastSnow.date)}; śnieg naturalny + techniczny (naśnieżanie i ratraki z zamkniętych dni gry)`;
+        const info = `${lastSnow.hour !== undefined ? `${fmtDate(lastSnow.date)}, godz. ${lastSnow.hour}:00 (na żywo, kroki godzinowe)` : `koniec dnia ${fmtDate(lastSnow.date)}`}; śnieg naturalny + techniczny (naśnieżanie i ratraki z zamkniętych dni gry)`;
         if (overlay === 'snowDepth') {
           const scale = fieldScale('snowDepth', style);
           field.update(lastSnow.depthCm, scale, 0.5);
@@ -555,7 +555,14 @@ async function start(): Promise<void> {
     let snowRequestedDate: CalendarDate | null = null;
     let snowInflight = 0;
     let latestSnowRequest = 0;
+    /** Etap 6b: godzina śniegu na żywo (kroki godzinowe w ciągu dnia); przy przewijaniu sezonu – stan na koniec dnia. */
+    function liveSnowHour(): number | undefined {
+      return timePanel.seasonPlaying ? undefined : Math.floor(timePanel.hour);
+    }
+    const snowIs = (s: { date: CalendarDate; hour?: number } | null, date: CalendarDate, hour: number | undefined) => !!s && sameDate(s.date, date) && s.hour === hour;
+    let snowRequestedHour: number | undefined;
     function requestSnow(date: CalendarDate): void {
+      const hour = liveSnowHour();
       // Ekonomia przelicza dni (pyta wątek o śnieg dzień po dniu) – mapa dostanie śnieg po zakończeniu.
       if (game?.busy) {
         snowRequestedDate = date;
@@ -565,16 +572,18 @@ async function start(): Promise<void> {
         snowRequestedDate = date;
         return;
       }
-      if (lastSnow && sameDate(lastSnow.date, date)) return;
-      if (snowRequestedDate && sameDate(snowRequestedDate, date) && snowInflight > 0) return;
+      if (snowIs(lastSnow, date, hour)) return;
+      if (snowRequestedDate && sameDate(snowRequestedDate, date) && snowRequestedHour === hour && snowInflight > 0) return;
       snowRequestedDate = date;
+      snowRequestedHour = hour;
       const id = ++latestSnowRequest;
       snowInflight++;
       sim
-        .snowState(date)
+        .snowState(date, hour)
         .then((m) => {
           if (id !== latestSnowRequest) return;
-          lastSnow = { date: m.date, depthCm: m.depthCm, sweMm: m.sweMm, densityKgM3: m.densityKgM3, quality: m.quality, moguls: m.moguls };
+          if (m.liveMs !== undefined && m.liveMs > 0) timingsMs['śnieg na żywo (ostatnie pytanie)'] = Math.round(m.liveMs);
+          lastSnow = { date: m.date, hour: m.hour, depthCm: m.depthCm, sweMm: m.sweMm, densityKgM3: m.densityKgM3, quality: m.quality, moguls: m.moguls };
           build.setSnow(m.sweMm);
           sendGuestSnow();
           terrain.setSnow(m.depthCm, m.quality, m.moguls);
@@ -596,7 +605,7 @@ async function start(): Promise<void> {
           if (e instanceof Error && e.message === '__superseded__') {
             // Zastąpione nowszym pytaniem (np. ekonomii) – jeśli mapa nadal nie ma śniegu na ten dzień, pytamy ponownie.
             setTimeout(() => {
-              if (id === latestSnowRequest && !(lastSnow && sameDate(lastSnow.date, date))) requestSnow(date);
+              if (id === latestSnowRequest && !snowIs(lastSnow, date, liveSnowHour())) requestSnow(date);
             }, 300);
             return;
           }

@@ -284,6 +284,11 @@
       "unit": "część masy",
       "source": "breja – warstwa powierzchniowa nasycona wodą"
     },
+    "meltCrustRefreezeMm": {
+      "value": 0.5,
+      "unit": "mm wody (zamarzniętej od ostatniego topnienia)",
+      "source": "skorupa roztopowo-zamrozowa (Fierz i in. 2009, klasyfikacja śniegu sezonowego, MFcr): po dniu z odwilżą woda roztopowa zamarza w nocy – rano twardo i ślisko; mięknie, gdy powierzchnia znów topnieje (stok południowy po południu); górna warstwa modelu (kilka cm) zatrzymuje ok. 5 % wody, więc zamarza w niej zwykle 0,5–1 mm – próg do kalibracji"
+    },
     "iceRefreezeMm": {
       "value": 0.5,
       "unit": "mm wody",

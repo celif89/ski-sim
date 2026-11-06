@@ -112,6 +112,8 @@ export interface SnowParams {
   powderMaxDensity: number;
   slushLiquidFraction: number;
   iceRefreezeMm: number;
+  /** Zamarznięta w kroku woda roztopowa [mm], od której powstaje skorupa (lód rano po odwilży). */
+  meltCrustRefreezeMm: number;
   firnMinCycles: number;
   firnMinDensity: number;
   windPackedMinDensity: number;
@@ -191,6 +193,7 @@ export function parseSnowParams(raw: unknown): SnowParams {
     powderMaxDensity: n(q, 'powderMaxDensity', { min: 0 }),
     slushLiquidFraction: n(q, 'slushLiquidFraction', { min: 0 }),
     iceRefreezeMm: n(q, 'iceRefreezeMm', { min: 0 }),
+    meltCrustRefreezeMm: n(q, 'meltCrustRefreezeMm', { min: 0 }),
     firnMinCycles: n(q, 'firnMinCycles', { integer: true, min: 0 }),
     firnMinDensity: n(q, 'firnMinDensity', { min: 0 }),
     windPackedMinDensity: n(q, 'windPackedMinDensity', { min: 0 }),
@@ -280,6 +283,8 @@ export class SnowState {
   readonly topRain: Uint8Array;
   /** Woda zamarznięta w warstwie powierzchniowej od ostatniego opadu śniegu [mm]. */
   readonly topRefrozenMm: Float32Array;
+  /** Woda roztopowa zamarznięta od ostatniego topnienia [mm] – skorupa roztopowa (etap 6b). */
+  readonly crustRefrozenMm: Float32Array;
   /** Muldy od narciarzy 0–1 (etap 5; ratraki je wyrównają – etap 7). */
   readonly moguls: Float32Array;
   /** Śnieg z armatek w pryzmach – jeszcze nie rozepchnięty ratrakiem [mm wody] (etap 7). */
@@ -306,6 +311,7 @@ export class SnowState {
     this.windPacked = new Uint8Array(n);
     this.topRain = new Uint8Array(n);
     this.topRefrozenMm = new Float32Array(n);
+    this.crustRefrozenMm = new Float32Array(n);
     this.moguls = new Float32Array(n);
     this.pileMm = new Float32Array(n);
     this.techMm = new Float32Array(n);
@@ -348,6 +354,7 @@ export class SnowState {
     this.windPacked[k] = 0;
     this.topRain[k] = 0;
     this.topRefrozenMm[k] = 0;
+    this.crustRefrozenMm[k] = 0;
     this.moguls[k] = 0;
     this.pileMm[k] = 0;
     this.techMm[k] = 0;
@@ -660,6 +667,10 @@ export function snowStep(s: SnowState, dom: SnowDomain, f: SnowStepForcing, p: S
         const melt = Math.min(topSwe[k], energy / LATENT_FUSION);
         topSwe[k] -= melt;
         topLiquid[k] += melt;
+        if (melt > 0) {
+          s.crustRefrozenMm[k] = 0;
+          if (topIce[k] === 2) topIce[k] = 0; // skorupa roztopowa mięknie
+        }
         energy -= melt * LATENT_FUSION;
         if (energy > 0 && botSwe[k] > 0) {
           const ccb = SPECIFIC_HEAT_ICE * botSwe[k] * -botTemp[k];
@@ -685,6 +696,11 @@ export function snowStep(s: SnowState, dom: SnowDomain, f: SnowStepForcing, p: S
         // Lód powstaje, gdy zamarza woda z deszczu (przy topnieniu i zamarzaniu – firn).
         topRefrozenMm[k] += refreeze;
         if (topRain[k] && topRefrozenMm[k] >= p.iceRefreezeMm) topIce[k] = 1;
+        // Skorupa z zamarzniętej wody roztopowej (po dniu z odwilżą i mroźnej nocy) – mięknie przy topnieniu.
+        else {
+          s.crustRefrozenMm[k] += refreeze;
+          if (topIce[k] === 0 && s.crustRefrozenMm[k] >= p.meltCrustRefreezeMm) topIce[k] = 2;
+        }
       }
       if (deficit > 0 && topSwe[k] > 0) {
         let teq = Math.min(0, ta);
