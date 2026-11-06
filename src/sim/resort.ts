@@ -3,11 +3,13 @@
  * sprawdzanie połączeń, historia zmian (cofnij/ponów), zapis do JSON, porównanie z OSM.
  */
 import type { BuildIssue, LiftAnalysis, LiftDesign, LiftParams, PointM } from './lifts';
-import { analyzeLift, corridorCells, liftTypeById } from './lifts';
+import { analyzeLift, liftClearingCells, liftTypeById } from './lifts';
 import { readNumber, readSection } from './params';
 import type { AxisPoint, PisteAnalysis, PisteDesign, PisteParams } from './pistes';
 import { analyzePiste } from './pistes';
 import type { TerrainGrid } from './terrainGrid';
+import type { GroundParams } from './ground';
+import { groundAfterWorks, initialGround } from './ground';
 
 export interface BaseDesign {
   id: string;
@@ -23,6 +25,8 @@ export interface ResortLayout {
   bases: BaseDesign[];
   /** Kolejne numery nowych obiektów. */
   nextId: number;
+  /** Ośrodek otwarty (sezon trwa) – decyduje gracz; zamknięty – nie ma gości. Brak pola = otwarty. */
+  resortOpen?: boolean;
 }
 
 export function emptyLayout(): ResortLayout {
@@ -58,17 +62,29 @@ export function parseLayout(raw: unknown): ResortLayout {
   for (const l of lifts as Record<string, unknown>[]) {
     if (typeof l.id !== 'string' || typeof l.typeId !== 'string' || !isPoint(l.bottom) || !isPoint(l.top)) throw new Error('Plik układu ośrodka: uszkodzony wyciąg');
     const towers = Array.isArray(l.towers) ? (l.towers as Record<string, unknown>[]).filter((t) => isNum(t.distanceM) && isNum(t.heightM)).map((t) => ({ distanceM: t.distanceM as number, heightM: t.heightM as number })) : [];
-    out.lifts.push({ id: l.id, typeId: l.typeId, name: typeof l.name === 'string' ? l.name : l.id, bottom: { xM: l.bottom.xM, yM: l.bottom.yM }, top: { xM: l.top.xM, yM: l.top.yM }, towers, manualTowers: l.manualTowers === true, ...(l.closed === true ? { closed: true } : {}) });
+    const bends = Array.isArray(l.bends) ? (l.bends as unknown[]).filter(isPoint).map((b) => ({ xM: b.xM, yM: b.yM, ...((b as { mid?: unknown }).mid === true ? { mid: true } : {}) })) : [];
+    out.lifts.push({
+      id: l.id,
+      typeId: l.typeId,
+      name: typeof l.name === 'string' ? l.name : l.id,
+      bottom: { xM: l.bottom.xM, yM: l.bottom.yM },
+      top: { xM: l.top.xM, yM: l.top.yM },
+      ...(bends.length ? { bends } : {}),
+      towers,
+      manualTowers: l.manualTowers === true,
+      ...(l.closed === true ? { closed: true } : {}),
+    });
   }
   for (const p of pistes as Record<string, unknown>[]) {
     if (typeof p.id !== 'string' || !Array.isArray(p.points)) throw new Error('Plik układu ośrodka: uszkodzona trasa');
     const points = (p.points as Record<string, unknown>[]).filter((q) => isPoint(q) && isNum(q.widthM)).map((q) => ({ xM: q.xM as number, yM: q.yM as number, widthM: q.widthM as number }));
     if (points.length < 2) continue;
-    out.pistes.push({ id: p.id, name: typeof p.name === 'string' ? p.name : p.id, points, ...(p.closed === true ? { closed: true } : {}) });
+    out.pistes.push({ id: p.id, name: typeof p.name === 'string' ? p.name : p.id, points, ...(p.closed === true ? { closed: true } : {}), ...(p.graded === true ? { graded: true } : {}) });
   }
   for (const b of bases as Record<string, unknown>[]) {
     if (typeof b.id === 'string' && isNum(b.xM) && isNum(b.yM)) out.bases.push({ id: b.id, name: typeof b.name === 'string' ? b.name : 'Baza', xM: b.xM, yM: b.yM });
   }
+  if (r.resortOpen === false) out.resortOpen = false;
   const maxId = [...out.lifts, ...out.pistes, ...out.bases].reduce((m, o) => Math.max(m, Number(/\d+$/.exec(o.id)?.[0] ?? 0)), 0);
   out.nextId = Math.max(out.nextId, maxId + 1);
   return out;
@@ -120,6 +136,8 @@ export interface ResortContext {
   /** Pokrycie pierwotne (przed wycinką), udziały 0–1. */
   forest: Float32Array | null;
   shrub: Float32Array | null;
+  /** Podłoże terenu (etap 5b) – bez tego brak mapy podłoża i kosztu wyrównania. */
+  ground?: GroundParams | null;
 }
 
 export interface ResortAnalysis {
@@ -128,6 +146,9 @@ export interface ResortAnalysis {
   network: ResortNetwork;
   /** Komórki objęte wycinką (1 – wycięte). */
   clearedMask: Uint8Array;
+  /** Podłoże pierwotne i po budowie (pniaki po wycince, wyrównane trasy); null – bez parametrów podłoża. */
+  baseGround: Uint8Array | null;
+  ground: Uint8Array | null;
   totals: { costPln: number; buildDays: number; clearedForestM2: number };
 }
 
@@ -135,8 +156,16 @@ export function analyzeResort(layout: ResortLayout, ctx: ResortContext): ResortA
   const lifts = new Map<string, LiftAnalysis>();
   const pistes = new Map<string, PisteAnalysis>();
   for (const l of layout.lifts) lifts.set(l.id, analyzeLift(l, { grid: ctx.grid, params: ctx.lifts, forest: ctx.forest, shrub: ctx.shrub, clearingCost: ctx.clearing, otherLifts: layout.lifts }));
-  for (const p of layout.pistes) pistes.set(p.id, analyzePiste(p, { grid: ctx.grid, params: ctx.pistes, forest: ctx.forest, shrub: ctx.shrub, clearingCost: ctx.clearing }));
+  const baseGround = ctx.ground ? initialGround(ctx.grid, ctx.forest, ctx.shrub, ctx.ground) : null;
+  const leveling = ctx.ground ? { costPlnPerM2: ctx.ground.levelingCostPlnPerM2, daysPerHectare: ctx.ground.levelingDaysPerHectare } : null;
+  for (const p of layout.pistes) pistes.set(p.id, analyzePiste(p, { grid: ctx.grid, params: ctx.pistes, forest: ctx.forest, shrub: ctx.shrub, clearingCost: ctx.clearing, baseGround, leveling }));
   const clearedMask = clearingMask(ctx.grid, layout, ctx.lifts, pistes);
+  let ground: Uint8Array | null = null;
+  if (baseGround) {
+    const graded = new Uint8Array(ctx.grid.cellCount);
+    for (const p of layout.pistes) if (p.graded) for (const k of pistes.get(p.id)?.cells ?? []) graded[k] = 1;
+    ground = groundAfterWorks(baseGround, clearedMask, graded);
+  }
   let clearedForestM2 = 0;
   const cellM2 = ctx.grid.cellSizeM ** 2;
   if (ctx.forest) for (let k = 0; k < clearedMask.length; k++) if (clearedMask[k]) clearedForestM2 += ctx.forest[k] * cellM2;
@@ -150,7 +179,7 @@ export function analyzeResort(layout: ResortLayout, ctx: ResortContext): ResortA
     costPln += a.cost.totalPln;
     buildDays += a.buildDays;
   }
-  return { lifts, pistes, network: buildNetwork(layout, lifts, pistes, ctx.pistes), clearedMask, totals: { costPln, buildDays, clearedForestM2 } };
+  return { lifts, pistes, network: buildNetwork(layout, lifts, pistes, ctx.pistes), clearedMask, baseGround, ground, totals: { costPln, buildDays, clearedForestM2 } };
 }
 
 /** Maska wycinki: pasy pod wyciągami (szerokość z typu) i obrysy tras. */
@@ -158,7 +187,7 @@ export function clearingMask(grid: TerrainGrid, layout: ResortLayout, lp: LiftPa
   const mask = new Uint8Array(grid.cellCount);
   for (const l of layout.lifts) {
     const t = liftTypeById(lp, l.typeId);
-    for (const k of corridorCells(grid, l.bottom, l.top, t.corridorWidthM)) mask[k] = 1;
+    for (const k of liftClearingCells(grid, l, t)) mask[k] = 1;
   }
   for (const p of layout.pistes) {
     const cells = pistes?.get(p.id)?.cells;
@@ -182,7 +211,7 @@ export function applyClearing(forest: Float32Array, shrub: Float32Array, mask: U
 
 // ---------------------------------------------------------------- sieć
 
-export type NodeKind = 'liftBottom' | 'liftTop' | 'base' | 'pisteStart' | 'pisteEnd' | 'junction';
+export type NodeKind = 'liftBottom' | 'liftMid' | 'liftTop' | 'base' | 'pisteStart' | 'pisteEnd' | 'junction';
 
 export interface NetworkNode {
   id: string;
@@ -247,11 +276,21 @@ export function buildNetwork(layout: ResortLayout, lifts: Map<string, LiftAnalys
     }
     return nodeById.get(n.id)!;
   };
+  // Wyciągi: przystanki dolny → pośrednie → górny; krawędź między kolejnymi przystankami.
+  const liftStations = new Map<string, { id: string; point: PointM; canStart: boolean; canEnd: boolean }[]>();
   for (const l of layout.lifts) {
     const a = lifts.get(l.id);
-    addNode({ id: `${l.id}:dół`, kind: 'liftBottom', ...l.bottom });
-    addNode({ id: `${l.id}:góra`, kind: 'liftTop', ...l.top });
-    edges.push({ from: `${l.id}:dół`, to: `${l.id}:góra`, kind: 'lift', objectId: l.id, lengthM: a?.slopeLengthM ?? Math.hypot(l.top.xM - l.bottom.xM, l.top.yM - l.bottom.yM) });
+    const st: { id: string; point: PointM; canStart: boolean; canEnd: boolean; dist: number }[] = [{ id: `${l.id}:dół`, point: l.bottom, canStart: false, canEnd: true, dist: 0 }];
+    let midNo = 0;
+    for (const s of a?.stops ?? []) {
+      if (s.kind !== 'mid') continue;
+      midNo++;
+      st.push({ id: `${l.id}:pośr${midNo}`, point: { xM: s.xM, yM: s.yM }, canStart: true, canEnd: true, dist: s.slopeDistanceM });
+    }
+    st.push({ id: `${l.id}:góra`, point: l.top, canStart: true, canEnd: false, dist: a?.slopeLengthM ?? Math.hypot(l.top.xM - l.bottom.xM, l.top.yM - l.bottom.yM) });
+    st.forEach((x, i) => addNode({ id: x.id, kind: i === 0 ? 'liftBottom' : i === st.length - 1 ? 'liftTop' : 'liftMid', ...x.point }));
+    for (let i = 0; i < st.length - 1; i++) edges.push({ from: st[i].id, to: st[i + 1].id, kind: 'lift', objectId: l.id, lengthM: st[i + 1].dist - st[i].dist });
+    liftStations.set(l.id, st);
   }
   for (const b of layout.bases) addNode({ id: b.id, kind: 'base', xM: b.xM, yM: b.yM });
 
@@ -275,16 +314,13 @@ export function buildNetwork(layout: ResortLayout, lifts: Map<string, LiftAnalys
     let startNode: string | null = null;
     let endNode: string | null = null;
     for (const l of layout.lifts) {
-      for (const [which, pt] of [
-        ['góra', l.top],
-        ['dół', l.bottom],
-      ] as const) {
+      for (const st of liftStations.get(l.id) ?? []) {
+        const pt = st.point;
         const near = nearestOnAxis(ax, pt);
         if (near.distM > p.stationRadiusM) continue;
-        const id = `${l.id}:${which}`;
-        if (which === 'góra' && Math.hypot(start.xM - pt.xM, start.yM - pt.yM) <= p.stationRadiusM) startNode = id;
-        if (which === 'dół' && Math.hypot(end.xM - pt.xM, end.yM - pt.yM) <= p.stationRadiusM) endNode = id;
-        addStop(piste.id, near.atM, id);
+        if (st.canStart && !startNode && Math.hypot(start.xM - pt.xM, start.yM - pt.yM) <= p.stationRadiusM) startNode = st.id;
+        if (st.canEnd && !endNode && Math.hypot(end.xM - pt.xM, end.yM - pt.yM) <= p.stationRadiusM) endNode = st.id;
+        addStop(piste.id, near.atM, st.id);
       }
     }
     for (const b of layout.bases) {
