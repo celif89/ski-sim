@@ -62,7 +62,8 @@ async function runSnowJobs(): Promise<void> {
           await yieldToEvents();
           last = performance.now();
           if (world.version !== version && !pendingSnow) pendingSnow = job; // pokrycie zmienione – liczymy od nowa
-          if (pendingSnow) {
+          // Promieniowania na sezon nie przerywamy (jest wspólne dla wszystkich dni sezonu) – nowsze pytanie poczeka.
+          if (pendingSnow && progress.phase !== 'radiation') {
             superseded = pendingSnow !== job;
             break;
           }

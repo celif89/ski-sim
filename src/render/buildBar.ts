@@ -39,7 +39,7 @@ const ITEMS: BarItem[] = [
     disabled: 'Wycinka jest liczona sama pod wyciągami i trasami (przecinki widać na mapie). Ręczna wycinka – później.',
   },
   { id: 'snow', label: 'Naśnieżanie', title: 'Armatki i lance śnieżne', disabled: 'Naśnieżanie – etap 7.' },
-  { id: 'buildings', label: 'Budynki', key: 'B', tool: 'base', title: 'Baza (parking, kasy, start tras) – kliknij na mapie. Pozostałe budynki – etap 6' },
+  { id: 'buildings', label: 'Budynki', key: 'B', tool: 'base', title: 'Budynki: parking (tu przyjeżdżają goście), gastronomia, wypożyczalnia, szkółka – typ wybierz w panelu budowy, kliknij na mapie' },
   { id: 'layers', label: 'Nakładki', title: 'Nakładki danych: nachylenie, ekspozycja, słońce, temperatura, śnieg; mapa topograficzna; sieć tras' },
 ];
 

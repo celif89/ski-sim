@@ -1,7 +1,7 @@
 /** Wątek główny: komunikacja z wątkiem gości. */
 import type { CalendarDate } from '../sim';
 import type { GuestNet } from '../sim/guestNetwork';
-import type { GuestCard, GuestConditions, GuestDayReport } from '../sim/guests';
+import type { GuestCard, GuestConditions, GuestDayReport, GuestEconomySummary } from '../sim/guests';
 import type { GuestFrameMessage, GuestRequest, GuestResponse } from './guestProtocol';
 
 export class GuestClient {
@@ -47,8 +47,8 @@ export class GuestClient {
   setNet(net: GuestNet): void {
     this.post({ type: 'net', net });
   }
-  startDay(date: CalendarDate, guests: number, timeS: number): void {
-    this.post({ type: 'day', date, guests, timeS });
+  startDay(date: CalendarDate, guests: number, timeS: number, hours?: { openH: number; closeH: number }, typeShares?: number[]): void {
+    this.post({ type: 'day', date, guests, timeS, hours, typeShares });
   }
   advance(timeS: number, budgetMs: number): void {
     this.post({ type: 'advance', timeS, budgetMs });
@@ -67,6 +67,9 @@ export class GuestClient {
   }
   async traffic(): Promise<Float32Array | null> {
     return (await this.ask<{ type: 'traffic'; requestId: number; perHour: Float32Array | null }>((requestId) => ({ type: 'traffic', requestId }))).perHour;
+  }
+  async economy(): Promise<{ date: CalendarDate | null; summary: GuestEconomySummary | null }> {
+    return this.ask<{ type: 'economy'; requestId: number; date: CalendarDate | null; summary: GuestEconomySummary | null }>((requestId) => ({ type: 'economy', requestId }));
   }
   async dayTraffic(): Promise<{ date: CalendarDate | null; passes: Float32Array | null }> {
     return this.ask<{ type: 'dayTraffic'; requestId: number; date: CalendarDate | null; passes: Float32Array | null }>((requestId) => ({ type: 'dayTraffic', requestId }));

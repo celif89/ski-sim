@@ -140,6 +140,10 @@ export class LayoutHistory {
   get canUndo(): boolean {
     return this.undoStack.length > 0;
   }
+  clear(): void {
+    this.undoStack = [];
+    this.redoStack = [];
+  }
   get canRedo(): boolean {
     return this.redoStack.length > 0;
   }

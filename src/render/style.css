@@ -1520,3 +1520,174 @@ tr.g-closed td {
 .guest-card {
   background: #ffffff;
 }
+
+/* ---------------------------------------------------------------- etap 6: gra i ekonomia */
+.finance-panel .fin-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.fin-balance {
+  font-family: var(--a-cond);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #0f172a;
+}
+.fin-balance.g-bad {
+  color: #e03131;
+}
+.fin-rep {
+  text-align: right;
+  font-size: 11.5px;
+}
+.fin-stars {
+  color: #f59f00;
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+.fin-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 8px 0 6px;
+}
+.fin-grid > div {
+  background: #f1f5f9;
+  border-radius: 10px;
+  padding: 5px 8px;
+  display: flex;
+  flex-direction: column;
+  font-size: 11.5px;
+}
+.fin-grid b {
+  font-family: var(--a-cond);
+  font-size: 16px;
+  color: #0f172a;
+}
+.fin-prices {
+  font-size: 11.5px;
+}
+.fin-plan {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: #1c64d8;
+}
+.f-loan-box {
+  margin-top: 6px;
+  font-size: 12px;
+}
+.f-loan-box summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #475569;
+}
+.f-loan-box input {
+  width: 92px;
+  font: inherit;
+}
+.f-loan-box .f-years {
+  width: 46px;
+}
+.g-plan {
+  font-size: 11.5px;
+  margin: 4px 0;
+}
+.game-modal {
+  position: fixed;
+  z-index: 8;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(720px, calc(100vw - 24px));
+  max-height: calc(100vh - var(--status-bar-height) - 120px);
+  overflow-y: auto;
+  padding: 14px 18px;
+  font-size: 12.5px;
+  background: #fff;
+}
+.game-modal .profile-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+}
+.game-modal h4 {
+  font-family: var(--a-cond);
+  font-size: 15px;
+  margin: 12px 0 4px;
+}
+.gm-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  margin: 10px 0;
+}
+.gm-grid label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.gm-grid input {
+  width: 96px;
+  font: inherit;
+}
+.game-modal button,
+.game-modal .file-button {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--a-line);
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 4px 10px;
+}
+.gm-chart {
+  width: 100%;
+  height: auto;
+  margin-top: 4px;
+}
+.start-screen {
+  top: 18vh;
+  width: min(560px, calc(100vw - 24px));
+}
+.start-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+.start-options > button,
+.start-options > label {
+  display: flex !important;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 2px;
+  padding: 10px 14px !important;
+  border-radius: 12px !important;
+}
+.start-options b {
+  font-family: var(--a-cond);
+  font-size: 18px;
+  color: #0f172a;
+}
+.start-options span {
+  color: #475569;
+}
+.start-options .st-continue {
+  background: #1c64d8 !important;
+  border-color: #1c64d8 !important;
+}
+.start-options .st-continue b,
+.start-options .st-continue span {
+  color: #fff;
+}
+.start-options input[type='file'] {
+  display: none;
+}
+@media (max-width: 700px) {
+  .gm-grid {
+    grid-template-columns: 1fr;
+  }
+}

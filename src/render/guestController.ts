@@ -10,7 +10,7 @@ import { Container, Graphics, Text } from 'pixi.js';
 import type { CalendarDate } from '../sim';
 import type { GuestParams } from '../sim/guestParams';
 import type { GuestNet } from '../sim/guestNetwork';
-import type { GuestConditions, GuestCounts, GuestEvent } from '../sim/guests';
+import type { GuestConditions, GuestCounts, GuestEconomySummary, GuestEvent } from '../sim/guests';
 import { LIFT_STRIDE } from '../sim/guests';
 import type { GuestClient } from '../worker/guestClient';
 import type { GuestFrameMessage } from '../worker/guestProtocol';
@@ -47,6 +47,20 @@ export interface GuestControllerOptions {
   onLoadOsm(): void;
   /** Gracz otworzył / zamknął ośrodek. */
   onResortOpen?(open: boolean): void;
+  /** Koniec dnia z gośćmi: podsumowanie dla ekonomii (etap 6). */
+  onDaySummary?(date: CalendarDate, summary: GuestEconomySummary): void;
+  /** Czy gracz może sam wpisać liczbę gości (piaskownica); w karierze – z popytu. */
+  manualGuests?(): boolean;
+}
+
+/** Plan dnia z ekonomii (etap 6): liczba gości z popytu, skład grup, godziny wyciągów. */
+export interface GuestDayPlan {
+  date: CalendarDate;
+  guests: number;
+  typeShares: number[];
+  hours: { openH: number; closeH: number };
+  /** Opis do panelu („sobota, ferie: śląskie – popyt 820, parking 700”). */
+  note: string;
 }
 
 export class GuestController {
@@ -54,6 +68,8 @@ export class GuestController {
   private net: GuestNet | null = null;
   private guests: number;
   private resortOpen = true;
+  private plan: GuestDayPlan | null = null;
+  private summarySent = '';
   private day: CalendarDate | null = null;
   private frame: GuestFrameMessage | null = null;
   private inflight = false;
@@ -83,7 +99,12 @@ export class GuestController {
       o.panelParent,
       {
         onGuestsChange: (n) => {
+          if (o.manualGuests && !o.manualGuests()) {
+            this.panel.setGuests(this.plan?.guests ?? this.guests);
+            return;
+          }
           this.guests = n;
+          if (this.plan) this.plan = { ...this.plan, guests: n, note: `${this.plan.note} · ręcznie: ${n}` };
           this.restart();
         },
         onRestart: () => this.restart(),
@@ -119,6 +140,29 @@ export class GuestController {
     this.panel.setResortOpen(open);
     this.updateHint();
     this.restart();
+  }
+
+  /** Plan dnia z ekonomii – gdy inny niż bieżący, dzień liczy się od nowa. */
+  setDayPlan(plan: GuestDayPlan | null): void {
+    const key = (p: GuestDayPlan | null) => (p ? `${p.date.year}-${p.date.month}-${p.date.day}|${p.guests}|${p.hours.openH}|${p.hours.closeH}|${p.typeShares.join(',')}` : '');
+    if (key(plan) === key(this.plan)) return;
+    const sameDay = !!plan && !!this.plan && sameDate(plan.date, this.plan.date);
+    this.plan = plan;
+    if (plan) {
+      this.guests = plan.guests;
+      this.panel.setGuests(plan.guests);
+    }
+    this.panel.setPlanNote(plan?.note ?? '');
+    if (sameDay || (plan && sameDate(plan.date, this.day))) this.restart();
+  }
+
+  /** Liczba gości wpisywana ręcznie (piaskownica) albo z popytu (kariera). */
+  setManualGuests(on: boolean): void {
+    this.panel.setManualGuests(on);
+  }
+
+  get dayPlan(): GuestDayPlan | null {
+    return this.plan;
   }
 
   setSnowWarnings(rows: SnowWarningRow[]): void {
@@ -184,7 +228,9 @@ export class GuestController {
       this.lastPos.clear();
       this.events = [];
       this.panel.setEvents([]);
-      this.o.client.startDay(date, this.resortOpen ? this.guests : 0, timeS);
+      const plan = this.plan && sameDate(this.plan.date, date) ? this.plan : null;
+      const n = !this.resortOpen ? 0 : plan ? plan.guests : this.guests;
+      this.o.client.startDay(date, n, timeS, plan?.hours, plan?.typeShares);
       return;
     }
     if (this.inflight) return;
@@ -224,6 +270,12 @@ export class GuestController {
       void this.o.client.dayTraffic().then((r) => {
         if (r.date && r.passes) this.o.onDayTraffic(r.date, r.passes);
       });
+      if (this.o.onDaySummary && this.summarySent !== key) {
+        this.summarySent = key;
+        void this.o.client.economy().then((r) => {
+          if (r.date && r.summary) this.o.onDaySummary!(r.date, r.summary);
+        });
+      }
       if (this.reportShown !== key) {
         this.reportShown = key;
         void this.showReport();

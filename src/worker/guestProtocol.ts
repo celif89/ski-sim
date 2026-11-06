@@ -4,19 +4,20 @@
  */
 import type { CalendarDate } from '../sim';
 import type { GuestNet } from '../sim/guestNetwork';
-import type { GuestCard, GuestConditions, GuestCounts, GuestDayReport, GuestEvent } from '../sim/guests';
+import type { GuestCard, GuestConditions, GuestCounts, GuestDayReport, GuestEconomySummary, GuestEvent } from '../sim/guests';
 
 export type GuestRequest =
   | { type: 'init'; paramsJson: unknown; seed: number; elevation: Float32Array }
   | { type: 'net'; net: GuestNet }
-  | { type: 'day'; date: CalendarDate; guests: number; timeS: number }
+  | { type: 'day'; date: CalendarDate; guests: number; timeS: number; hours?: { openH: number; closeH: number }; typeShares?: number[] }
   | { type: 'advance'; timeS: number; budgetMs: number }
   | { type: 'conditions'; cond: GuestConditions }
   | { type: 'snow'; quality: Uint8Array; depthCm: Float32Array; moguls: Float32Array | null; thin: Float32Array | null }
   | { type: 'card'; requestId: number; id: number }
   | { type: 'report'; requestId: number }
   | { type: 'traffic'; requestId: number }
-  | { type: 'dayTraffic'; requestId: number };
+  | { type: 'dayTraffic'; requestId: number }
+  | { type: 'economy'; requestId: number };
 
 export interface GuestFrameMessage {
   type: 'frame';
@@ -39,4 +40,5 @@ export type GuestResponse =
   | { type: 'report'; requestId: number; report: GuestDayReport | null }
   | { type: 'traffic'; requestId: number; perHour: Float32Array | null }
   | { type: 'dayTraffic'; requestId: number; date: CalendarDate | null; passes: Float32Array | null }
+  | { type: 'economy'; requestId: number; date: CalendarDate | null; summary: GuestEconomySummary | null }
   | { type: 'error'; message: string };

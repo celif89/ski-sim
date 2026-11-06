@@ -53,6 +53,10 @@ export interface BuildControllerOptions {
   riding: RidingParams;
   /** Ostrzeżenia „za mało śniegu” na otwartych trasach (po każdej zmianie śniegu lub układu). */
   onSnowWarnings?(warnings: SnowWarning[]): void;
+  /** Etap 6: przed zatwierdzeniem zmiany – zwraca powód odmowy (np. brak pieniędzy) albo null. */
+  beforeCommit?(next: ResortLayout, analysis: ResortAnalysis): string | null;
+  /** Etap 6: typy budynków (parking, gastronomia…) do narzędzia „Budynki”. */
+  buildingTypes?: { id: string; name: string; base: boolean; costPln: number }[];
 }
 
 export interface SnowWarning {
@@ -95,6 +99,9 @@ export class BuildController {
   private gradeNew = false;
   private snowSweMm: Float32Array | null = null;
   private thin = new Map<string, ThinSegment[]>();
+  /** Budowy w toku: postęp 0–1 (etap 6 – plac budowy na mapie). */
+  private construction = new Map<string, number>();
+  private buildingTypeId = 'parking';
   private readonly panel: BuildPanel;
   private readonly profile: BuildProfile;
   private readonly layer: ResortLayer;
@@ -131,7 +138,11 @@ export class BuildController {
         this.gradeNew = on;
         this.refreshPanel();
       },
-    });
+      onBuildingType: (id) => {
+        this.buildingTypeId = id;
+        this.setTool('base');
+      },
+    }, o.buildingTypes ?? null);
     this.profile = new BuildProfile(o.profileParent, o.pisteParams, {
       onTowersChange: (towers, final) => this.changeTowers(towers, final),
       onAutoTowers: () => this.autoTowers(),
@@ -226,14 +237,28 @@ export class BuildController {
     this.commit(next, message);
   }
 
-  /** Nowy układ z zapamiętaniem poprzedniego (cofnij). */
-  private commit(next: ResortLayout, message = ''): void {
+  /** Powód odmowy zmiany (etap 6: np. brak pieniędzy w karierze) albo null. */
+  private refusal(next: ResortLayout): string | null {
+    if (!this.o.beforeCommit) return null;
+    const a = analyzeResort(next, { grid: this.o.grid, lifts: this.o.liftParams, pistes: this.o.pisteParams, clearing: this.o.clearing, forest: this.o.forest, shrub: this.o.shrub, ground: this.o.ground });
+    return this.o.beforeCommit(next, a);
+  }
+
+  /** Nowy układ z zapamiętaniem poprzedniego (cofnij). Zwraca false, gdy zmiana odrzucona. */
+  private commit(next: ResortLayout, message = ''): boolean {
+    const refused = this.refusal(next);
+    if (refused) {
+      this.message = refused;
+      this.refreshPanel();
+      return false;
+    }
     this.history.push(this.layout);
     this.layout = next;
     this.message = message;
     this.reanalyze();
     this.save();
     this.notifyLandCover(false);
+    return true;
   }
 
   private notifyLandCover(immediate: boolean): void {
@@ -255,6 +280,13 @@ export class BuildController {
   private undo(): void {
     const prev = this.history.undo(this.layout);
     if (!prev) return;
+    const refused = this.refusal(prev);
+    if (refused) {
+      this.history.redo(prev);
+      this.message = refused;
+      this.refreshPanel();
+      return;
+    }
     this.layout = prev;
     this.message = 'Cofnięto.';
     this.reanalyze();
@@ -265,6 +297,13 @@ export class BuildController {
   private redo(): void {
     const next = this.history.redo(this.layout);
     if (!next) return;
+    const refused = this.refusal(next);
+    if (refused) {
+      this.history.undo(next);
+      this.message = refused;
+      this.refreshPanel();
+      return;
+    }
     this.layout = next;
     this.message = 'Ponowiono.';
     this.reanalyze();
@@ -296,7 +335,7 @@ export class BuildController {
           : tool === 'pisteAxis'
             ? 'Trasa – oś: klikaj punkty osi; podwójne kliknięcie lub Enter – koniec; Backspace – cofnij punkt.'
             : tool === 'base'
-              ? 'Baza: kliknij miejsce bazy (parking, wioska).'
+              ? `Budynek: kliknij miejsce (${this.o.buildingTypes?.find((t) => t.id === this.buildingTypeId)?.name ?? 'baza'}).`
               : '';
     this.o.onToolChange(tool);
     this.refreshPanel();
@@ -387,9 +426,17 @@ export class BuildController {
     if (this.tool === 'base') {
       const next = this.clone();
       const id = `B${next.nextId++}`;
-      next.bases.push({ id, name: `Baza ${next.bases.length + 1}`, xM: p.xM, yM: p.yM });
-      this.commit(next, 'Postawiono bazę.');
-      this.select({ kind: 'base', id });
+      const types = this.o.buildingTypes ?? null;
+      const t = types?.find((x) => x.id === this.buildingTypeId) ?? null;
+      if (!t || t.base) {
+        // Parking (baza z miejscami) albo baza bez parkingu (miejsce przyjazdu).
+        const n = next.bases.length + 1;
+        next.bases.push({ id, name: t ? `${t.name} ${n}` : `Baza ${n}`, xM: p.xM, yM: p.yM, ...(t ? { typeId: t.id } : {}) });
+      } else {
+        const n = (next.buildings ?? []).filter((b) => b.typeId === t.id).length + 1;
+        (next.buildings ??= []).push({ id, typeId: t.id, name: `${t.name} ${n}`, xM: p.xM, yM: p.yM });
+      }
+      if (this.commit(next, t ? `Postawiono: ${t.name}.` : 'Postawiono bazę.')) this.select({ kind: 'base', id });
       return true;
     }
     return true;
@@ -444,6 +491,13 @@ export class BuildController {
     if (this.edit) {
       const e = this.edit;
       this.edit = null;
+      const refused = this.refusal(this.layout);
+      if (refused) {
+        this.layout = e.before;
+        this.message = refused;
+        this.reanalyze();
+        return;
+      }
       this.history.push(e.before);
       this.message = e.kind.startsWith('piste') ? 'Zmieniono trasę (Cofnij przywraca).' : 'Zmieniono wyciąg (Cofnij przywraca).';
       this.reanalyze();
@@ -565,7 +619,7 @@ export class BuildController {
 
   private pick(xPx: number, yPx: number, p: PointM): { kind: 'lift' | 'piste' | 'base'; id: string } | null {
     const cam = this.o.camera;
-    for (const b of this.layout.bases) {
+    for (const b of [...this.layout.bases, ...(this.layout.buildings ?? [])]) {
       const s = cam.worldToScreen(b.xM, b.yM);
       if (Math.hypot(s.xPx - xPx, s.yPx - yPx) <= SELECT_RADIUS_PX) return { kind: 'base', id: b.id };
     }
@@ -596,7 +650,26 @@ export class BuildController {
     if (!s) return null;
     if (s.kind === 'lift') return this.layout.lifts.find((l) => l.id === s.id) ?? null;
     if (s.kind === 'piste') return this.layout.pistes.find((p) => p.id === s.id) ?? null;
-    return this.layout.bases.find((b) => b.id === s.id) ?? null;
+    return this.layout.bases.find((b) => b.id === s.id) ?? this.layout.buildings?.find((b) => b.id === s.id) ?? null;
+  }
+
+  /** Budowy w toku (etap 6): id → postęp 0–1. */
+  setConstruction(progress: Map<string, number>): void {
+    const key = (m: Map<string, number>) => [...m].map(([k, v]) => `${k}:${Math.round(v * 100)}`).join('|');
+    if (key(progress) === key(this.construction)) return;
+    this.construction = progress;
+    this.drawVersion++;
+  }
+
+  /** Wymiana całego układu bez historii (wczytanie gry, nowa kariera). */
+  replaceLayout(next: ResortLayout, message: string): void {
+    this.history.clear();
+    this.layout = next;
+    this.selection = null;
+    this.message = message;
+    this.reanalyze();
+    this.save();
+    this.notifyLandCover(false);
   }
 
   private select(sel: { kind: 'lift' | 'piste' | 'base'; id: string } | null): void {
@@ -628,7 +701,10 @@ export class BuildController {
     const next = this.clone();
     if (s.kind === 'lift') next.lifts = next.lifts.filter((l) => l.id !== s.id);
     else if (s.kind === 'piste') next.pistes = next.pistes.filter((p) => p.id !== s.id);
-    else next.bases = next.bases.filter((b) => b.id !== s.id);
+    else {
+      next.bases = next.bases.filter((b) => b.id !== s.id);
+      if (next.buildings) next.buildings = next.buildings.filter((b) => b.id !== s.id);
+    }
     this.selection = null;
     this.commit(next, 'Usunięto (Cofnij przywraca).');
   }
@@ -974,6 +1050,8 @@ export class BuildController {
       message: this.message,
       gradeNew: this.gradeNew,
       thin: this.thin,
+      buildingTypeId: this.buildingTypeId,
+      construction: this.construction,
     });
   }
 
@@ -1007,6 +1085,8 @@ export class BuildController {
       hoverPoint: this.hoverPoint,
       handles: this.handles(),
       thinMarks: this.thin,
+      construction: this.construction,
+      buildingTypes: this.o.buildingTypes ?? null,
       version: this.version,
       drawVersion: this.drawVersion,
       timeS,
