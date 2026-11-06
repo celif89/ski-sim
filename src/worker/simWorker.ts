@@ -18,6 +18,7 @@ import {
   parseWeatherParams,
 } from '../sim';
 import { parseSnowParams } from '../sim/snow';
+import { parseSnowmakingParams } from '../sim/snowmakingParams';
 import { parseGuestParams } from '../sim/guestParams';
 import { SnowWorld } from '../sim/snowWorld';
 import type { TerrainGrid } from '../sim';
@@ -81,6 +82,9 @@ async function runSnowJobs(): Promise<void> {
         snap.densityKgM3.buffer,
         snap.quality.buffer,
         snap.moguls.buffer,
+        snap.pileMm.buffer,
+        snap.techMm.buffer,
+        snap.liquidMm.buffer,
       ] as ArrayBuffer[]);
     }
   } finally {
@@ -167,6 +171,7 @@ async function handle(request: WorkerRequest): Promise<void> {
     case 'initSnow': {
       if (!environment) throw new Error('Moduł słońca i pogody nie jest gotowy');
       snowWorld = new SnowWorld(environment, request.forest, request.shrub, parseSnowParams(request.snowJson), request.guestsJson ? parseGuestParams(request.guestsJson).snowImpact : null);
+      if (request.snowmakingJson) snowWorld.snowmaking = parseSnowmakingParams(request.snowmakingJson);
       scope.postMessage({ type: 'snowReady' });
       return;
     }
@@ -174,6 +179,11 @@ async function handle(request: WorkerRequest): Promise<void> {
       if (!snowWorld) throw new Error('Model śniegu nie jest gotowy');
       snowWorld.setLandCover(request.forest, request.shrub);
       return; // bez odpowiedzi – kolejne pytania o śnieg liczą się już na nowym pokryciu
+    }
+    case 'setOperations': {
+      if (!snowWorld) throw new Error('Model śniegu nie jest gotowy');
+      snowWorld.setOperations(request.date, request.ops);
+      return;
     }
     case 'setTraffic': {
       if (!snowWorld) throw new Error('Model śniegu nie jest gotowy');

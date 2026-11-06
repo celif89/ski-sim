@@ -21,7 +21,13 @@ import liftsJson from '../data/lifts.json';
 import pistesJson from '../data/pistes.json';
 import constructionJson from '../data/construction.json';
 import economyJson from '../data/economy.json';
-import { parseEconomyParams } from './sim/economyParams';
+import { parseEconomyParams, withSnowmaking } from './sim/economyParams';
+import snowmakingJson from '../data/snowmaking.json';
+import { parseSnowmakingParams } from './sim/snowmakingParams';
+import { wetBulbC } from './sim/snowmaking';
+import { NightPlanDialog, SnowPanel, SnowPlanDialog } from './render/snowPanels';
+import type { PlanPiste } from './render/snowPanels';
+import { OpsView, plumesAt } from './render/opsView';
 import { WeatherBook } from './sim/weatherBook';
 import { parseClimateProfile } from './sim/climate';
 import { parseWeatherParams } from './sim/weather';
@@ -75,7 +81,7 @@ import { TopBar, type GameSpeed, type SnowAtPoints } from './render/topBar';
 import { BuildBar, MapNav } from './render/buildBar';
 import { createAspectOverlayCanvas, createSlopeOverlayCanvas } from './render/overlays';
 import type { OverlayKind } from './render/overlays';
-import { Legend, OVERLAY_KEYS, Toolbar } from './render/panels';
+import { Legend, OVERLAY_KEYS, Toolbar, WET_BULB_COLORS } from './render/panels';
 import { ProfileTool } from './render/profileTool';
 import { TimePanel } from './render/timePanel';
 import type { TimeChange } from './render/timePanel';
@@ -225,8 +231,8 @@ async function start(): Promise<void> {
     let lastState: EnvironmentStateMessage | null = null;
     let radiationSum: { date: CalendarDate; values: Float32Array } | null = null;
     let radiationRequest = 0;
-    const isField = (k: OverlayKind): k is FieldKind | 'snowQuality' | 'ground' =>
-      k === 'insolation' || k === 'radiationSum' || k === 'temperature' || k === 'snowDepth' || k === 'snowQuality' || k === 'traffic' || k === 'ground';
+    const isField = (k: OverlayKind): k is FieldKind | 'snowQuality' | 'ground' | 'wetBulb' =>
+      k === 'insolation' || k === 'radiationSum' || k === 'temperature' || k === 'snowDepth' || k === 'snowQuality' || k === 'traffic' || k === 'ground' || k === 'wetBulb';
     // Natężenie ruchu gości (nakładka 9) – odświeżane co sekundę z wątku gości.
     let trafficTimer = 0;
     let trafficValues: Float32Array | null = null;
@@ -323,7 +329,8 @@ async function start(): Promise<void> {
     let onGuestLayout: (layout: ResortLayout, analysis: ResortAnalysis) => void = () => {};
     const liftParams = parseLiftParams(liftsJson);
     const ridingParams = parseRidingParams(snowJson);
-    const economyParams = parseEconomyParams(economyJson);
+    const snowmakingParams = parseSnowmakingParams(snowmakingJson);
+    const economyParams = withSnowmaking(parseEconomyParams(economyJson), snowmakingParams);
     // Ostrzeżenia „za mało śniegu” → panel gości (ustawiane niżej, gdy kontroler gości gotowy).
     let onSnowWarnings: (w: SnowWarning[]) => void = () => {};
     const build = new BuildController({
@@ -340,7 +347,11 @@ async function start(): Promise<void> {
       riding: ridingParams,
       onSnowWarnings: (w) => onSnowWarnings(w),
       beforeCommit: (next, a) => game?.beforeCommit(next, a) ?? null,
-      buildingTypes: economyParams.buildings.map((b) => ({ id: b.id, name: b.name, base: b.base, costPln: b.costPln })),
+      buildingTypes: [
+        ...economyParams.buildings.map((b) => ({ id: b.id, name: b.name, base: b.base, costPln: b.costPln })),
+        ...snowmakingParams.buildings.map((b) => ({ id: b.id, name: `${b.name}${b.summerOnly ? ' (budowa V–X)' : ''}`, base: false, costPln: b.costPln })),
+      ],
+      snowmaking: snowmakingParams,
       forest: landCover?.forest ?? null,
       shrub: landCover?.shrub ?? null,
       osm: (OSM_RESORTS[`../data/maps/${simSettings.mapName}/osm-resort.json`] as OsmResort | undefined) ?? null,
@@ -378,12 +389,37 @@ async function start(): Promise<void> {
         legend.setFieldInfo(null, 'po budowie: wycięty las – pniaki, dopóki trasa nie zostanie wyrównana (opcja w profilu trasy)');
         return;
       }
+      if (overlay === 'wetBulb') {
+        if (!lastState) {
+          legend.setFieldInfo(null, 'liczę…');
+          return;
+        }
+        // Temperatura mokra z temperatury komórki i wilgotności (średnia dół/góra – zmienia się z wysokością słabo).
+        const rh = (lastState.bottom.now.humidityPercent + lastState.top.now.humidityPercent) / 2;
+        const startFan = Math.max(...snowmakingParams.guns.map((g) => g.curveWetBulbC[0]));
+        const startAll = Math.min(...snowmakingParams.guns.map((g) => g.curveWetBulbC[0]));
+        const cold = snowmakingParams.snow.densityColdWetBulbC;
+        const t = lastState.temperatureC;
+        const codes = new Uint8Array(t.length);
+        for (let k = 0; k < t.length; k++) {
+          if (Number.isNaN(t[k])) continue;
+          const w = wetBulbC(t[k], rh);
+          codes[k] = w > startFan ? 1 : w > startAll ? 2 : w > cold ? 3 : 4;
+        }
+        field.updateCategorical(codes, WET_BULB_COLORS);
+        const tw = (x: number) => wetBulbC(x, rh).toLocaleString('pl-PL', { maximumFractionDigits: 1 });
+        legend.setFieldInfo(
+          null,
+          `wilgotność ${f0(rh)} %; temp. mokra: dół ${f0(lastState.bottom.elevationM)} m ${tw(lastState.bottom.now.temperatureC)} °C, góra ${f0(lastState.top.elevationM)} m ${tw(lastState.top.now.temperatureC)} °C${lastState.bottom.now.temperatureC < lastState.top.now.temperatureC ? ' – inwersja: na dole zimniej' : ''}. Progi: armatka śmigłowa od ${startFan} °C, lanca od ${startAll} °C, suchy śnieg poniżej ${cold} °C.`,
+        );
+        return;
+      }
       if (overlay === 'snowDepth' || overlay === 'snowQuality') {
         if (!lastSnow) {
           legend.setFieldInfo(null, 'liczę śnieg…');
           return;
         }
-        const info = `koniec dnia ${fmtDate(lastSnow.date)}; śnieg naturalny (bez ratraków i naśnieżania)`;
+        const info = `koniec dnia ${fmtDate(lastSnow.date)}; śnieg naturalny + techniczny (naśnieżanie i ratraki z zamkniętych dni gry)`;
         if (overlay === 'snowDepth') {
           const scale = fieldScale('snowDepth', style);
           field.update(lastSnow.depthCm, scale, 0.5);
@@ -555,7 +591,13 @@ async function start(): Promise<void> {
           refreshField();
         })
         .catch((e: unknown) => {
-          if (e instanceof Error && e.message === '__superseded__') return; // zastąpione nowszym pytaniem
+          if (e instanceof Error && e.message === '__superseded__') {
+            // Zastąpione nowszym pytaniem (np. ekonomii) – jeśli mapa nadal nie ma śniegu na ten dzień, pytamy ponownie.
+            setTimeout(() => {
+              if (id === latestSnowRequest && !(lastSnow && sameDate(lastSnow.date, date))) requestSnow(date);
+            }, 300);
+            return;
+          }
           timePanel.setStatus(`Błąd modelu śniegu: ${e instanceof Error ? e.message : String(e)}`);
         })
         .finally(() => snowInflight--);
@@ -666,7 +708,7 @@ async function start(): Promise<void> {
         refreshField();
         const n = grid.cellCount;
         const cover = build.currentLandCover();
-        await sim.initSnow(cover?.forest ?? landCover?.forest.slice() ?? new Float32Array(n), cover?.shrub ?? landCover?.shrub.slice() ?? new Float32Array(n), snowJson, guestsJson);
+        await sim.initSnow(cover?.forest ?? landCover?.forest.slice() ?? new Float32Array(n), cover?.shrub ?? landCover?.shrub.slice() ?? new Float32Array(n), snowJson, guestsJson, snowmakingJson);
         snowReady = true;
         // Wycinka pod wyciągi i trasy zmienia pokrycie – model śniegu liczy sezon od nowa.
         onLandCoverChange = (f, sh) => {
@@ -785,7 +827,7 @@ async function start(): Promise<void> {
         for (;;) {
           try {
             const m = await sim.snowState(date);
-            return { quality: m.quality, sweMm: m.sweMm };
+            return { quality: m.quality, sweMm: m.sweMm, depthCm: m.depthCm, pileMm: m.pileMm, techMm: m.techMm, liquidMm: m.liquidMm };
           } catch (e) {
             // Pytanie zastąpione innym (np. mapą) – ponawiamy.
             if (!(e instanceof Error && e.message === '__superseded__')) throw e;
@@ -811,8 +853,90 @@ async function start(): Promise<void> {
         }),
       setDateTime: (date, hour) => timePanel.setDateTime(date, hour),
       setTraffic: (date, passes) => sim.setTraffic(date, passes),
+      setOperations: (date, ops) => sim.setOperations(date, ops),
+      onOps: () => refreshSnowOps(true),
       toast: (text) => buildBar.showToast(text),
     });
+
+    // ---------------------------------------------------------------- naśnieżanie i ratraki (etap 7)
+    const opsView = new OpsView();
+    let opsInfra = game.infra();
+    let snowPanelMs = 0;
+    const pisteName = (id: string) => build.current.layout.pistes.find((p) => p.id === id)?.name ?? id;
+    const planPistes = (): PlanPiste[] => {
+      const st = game?.state;
+      const g = grid;
+      const guns = new Set((opsInfra?.guns ?? []).map((x) => x.pisteId));
+      return build.current.layout.pistes
+        .filter((p) => st && !st.construction[p.id])
+        .map((p) => {
+          const a = build.current.analysis.pistes.get(p.id);
+          let base: number | null = null;
+          if (a && lastSnow) {
+            let sum = 0;
+            let n = 0;
+            for (const q of a.axis) {
+              const c = g.cellAt(q.xM, q.yM);
+              if (!c) continue;
+              sum += lastSnow.sweMm[g.index(c.i, c.j)] / ridingParams.packedDensityKgM3 * 100;
+              n++;
+            }
+            base = n ? sum / n : null;
+          }
+          return { id: p.id, name: p.name, baseCm: base, hasGuns: guns.has(p.id), areaHa: (a?.areaM2 ?? 0) / 10000 };
+        });
+    };
+    const snowPlanDialog = new SnowPlanDialog(document.body, () => game?.opsChanged());
+    const nightPlanDialog = new NightPlanDialog(
+      document.body,
+      () => game?.opsChanged(),
+      (id, on) => game?.setDayGroom(id, on),
+    );
+    const snowPanel = new SnowPanel(rightColumn, {
+      onSnowPlan: () => {
+        const st = game?.state;
+        if (!st) return;
+        const names = new Map(build.current.layout.pistes.map((p) => [p.id, p.name]));
+        snowPlanDialog.show(
+          st,
+          planPistes(),
+          (build.current.layout.snowGuns ?? []).map((g, i) => {
+            const f = opsInfra?.guns.find((x) => x.id === g.id);
+            return { id: g.id, name: `${g.typeId === 'lance' ? 'Lanca' : 'Armatka'} ${i + 1}`, pisteName: f?.pisteId ? (names.get(f.pisteId) ?? '–') : '–' };
+          }),
+        );
+      },
+      onNightPlan: () => {
+        const st = game?.state;
+        if (!st) return;
+        nightPlanDialog.show(st, planPistes(), snowmakingParams, () => game?.preview ?? null, pisteName);
+      },
+      onGroomer: (typeId, leased) => game?.acquireGroomer(typeId, leased),
+    });
+    snowPanel.setVisible(false);
+    function refreshSnowOps(force: boolean): void {
+      const st = game?.state;
+      snowPanel.setVisible(Boolean(st));
+      if (!st) return;
+      const now = performance.now();
+      if (!force && now - snowPanelMs < 500) return;
+      snowPanelMs = now;
+      if (force) opsInfra = game!.infra();
+      snowPanel.update({ state: st, infra: opsInfra, preview: game!.preview, hour: timePanel.hour, sp: snowmakingParams, pisteName, blocked: game!.blockedPistes });
+      if (force && nightPlanDialog.visible) nightPlanDialog.renderResult();
+    }
+    function opsFrame(): void {
+      const st = game?.state;
+      if (!st) {
+        build.setPlumes([]);
+        movers.groomers = [];
+        return;
+      }
+      const sameDay = sameDate(st.date, timePanel.date);
+      const pv = sameDay ? (game!.preview?.summary ?? null) : null;
+      build.setPlumes(plumesAt(pv, opsInfra, timePanel.hour));
+      movers.groomers = opsView.groomers(timePanel.date, timePanel.hour, pv, st.ops?.last ?? null, build.current.analysis, terrain.groom);
+    }
     {
       const mode = new URLSearchParams(window.location.search).get('tryb');
       if (mode === 'kariera') game.newGame('career');
@@ -850,6 +974,10 @@ async function start(): Promise<void> {
       }
       if (code === 'KeyK') {
         setOverlay(overlay === 'liftWait' ? 'none' : 'liftWait');
+        return true;
+      }
+      if (code === 'KeyM') {
+        setOverlay(overlay === 'wetBulb' ? 'none' : 'wetBulb');
         return true;
       }
       if (code === 'KeyG') {
@@ -891,6 +1019,8 @@ async function start(): Promise<void> {
       guestCtl.update(camera, night, timePanel.hour * 3600, ticker.deltaMS / 1000);
       if (overlay === 'traffic') trafficTick(ticker.deltaMS / 1000);
       profile.update(input.cursor);
+      opsFrame();
+      refreshSnowOps(false);
       build.update(input.cursor, guestCtl.gameTimeS ?? nowS);
       hud.update(camera, grid, input.cursor, lastSnow ? { ...lastSnow, ground: build.groundMap, riding: ridingParams } : null);
       const wx = lastState?.top.now;
@@ -917,6 +1047,7 @@ async function start(): Promise<void> {
       setSpeed: (sp: number) => setGameSpeed(sp as GameSpeed),
       build,
       game,
+      sim,
     };
   } catch (error) {
     console.error(error);

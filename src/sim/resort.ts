@@ -10,6 +10,7 @@ import { analyzePiste } from './pistes';
 import type { TerrainGrid } from './terrainGrid';
 import type { GroundParams } from './ground';
 import { groundAfterWorks, initialGround } from './ground';
+import type { PipelineDesign, SnowGunDesign } from './snowmaking';
 
 export interface BaseDesign {
   id: string;
@@ -34,8 +35,11 @@ export interface ResortLayout {
   lifts: LiftDesign[];
   pistes: PisteDesign[];
   bases: BaseDesign[];
-  /** Budynki usługowe (etap 6). */
+  /** Budynki usługowe (etap 6) i infrastruktura naśnieżania i ratraków (etap 7). */
   buildings?: BuildingDesign[];
+  /** Rurociągi naśnieżania z hydrantami i armatki na hydrantach (etap 7). */
+  pipelines?: PipelineDesign[];
+  snowGuns?: SnowGunDesign[];
   /** Kolejne numery nowych obiektów. */
   nextId: number;
   /** Ośrodek otwarty (sezon trwa) – decyduje gracz; zamknięty – nie ma gości. Brak pola = otwarty. */
@@ -104,7 +108,17 @@ export function parseLayout(raw: unknown): ResortLayout {
     }
   }
   if (r.resortOpen === false) out.resortOpen = false;
-  const maxId = [...out.lifts, ...out.pistes, ...out.bases, ...(out.buildings ?? [])].reduce((m, o) => Math.max(m, Number(/\d+$/.exec(o.id)?.[0] ?? 0)), 0);
+  const pipes = Array.isArray(r.pipelines) ? (r.pipelines as Record<string, unknown>[]) : [];
+  for (const pp of pipes) {
+    if (typeof pp.id !== 'string' || !Array.isArray(pp.points)) continue;
+    const points = (pp.points as unknown[]).filter(isPoint).map((q) => ({ xM: q.xM, yM: q.yM }));
+    if (points.length >= 2) (out.pipelines ??= []).push({ id: pp.id, name: typeof pp.name === 'string' ? pp.name : pp.id, points });
+  }
+  const gunsRaw = Array.isArray(r.snowGuns) ? (r.snowGuns as Record<string, unknown>[]) : [];
+  for (const g of gunsRaw) {
+    if (typeof g.id === 'string' && typeof g.typeId === 'string' && typeof g.pipelineId === 'string' && isNum(g.hydrant)) (out.snowGuns ??= []).push({ id: g.id, typeId: g.typeId, pipelineId: g.pipelineId, hydrant: g.hydrant });
+  }
+  const maxId = [...out.lifts, ...out.pistes, ...out.bases, ...(out.buildings ?? []), ...(out.pipelines ?? []), ...(out.snowGuns ?? [])].reduce((m, o) => Math.max(m, Number(/\d+$/.exec(o.id)?.[0] ?? 0)), 0);
   out.nextId = Math.max(out.nextId, maxId + 1);
   return out;
 }

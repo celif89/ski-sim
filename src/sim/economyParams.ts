@@ -4,6 +4,7 @@
  * Same wartości – jednostki i źródła są w pliku.
  */
 import { readNumber, readNumberArray, readSection } from './params';
+import type { SnowmakingParams } from './snowmakingParams';
 
 const FILE = 'data/economy.json';
 type Sec = Record<string, unknown>;
@@ -129,7 +130,6 @@ export interface EconomyParams {
     maintenanceLiftsRatePerYear: number;
     maintenancePistesRatePerYear: number;
     maintenanceBuildingsRatePerYear: number;
-    groomingPlnPerHa: number;
     winterBuildProgressFactor: number;
     winterBuildCostFactor: number;
     rebuildFeeShare: number;
@@ -158,6 +158,13 @@ export interface EconomyParams {
     list: CompetitorDef[];
   };
   buildings: BuildingType[];
+  /** Etap 7: parametry naśnieżania i ratraków (data/snowmaking.json) – dołączane przez withSnowmaking. */
+  snowmaking?: SnowmakingParams | null;
+}
+
+/** Ekonomia z parametrami naśnieżania (koszty rurociągów, armatek, infrastruktury). */
+export function withSnowmaking(ep: EconomyParams, sp: SnowmakingParams): EconomyParams {
+  return { ...ep, snowmaking: sp };
 }
 
 function readAll<K extends string>(sec: Sec, keys: readonly K[], opts: { min?: number; max?: number } = {}): Record<K, number> {
@@ -217,7 +224,7 @@ export function parseEconomyParams(raw: unknown): EconomyParams {
       'energyPlnPerKWh', 'hourlyWagePln', 'employerCostFactor', 'staffExtraHours', 'staffSurfaceLift', 'staffAerialLift', 'staffMidStation', 'guestsPerCashier',
       'patrolPerKm', 'patrolMin', 'patrolHourlyPln', 'seasonalPer1000Guests', 'seasonalMin', 'permanentStaff', 'permanentMonthlyPln', 'inspectionSurfacePln',
       'inspectionAerialPln', 'insuranceRatePerYear', 'maintenanceLiftsRatePerYear', 'maintenancePistesRatePerYear', 'maintenanceBuildingsRatePerYear',
-      'groomingPlnPerHa', 'winterBuildProgressFactor', 'winterBuildCostFactor', 'rebuildFeeShare', 'rebuildDaysShare', 'cancelRefundShare',
+      'winterBuildProgressFactor', 'winterBuildCostFactor', 'rebuildFeeShare', 'rebuildDaysShare', 'cancelRefundShare',
     ] as const, { min: 0 }),
     reputation: readAll(re, ['initial', 'priorWeight', 'dailyDecay'] as const, { min: 0 }),
     quickDay: readAll(qd, ['meanStayH', 'activeShare', 'descentSpeedMs', 'cycleExtraMin', 'stayQueueTauMin', 'matchScore', 'sampleGuests', 'maxQueueMin', 'onPisteShare'] as const, { min: 0 }),

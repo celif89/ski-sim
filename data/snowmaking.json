@@ -1,0 +1,737 @@
+{
+  "_opis": "Naśnieżanie i ratraki (etap 7). Kwoty w zł netto. Wartości startowe z koncepcji gry (sekcja „Dane do kalibracji” i „Naśnieżanie”), pozostałe orientacyjne – do zastąpienia danymi producentów i kosztorysami.",
+  "water": {
+    "intakeSummerM3h": {
+      "value": 60,
+      "unit": "m³/h",
+      "source": "limit poboru z potoku (Korbielowski/Glinne) przy średnim przepływie; pozwolenie wodnoprawne – do kalibracji"
+    },
+    "intakeWinterFactor": {
+      "value": 0.4,
+      "unit": "×",
+      "source": "zimą potok niesie mniej wody i limit poboru jest mniejszy (niżówka zimowa); do kalibracji"
+    },
+    "intakeDryFactorMin": {
+      "value": 0.3,
+      "unit": "×",
+      "source": "przy suchej jesieni (opad 30 dni poniżej normy) dopływ spada najwyżej do tej części; do kalibracji"
+    },
+    "normalPrecipMmPerDay": {
+      "value": 2.8,
+      "unit": "mm/dzień",
+      "source": "norma opadu do oceny suszy – Korbielów ok. 1000 mm/rok (IMGW, data/climate/pilsko.json); do kalibracji"
+    },
+    "precipWindowDays": {
+      "value": 30,
+      "unit": "dni",
+      "source": "okres, z którego liczymy, czy jesień była sucha"
+    },
+    "waterFeePlnPerM3": {
+      "value": 0.08,
+      "unit": "zł/m³",
+      "source": "opłata zmienna za pobór wód powierzchniowych (usługi wodne, rząd wielkości 0,05–0,1 zł/m³); do kalibracji"
+    },
+    "fillMonthsFrom": {
+      "value": 5,
+      "unit": "miesiąc",
+      "source": "zbiornik napełnia się od maja…"
+    },
+    "fillMonthsTo": {
+      "value": 11,
+      "unit": "miesiąc",
+      "source": "…do listopada (latem i jesienią, koncepcja gry)"
+    }
+  },
+  "pumping": {
+    "efficiency": {
+      "value": 0.75,
+      "unit": "-",
+      "source": "sprawność zespołu pompowego (pompa wielostopniowa + silnik) 0,7–0,8; do kalibracji"
+    },
+    "pipeLossMPerKm": {
+      "value": 20,
+      "unit": "m/km",
+      "source": "straty ciśnienia w rurociągu przy przepływie projektowym (wysokość strat na km rury); do kalibracji"
+    },
+    "waterDensityKgM3": {
+      "value": 1000,
+      "unit": "kg/m³",
+      "source": "gęstość wody"
+    },
+    "gravityMs2": {
+      "value": 9.81,
+      "unit": "m/s²",
+      "source": "przyspieszenie ziemskie"
+    }
+  },
+  "energy": {
+    "nightTariffFactor": {
+      "value": 0.75,
+      "unit": "×",
+      "source": "taryfa dwustrefowa: energia nocą tańsza o ok. 25 % niż w dzień (cena dzienna – economy.json); do kalibracji"
+    },
+    "nightStartH": {
+      "value": 22,
+      "unit": "h",
+      "source": "strefa nocna od 22:00"
+    },
+    "nightEndH": {
+      "value": 6,
+      "unit": "h",
+      "source": "do 6:00"
+    }
+  },
+  "pipe": {
+    "costPlnPerM": {
+      "value": 450,
+      "unit": "zł/m",
+      "source": "rura stalowa DN 150–200 z kablem zasilającym i sterującym, wykop i zasypanie; do kalibracji"
+    },
+    "metersPerDay": {
+      "value": 60,
+      "unit": "m/dzień",
+      "source": "tempo układania rurociągu (wykop, spawanie, zasypanie); do kalibracji"
+    },
+    "hydrantSpacingM": {
+      "value": 60,
+      "unit": "m",
+      "source": "odstęp hydrantów wzdłuż trasy – typowo 40–80 m; do kalibracji"
+    },
+    "hydrantCostPln": {
+      "value": 18000,
+      "unit": "zł",
+      "source": "studzienka hydrantowa z przyłączem wody i prądu; do kalibracji"
+    },
+    "trenchFromMonth": {
+      "value": 5,
+      "unit": "miesiąc",
+      "source": "wykop tylko latem: od maja…"
+    },
+    "trenchToMonth": {
+      "value": 10,
+      "unit": "miesiąc",
+      "source": "…do października (bez zmarzliny)"
+    },
+    "connectRadiusM": {
+      "value": 60,
+      "unit": "m",
+      "source": "początek rurociągu musi być tak blisko pompowni albo innego rurociągu"
+    }
+  },
+  "snow": {
+    "densityAtStartKgM3": {
+      "value": 500,
+      "unit": "kg/m³",
+      "source": "śnieg techniczny przy temperaturze progowej – mokry, gęsty (koncepcja gry, sekcja Naśnieżanie (wartości startowe): 400–500 kg/m³)"
+    },
+    "densityColdKgM3": {
+      "value": 400,
+      "unit": "kg/m³",
+      "source": "śnieg techniczny w mroźną noc – suchszy (koncepcja gry, sekcja Naśnieżanie (wartości startowe))"
+    },
+    "densityColdWetBulbC": {
+      "value": -8,
+      "unit": "°C",
+      "source": "od tej temperatury mokrej śnieg ma gęstość „mroźną”; do kalibracji"
+    },
+    "liquidFractionAtStart": {
+      "value": 0.06,
+      "unit": "-",
+      "source": "woda ciekła w śniegu tuż przy progu (mokry śnieg); do kalibracji"
+    },
+    "waterLossFraction": {
+      "value": 0.12,
+      "unit": "-",
+      "source": "część wody, która paruje i sublimuje w locie (straty 5–20 %); do kalibracji"
+    },
+    "pileThresholdMm": {
+      "value": 8,
+      "unit": "mm",
+      "source": "śnieg w pryzmie (woda w śniegu) powyżej tego progu w komórce – trasa nierówna"
+    },
+    "groomedDensityHardKgM3": {
+      "value": 480,
+      "unit": "kg/m³",
+      "source": "ubity przy mrozie – twarda, trwała trasa; do kalibracji"
+    },
+    "groomedDensityWetKgM3": {
+      "value": 450,
+      "unit": "kg/m³",
+      "source": "ubity przy odwilży – mokra trasa; do kalibracji"
+    },
+    "groomFrostC": {
+      "value": -2,
+      "unit": "°C",
+      "source": "ratrakowanie przy temperaturze powietrza poniżej – mróz (twarda trasa)"
+    },
+    "groomThawC": {
+      "value": 0.5,
+      "unit": "°C",
+      "source": "powyżej – odwilż (mokra, szybko niszczejąca trasa)"
+    },
+    "wetSnowLiquidFraction": {
+      "value": 0.04,
+      "unit": "-",
+      "source": "śnieg mokry (woda ciekła / śnieg) – ubity, a potem mróz → lód; do kalibracji"
+    },
+    "iceFrostC": {
+      "value": -3,
+      "unit": "°C",
+      "source": "mróz po ratrakowaniu mokrego śniegu, przy którym powstaje lód; do kalibracji"
+    },
+    "throwSpreadM": {
+      "value": 18,
+      "unit": "m",
+      "source": "promień plamy śniegu wokół miejsca opadu; do kalibracji"
+    },
+    "driftPerMs": {
+      "value": 2.5,
+      "unit": "m/(m/s)",
+      "source": "wiatr przesuwa plamę śniegu o tyle metrów na każdy m/s (armatka celuje w środek trasy) – przy silnym wietrze część ląduje poza trasą, w lesie; do kalibracji"
+    },
+    "autoFromMonth": {
+      "value": 11,
+      "unit": "miesiąc",
+      "source": "automat naśnieża od listopada…"
+    },
+    "autoToMonth": {
+      "value": 3,
+      "unit": "miesiąc",
+      "source": "…do marca (ręcznie – zawsze, gdy zimno); do kalibracji"
+    }
+  },
+  "guns": [
+    {
+      "id": "fan",
+      "name": "Armatka śmigłowa",
+      "movable": 1,
+      "costPln": {
+        "value": 150000,
+        "unit": "zł",
+        "source": "armatka 70–150 tys. zł (Forsal, „Inwestycja w stok narciarski”); nowoczesna śmigłowa – górna granica"
+      },
+      "curveWetBulbC": {
+        "value": [
+          -2.5,
+          -4,
+          -6,
+          -8,
+          -10,
+          -15
+        ],
+        "unit": "°C (temperatura mokra)",
+        "source": "koncepcja gry, sekcja Naśnieżanie (wartości startowe): start ok. −2,5 °C, nowoczesne od ok. −1 °C; kształt krzywej – do kalibracji"
+      },
+      "curveSnowM3h": {
+        "value": [
+          8,
+          30,
+          52,
+          68,
+          82,
+          90
+        ],
+        "unit": "m³ śniegu/h",
+        "source": "duża armatka ok. 90 m³/h w mroźną noc (howmuchblog.com – zestawienie wydajności armatek i lanc (za koncepcją gry)); wartości pośrednie – do kalibracji"
+      },
+      "energyKWhPerM3": {
+        "value": 1.5,
+        "unit": "kWh/m³ śniegu",
+        "source": "1–2 kWh/m³ dla armatek (Wikipedia „Snowgun” (za koncepcją gry))"
+      },
+      "nozzleHeadM": {
+        "value": 150,
+        "unit": "m",
+        "source": "ciśnienie na hydrancie ok. 15 bar dla armatki śmigłowej; do kalibracji"
+      },
+      "throwM": {
+        "value": 30,
+        "unit": "m",
+        "source": "zasięg rzutu śniegu (z wentylatorem); do kalibracji"
+      }
+    },
+    {
+      "id": "lance",
+      "name": "Lanca",
+      "movable": 0,
+      "costPln": {
+        "value": 50000,
+        "unit": "zł",
+        "source": "lanca ok. 1/3 ceny armatki śmigłowej (Euronews 2026: lanca to „jedna trzecia” ceny armatki TR10)"
+      },
+      "curveWetBulbC": {
+        "value": [
+          -4,
+          -6,
+          -8,
+          -10,
+          -15
+        ],
+        "unit": "°C (temperatura mokra)",
+        "source": "lance potrzebują niższych temperatur (koncepcja gry, sekcja Naśnieżanie (wartości startowe)); do kalibracji"
+      },
+      "curveSnowM3h": {
+        "value": [
+          5,
+          16,
+          28,
+          38,
+          45
+        ],
+        "unit": "m³ śniegu/h",
+        "source": "lanca 30–50 m³/h w mroźną noc (howmuchblog.com – zestawienie wydajności armatek i lanc (za koncepcją gry)); do kalibracji"
+      },
+      "energyKWhPerM3": {
+        "value": 0.65,
+        "unit": "kWh/m³ śniegu",
+        "source": "0,6–0,7 kWh/m³ dla lanc (Wikipedia „Snowgun” (za koncepcją gry))"
+      },
+      "nozzleHeadM": {
+        "value": 250,
+        "unit": "m",
+        "source": "lanca pracuje przy wyższym ciśnieniu wody (ok. 25 bar); do kalibracji"
+      },
+      "throwM": {
+        "value": 12,
+        "unit": "m",
+        "source": "lanca – śnieg opada blisko; do kalibracji"
+      }
+    }
+  ],
+  "buildings": [
+    {
+      "id": "intake",
+      "name": "Ujęcie wody z potoku",
+      "kind": "intake",
+      "costPln": {
+        "value": 400000,
+        "unit": "zł",
+        "source": "jaz, osadnik, rurociąg do zbiornika; do kalibracji"
+      },
+      "capacity": {
+        "value": 60,
+        "unit": "m³/h",
+        "source": "limit poboru – water.intakeSummerM3h"
+      },
+      "buildDays": {
+        "value": 30,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 1
+    },
+    {
+      "id": "reservoir20",
+      "name": "Zbiornik 20 tys. m³",
+      "kind": "reservoir",
+      "costPln": {
+        "value": 2400000,
+        "unit": "zł",
+        "source": "ok. 120 zł/m³ pojemności (wykop, uszczelnienie folią, ogrodzenie); do kalibracji"
+      },
+      "capacity": {
+        "value": 20000,
+        "unit": "m³",
+        "source": "pojemność"
+      },
+      "buildDays": {
+        "value": 90,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 1
+    },
+    {
+      "id": "reservoir50",
+      "name": "Zbiornik 50 tys. m³",
+      "kind": "reservoir",
+      "costPln": {
+        "value": 5500000,
+        "unit": "zł",
+        "source": "ok. 110 zł/m³; do kalibracji"
+      },
+      "capacity": {
+        "value": 50000,
+        "unit": "m³",
+        "source": "pojemność"
+      },
+      "buildDays": {
+        "value": 120,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 1
+    },
+    {
+      "id": "reservoir100",
+      "name": "Zbiornik 100 tys. m³",
+      "kind": "reservoir",
+      "costPln": {
+        "value": 10000000,
+        "unit": "zł",
+        "source": "ok. 100 zł/m³; do kalibracji"
+      },
+      "capacity": {
+        "value": 100000,
+        "unit": "m³",
+        "source": "pojemność (SkiWelt: 15 zbiorników, razem 1,23 mln m³ – średnio 80 tys.)"
+      },
+      "buildDays": {
+        "value": 150,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 1
+    },
+    {
+      "id": "pump150",
+      "name": "Pompownia 150 m³/h",
+      "kind": "pump",
+      "costPln": {
+        "value": 1500000,
+        "unit": "zł",
+        "source": "budynek, pompy, filtry, rozdzielnia; do kalibracji"
+      },
+      "capacity": {
+        "value": 150,
+        "unit": "m³/h",
+        "source": "wydajność"
+      },
+      "buildDays": {
+        "value": 60,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 0
+    },
+    {
+      "id": "pump300",
+      "name": "Pompownia 300 m³/h",
+      "kind": "pump",
+      "costPln": {
+        "value": 2600000,
+        "unit": "zł",
+        "source": "do kalibracji"
+      },
+      "capacity": {
+        "value": 300,
+        "unit": "m³/h",
+        "source": "wydajność"
+      },
+      "buildDays": {
+        "value": 75,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 0
+    },
+    {
+      "id": "pump600",
+      "name": "Pompownia 600 m³/h",
+      "kind": "pump",
+      "costPln": {
+        "value": 4500000,
+        "unit": "zł",
+        "source": "do kalibracji"
+      },
+      "capacity": {
+        "value": 600,
+        "unit": "m³/h",
+        "source": "wydajność"
+      },
+      "buildDays": {
+        "value": 90,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 0
+    },
+    {
+      "id": "grid500",
+      "name": "Przyłącze 500 kW",
+      "kind": "grid",
+      "costPln": {
+        "value": 600000,
+        "unit": "zł",
+        "source": "przyłącze średniego napięcia z transformatorem; pompownia dla 15,5 ha tras ok. 500 kW (TMiR 12/2010, Olszyna); do kalibracji"
+      },
+      "capacity": {
+        "value": 500,
+        "unit": "kW",
+        "source": "moc przyłączeniowa"
+      },
+      "buildDays": {
+        "value": 60,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 0
+    },
+    {
+      "id": "grid1000",
+      "name": "Przyłącze 1000 kW",
+      "kind": "grid",
+      "costPln": {
+        "value": 1000000,
+        "unit": "zł",
+        "source": "do kalibracji"
+      },
+      "capacity": {
+        "value": 1000,
+        "unit": "kW",
+        "source": "moc przyłączeniowa"
+      },
+      "buildDays": {
+        "value": 75,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 0
+    },
+    {
+      "id": "grid2000",
+      "name": "Przyłącze 2000 kW",
+      "kind": "grid",
+      "costPln": {
+        "value": 1800000,
+        "unit": "zł",
+        "source": "do kalibracji"
+      },
+      "capacity": {
+        "value": 2000,
+        "unit": "kW",
+        "source": "moc przyłączeniowa"
+      },
+      "buildDays": {
+        "value": 90,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 0
+    },
+    {
+      "id": "garage",
+      "name": "Garaż ratraków",
+      "kind": "garage",
+      "costPln": {
+        "value": 1500000,
+        "unit": "zł",
+        "source": "hala na 3 ratraki z warsztatem i stacją paliw; do kalibracji"
+      },
+      "capacity": {
+        "value": 3,
+        "unit": "ratraki",
+        "source": "miejsca"
+      },
+      "buildDays": {
+        "value": 60,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 0
+    },
+    {
+      "id": "anchor",
+      "name": "Punkt kotwienia wyciągarki",
+      "kind": "anchor",
+      "costPln": {
+        "value": 40000,
+        "unit": "zł",
+        "source": "kotwa betonowa na górze stoku; do kalibracji"
+      },
+      "capacity": {
+        "value": 1000,
+        "unit": "m",
+        "source": "zasięg liny wyciągarki – 1000 m liny użytkowej (karta PistenBully 600 (pistenbully.com, za koncepcją gry))"
+      },
+      "buildDays": {
+        "value": 7,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 0
+    }
+  ],
+  "groomers": {
+    "fuelPlnPerL": {
+      "value": 6.2,
+      "unit": "zł/l",
+      "source": "olej napędowy 2026 dla firm, rząd 6 zł/l netto; do kalibracji"
+    },
+    "nightBonus": {
+      "value": 1.2,
+      "unit": "×",
+      "source": "dodatek za pracę w nocy do stawki godzinowej (płace – economy.json)"
+    },
+    "windowStartH": {
+      "value": 17.5,
+      "unit": "h",
+      "source": "ratraki wyjeżdżają po zamknięciu wyciągów"
+    },
+    "windowEndH": {
+      "value": 7.5,
+      "unit": "h",
+      "source": "muszą zjechać przed otwarciem tras"
+    },
+    "maxShiftH": {
+      "value": 11,
+      "unit": "h",
+      "source": "najdłuższa zmiana operatora z przerwą i tankowaniem; do kalibracji"
+    },
+    "transferMin": {
+      "value": 10,
+      "unit": "min",
+      "source": "przejazd między trasami; do kalibracji"
+    },
+    "slopeFactorPerPercent": {
+      "value": 0.03,
+      "unit": "1/%",
+      "source": "czas × (1 + współczynnik × (nachylenie − 15 %)) – pod górę wolniej; do kalibracji"
+    },
+    "slopeFactorFromPercent": {
+      "value": 15,
+      "unit": "%",
+      "source": "od tego nachylenia ratrak zwalnia"
+    },
+    "winchSlopePercent": {
+      "value": 40,
+      "unit": "%",
+      "source": "powyżej tego nachylenia potrzebna wyciągarka (stromy odcinek); do kalibracji"
+    },
+    "freshFactorPerCm": {
+      "value": 0.02,
+      "unit": "1/cm",
+      "source": "świeży opad wydłuża pracę: × (1 + współczynnik × cm ponad próg); do kalibracji"
+    },
+    "freshThresholdCm": {
+      "value": 5,
+      "unit": "cm",
+      "source": "próg świeżego śniegu"
+    },
+    "pilePushM3h": {
+      "value": 400,
+      "unit": "m³/h",
+      "source": "wydajność rozpychania pryzm śniegu technicznego; do kalibracji"
+    },
+    "breakdownBasePerNight": {
+      "value": 0.01,
+      "unit": "1/noc",
+      "source": "prawdopodobieństwo awarii nowego ratraka w nocy pracy; do kalibracji"
+    },
+    "breakdownAgeFactor": {
+      "value": 0.25,
+      "unit": "1/rok",
+      "source": "awarie rosną z wiekiem: × (1 + współczynnik × wiek); do kalibracji"
+    },
+    "repairCostPln": {
+      "value": 30000,
+      "unit": "zł",
+      "source": "naprawa po awarii; do kalibracji"
+    },
+    "repairNights": {
+      "value": 2,
+      "unit": "noce",
+      "source": "ratrak w naprawie"
+    },
+    "servicePlnPerHour": {
+      "value": 120,
+      "unit": "zł/h",
+      "source": "serwis i części na godzinę pracy silnika; do kalibracji"
+    },
+    "leaseMonthlyShare": {
+      "value": 0.022,
+      "unit": "1/miesiąc",
+      "source": "rata leasingu ok. 2,2 % ceny miesięcznie (5 lat z wykupem); do kalibracji"
+    },
+    "types": [
+      {
+        "id": "standard",
+        "name": "Ratrak standardowy (wzór: PistenBully 600)",
+        "winch": 0,
+        "pricePln": {
+          "value": 1800000,
+          "unit": "zł",
+          "source": "PistenBully 600 E+ ok. 400 tys. € + VAT (iloveski.org, 2018) ≈ 1,75 mln zł; ratrak ok. 1 mln zł (Forsal – starsze modele)"
+        },
+        "widthM": {
+          "value": 5.5,
+          "unit": "m",
+          "source": "frez 5,5 m (karta PistenBully 600 (pistenbully.com, za koncepcją gry))"
+        },
+        "speedKmh": {
+          "value": 8,
+          "unit": "km/h",
+          "source": "prędkość robocza z frezem; maks. 23 km/h (karta PistenBully 600 (pistenbully.com, za koncepcją gry)); do kalibracji"
+        },
+        "fuelLph": {
+          "value": 22,
+          "unit": "l/h",
+          "source": "od 19,5 l/h (karta PistenBully 600 (pistenbully.com, za koncepcją gry)); w pracy więcej – do kalibracji"
+        },
+        "powerKw": {
+          "value": 339,
+          "unit": "kW",
+          "source": "karta PistenBully 600 (pistenbully.com, za koncepcją gry)"
+        }
+      },
+      {
+        "id": "winch",
+        "name": "Ratrak z wyciągarką",
+        "winch": 1,
+        "pricePln": {
+          "value": 2400000,
+          "unit": "zł",
+          "source": "wersja z wyciągarką o ok. 1/3 droższa; do kalibracji"
+        },
+        "widthM": {
+          "value": 5.5,
+          "unit": "m",
+          "source": "frez 5,5 m (karta PistenBully 600 (pistenbully.com, za koncepcją gry))"
+        },
+        "speedKmh": {
+          "value": 6.5,
+          "unit": "km/h",
+          "source": "z wyciągarką do 17 km/h (karta PistenBully 600 (pistenbully.com, za koncepcją gry)); prędkość robocza – do kalibracji"
+        },
+        "fuelLph": {
+          "value": 25,
+          "unit": "l/h",
+          "source": "więcej niż standardowy (wyciągarka); do kalibracji"
+        },
+        "powerKw": {
+          "value": 339,
+          "unit": "kW",
+          "source": "karta PistenBully 600 (pistenbully.com, za koncepcją gry); wyciągarka 1000 m liny, 45 kN uciągu"
+        }
+      }
+    ]
+  },
+  "calibration": {
+    "_opis": "Dane do porównania (koncepcja gry, sekcja „Dane do kalibracji”).",
+    "waterM3PerHa": {
+      "value": 3501,
+      "unit": "m³/ha·sezon",
+      "source": "średnia 30 ośrodków austriackich, 6 sezonów (IMC 2025, imc2025.info)"
+    },
+    "energyKWhPerHa": {
+      "value": 24449,
+      "unit": "kWh/ha·sezon",
+      "source": "IMC 2025"
+    },
+    "energyKWhPerVisit": {
+      "value": 5.4,
+      "unit": "kWh/wizytę",
+      "source": "IMC 2025"
+    },
+    "costEurPerM3": {
+      "value": 4,
+      "unit": "€/m³ śniegu",
+      "source": "Ski amadé (XYZ, „Szef Ski amadé: produkujemy 15 mln m³ śniegu”)"
+    },
+    "plnPerEur": {
+      "value": 4.25,
+      "unit": "zł/€",
+      "source": "kurs orientacyjny 2026; do kalibracji"
+    }
+  }
+}

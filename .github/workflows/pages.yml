@@ -54,7 +54,7 @@ jobs:
       - name: Raport zimy (npm run winter-report) – model śniegu, kalibracja, 30 zim; ok. 10 min
         run: npm run winter-report -- dist/raport-zimy.html
 
-      - name: Raport ekonomii (npm run economy-report) – 10 sezonów prostego ośrodka; ok. 1–2 min
+      - name: Raport ekonomii (npm run economy-report) – 10 sezonów prostego ośrodka + 30 zim z naśnieżaniem i bez; ok. 4–6 min
         run: npm run economy-report -- dist/raport-ekonomii.html
 
       - name: Przygotowanie plików do publikacji

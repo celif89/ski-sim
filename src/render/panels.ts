@@ -26,8 +26,19 @@ export const OVERLAY_KEYS: { kind: OverlayKind; key: string; label: string; titl
   { kind: 'snowQuality', key: '8', label: 'Śnieg – stan', title: 'Stan śniegu: puch, przewiany, osiadły, firn, breja, zlodzony, przetarty' },
   { kind: 'traffic', key: '9', label: 'Ruch na trasach', title: 'Natężenie ruchu gości: przejazdy na godzinę (ostatnie pół godziny)' },
   { kind: 'ground', key: 'G', label: 'Podłoże', title: 'Podłoże terenu: łąka wyrównana, łąka naturalna, kamienie / skała, przecinka z pniakami, las – od niego zależy, ile śniegu trzeba do jazdy' },
+  { kind: 'wetBulb', key: 'M', label: 'Naśnieżanie teraz', title: 'Gdzie można teraz naśnieżać: temperatura termometru mokrego (powietrze + wilgotność) – przy inwersji zimniej na dole niż na górze' },
   { kind: 'liftWait', key: 'K', label: 'Kolejki', title: 'Czas oczekiwania i długość kolejki przy dolnych stacjach' },
 ];
+
+/** Nakładka „Naśnieżanie teraz”: kody 1–4 (0 – poza mapą). */
+export const WET_BULB_COLORS: [number, number, number][] = [
+  [0, 0, 0],
+  [214, 92, 74],
+  [245, 190, 70],
+  [120, 180, 235],
+  [40, 80, 190],
+];
+export const WET_BULB_NAMES = ['za ciepło – armatki nie robią śniegu', 'tylko armatki śmigłowe, słabo', 'armatki i lance', 'pełna wydajność, suchy śnieg'];
 
 export class Toolbar {
   private readonly buttons = new Map<string, HTMLButtonElement>();
@@ -131,6 +142,11 @@ export class Legend {
     if (kind === 'ground') {
       const rows = GROUND_NAMES.map((n, i) => `<div class="legend-row"><span class="legend-swatch" style="background:${rgbToCss(GROUND_COLORS[i + 1])}"></span>${n}</div>`).join('');
       this.element.innerHTML = `<div class="legend-title">Podłoże terenu</div>${rows}<div class="legend-note">${this.fieldInfo}</div>`;
+      return;
+    }
+    if (kind === 'wetBulb') {
+      const rows = WET_BULB_NAMES.map((n, i) => `<div class="legend-row"><span class="legend-swatch" style="background:${rgbToCss(WET_BULB_COLORS[i + 1])}"></span>${n}</div>`).join('');
+      this.element.innerHTML = `<div class="legend-title">Naśnieżanie teraz (temperatura mokra)</div>${rows}<div class="legend-note">${this.fieldInfo}</div>`;
       return;
     }
     if (kind === 'liftWait') {

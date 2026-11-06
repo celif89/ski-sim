@@ -1,5 +1,6 @@
 /** Wątek główny: komunikacja z wątkiem obliczeń symulacji (Web Worker). */
 import { TerrainGrid } from '../sim';
+import type { SnowOps } from '../sim/snowOps';
 import type { CalendarDate, ContourLine } from '../sim';
 import { unpackContours } from './protocol';
 import type {
@@ -82,8 +83,8 @@ export class SimClient {
     return m;
   }
 
-  async initSnow(forest: Float32Array, shrub: Float32Array, snowJson: unknown, guestsJson?: unknown): Promise<void> {
-    const m = await this.send({ type: 'initSnow', forest, shrub, snowJson, guestsJson });
+  async initSnow(forest: Float32Array, shrub: Float32Array, snowJson: unknown, guestsJson?: unknown, snowmakingJson?: unknown): Promise<void> {
+    const m = await this.send({ type: 'initSnow', forest, shrub, snowJson, guestsJson, snowmakingJson });
     if (m.type !== 'snowReady') throw new Error('Nieoczekiwana odpowiedź wątku');
   }
 
@@ -97,6 +98,12 @@ export class SimClient {
   setTraffic(date: CalendarDate, passes: Float32Array): void {
     const request: WorkerRequest = { type: 'setTraffic', date, passes };
     this.worker.postMessage(request, [passes.buffer] as ArrayBuffer[]);
+  }
+
+  /** Naśnieżanie i ratrakowanie z dnia `date` (etap 7). */
+  setOperations(date: CalendarDate, ops: SnowOps): void {
+    const request: WorkerRequest = { type: 'setOperations', date, ops };
+    this.worker.postMessage(request);
   }
 
   /** Stan śniegu na koniec dnia. Starsze, niedokończone pytania zostają zastąpione nowszymi. */

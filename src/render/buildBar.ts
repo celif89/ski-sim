@@ -38,7 +38,7 @@ const ITEMS: BarItem[] = [
     title: 'Wycinka lasu',
     disabled: 'Wycinka jest liczona sama pod wyciągami i trasami (przecinki widać na mapie). Ręczna wycinka – później.',
   },
-  { id: 'snow', label: 'Naśnieżanie', title: 'Armatki i lance śnieżne', disabled: 'Naśnieżanie – etap 7.' },
+  { id: 'snow', label: 'Naśnieżanie', key: 'H', tool: 'pipeline', title: 'Rurociąg z hydrantami (H) od pompowni wzdłuż trasy, potem armatki na hydrantach (J). Ujęcie, zbiornik, pompownia, przyłącze, garaż ratraków i kotwy – narzędzie „Budynki”' },
   { id: 'buildings', label: 'Budynki', key: 'B', tool: 'base', title: 'Budynki: parking (tu przyjeżdżają goście), gastronomia, wypożyczalnia, szkółka – typ wybierz w panelu budowy, kliknij na mapie' },
   { id: 'layers', label: 'Nakładki', title: 'Nakładki danych: nachylenie, ekspozycja, słońce, temperatura, śnieg; mapa topograficzna; sieć tras' },
 ];
@@ -88,6 +88,7 @@ export class BuildBar {
     this.buttons.get('lift')!.classList.toggle('active', tool === 'lift');
     this.buttons.get('piste')!.classList.toggle('active', tool === 'pisteBrush' || tool === 'pisteAxis');
     this.buttons.get('buildings')!.classList.toggle('active', tool === 'base');
+    this.buttons.get('snow')!.classList.toggle('active', tool === 'pipeline' || tool === 'gun');
   }
 
   /** Krótka podpowiedź nad paskiem (znika po kilku sekundach). */

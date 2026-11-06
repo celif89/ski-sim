@@ -6,6 +6,7 @@
 import type { GameState } from './economy';
 import type { ResortLayout } from './resort';
 import { parseLayout } from './resort';
+import type { SnowOps } from './snowOps';
 
 export interface GameSave {
   kind: 'ski-sim-save';
@@ -16,6 +17,28 @@ export interface GameSave {
   layout: ResortLayout;
   /** Przejazdy dnia (RRRR-MM-DD → zakodowane komórki i wartości). */
   traffic: Record<string, string>;
+  /** Etap 7: naśnieżanie i ratrakowanie z kolejnych dni (zakodowane jak przejazdy). */
+  ops?: Record<string, { add: string | null; density: number; liquid: number; group: string | null; mode: string | null }>;
+}
+
+export function encodeOps(o: SnowOps): NonNullable<GameSave['ops']>[string] {
+  return {
+    add: o.addSweMm ? encodeTraffic(o.addSweMm) : null,
+    density: o.addDensityKgM3,
+    liquid: o.addLiquidFraction,
+    group: o.groomGroup ? encodeTraffic(Float32Array.from(o.groomGroup)) : null,
+    mode: o.groomMode ? encodeTraffic(Float32Array.from(o.groomMode)) : null,
+  };
+}
+
+export function decodeOps(e: NonNullable<GameSave['ops']>[string]): SnowOps {
+  return {
+    addSweMm: e.add ? decodeTraffic(e.add) : null,
+    addDensityKgM3: e.density,
+    addLiquidFraction: e.liquid,
+    groomGroup: e.group ? Int16Array.from(decodeTraffic(e.group)) : null,
+    groomMode: e.mode ? Uint8Array.from(decodeTraffic(e.mode)) : null,
+  };
 }
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -77,19 +100,23 @@ export function decodeTraffic(s: string): Float32Array {
   return out;
 }
 
-export function makeSave(state: GameState, layout: ResortLayout, traffic: Map<string, Float32Array>, mapName: string, savedAt: string): GameSave {
+export function makeSave(state: GameState, layout: ResortLayout, traffic: Map<string, Float32Array>, mapName: string, savedAt: string, ops: Map<string, SnowOps> | null = null): GameSave {
   const t: Record<string, string> = {};
   for (const [k, v] of traffic) t[k] = encodeTraffic(v);
-  return { kind: 'ski-sim-save', version: 1, savedAt, mapName, state: JSON.parse(JSON.stringify(state)) as GameState, layout: JSON.parse(JSON.stringify(layout)) as ResortLayout, traffic: t };
+  const o: NonNullable<GameSave['ops']> = {};
+  if (ops) for (const [k, v] of ops) o[k] = encodeOps(v);
+  return { kind: 'ski-sim-save', version: 1, savedAt, mapName, state: JSON.parse(JSON.stringify(state)) as GameState, layout: JSON.parse(JSON.stringify(layout)) as ResortLayout, traffic: t, ops: o };
 }
 
 /** Odczyt zapisu z kontrolą formatu. */
-export function parseSave(raw: unknown): { state: GameState; layout: ResortLayout; traffic: Map<string, Float32Array>; mapName: string } {
+export function parseSave(raw: unknown): { state: GameState; layout: ResortLayout; traffic: Map<string, Float32Array>; ops: Map<string, SnowOps>; mapName: string } {
   const r = raw as Partial<GameSave>;
   if (!r || r.kind !== 'ski-sim-save' || r.version !== 1 || !r.state || !r.layout) throw new Error('To nie jest plik zapisu gry (ski-sim-save, wersja 1).');
   const st = r.state;
   if (st.version !== 1 || (st.mode !== 'career' && st.mode !== 'sandbox') || typeof st.balancePln !== 'number' || !st.date) throw new Error('Plik zapisu gry: uszkodzony stan.');
   const traffic = new Map<string, Float32Array>();
   for (const [k, v] of Object.entries(r.traffic ?? {})) traffic.set(k, decodeTraffic(v));
-  return { state: JSON.parse(JSON.stringify(st)) as GameState, layout: parseLayout(r.layout), traffic, mapName: r.mapName ?? 'pilsko' };
+  const ops = new Map<string, SnowOps>();
+  for (const [k, v] of Object.entries(r.ops ?? {})) ops.set(k, decodeOps(v));
+  return { state: JSON.parse(JSON.stringify(st)) as GameState, layout: parseLayout(r.layout), traffic, ops, mapName: r.mapName ?? 'pilsko' };
 }

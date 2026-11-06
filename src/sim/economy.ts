@@ -23,6 +23,7 @@ import { Rng } from './rng';
 import type { RidingParams } from './snowRiding';
 import { minBaseCm, packedBaseCm, thinSeverity } from './snowRiding';
 import { addDays, formatIsoDate, parseIsoDate } from './time';
+import { pipelineCost } from './snowmaking';
 import type { CalendarDate } from './weather';
 import type { DayWeather, WeatherBook } from './weatherBook';
 
@@ -31,9 +32,13 @@ import type { DayWeather, WeatherBook } from './weatherBook';
 export type GameMode = 'career' | 'sandbox';
 
 export const REVENUE_KEYS = ['passes', 'parking', 'gastronomy', 'rental', 'school'] as const;
-export const COST_KEYS = ['energy', 'liftStaff', 'cashiers', 'patrol', 'seasonal', 'buildingsStaff', 'goods', 'grooming', 'permanent', 'insurance', 'maintenance', 'inspections', 'interest'] as const;
+export const COST_KEYS = [
+  'energy', 'liftStaff', 'cashiers', 'patrol', 'seasonal', 'buildingsStaff', 'goods',
+  'snowEnergy', 'water', 'groomFuel', 'groomStaff', 'groomService', 'leasing', 'repairs',
+  'permanent', 'insurance', 'maintenance', 'inspections', 'interest',
+] as const;
 /** Inwestycje i finansowanie (nie są kosztem dnia, ale zmieniają saldo). */
-export const CAPITAL_KEYS = ['construction', 'refunds', 'loanIn', 'loanPrincipal'] as const;
+export const CAPITAL_KEYS = ['construction', 'equipment', 'refunds', 'loanIn', 'loanPrincipal'] as const;
 export type RevenueKey = (typeof REVENUE_KEYS)[number];
 export type CostKey = (typeof COST_KEYS)[number];
 export type CapitalKey = (typeof CAPITAL_KEYS)[number];
@@ -52,13 +57,20 @@ export const FLOW_NAMES: Record<keyof Flows, string> = {
   seasonal: 'personel sezonowy',
   buildingsStaff: 'personel budynków',
   goods: 'towar i serwis (budynki)',
-  grooming: 'ratrakowanie (tymczasowe)',
+  snowEnergy: 'energia naśnieżania (pompy, armatki)',
+  water: 'opłata za pobór wody',
+  groomFuel: 'paliwo ratraków',
+  groomStaff: 'operatorzy ratraków (noc)',
+  groomService: 'serwis ratraków',
+  leasing: 'leasing ratraków',
+  repairs: 'naprawy ratraków',
   permanent: 'stała załoga',
   insurance: 'ubezpieczenie',
   maintenance: 'utrzymanie',
   inspections: 'przeglądy wyciągów',
   interest: 'odsetki',
   construction: 'budowa',
+  equipment: 'zakup ratraków',
   refunds: 'zwroty za anulowane budowy',
   loanIn: 'kredyt (wypłata)',
   loanPrincipal: 'spłata kapitału kredytu',
@@ -73,7 +85,7 @@ export function zeroFlows(): Flows {
 export const sumRevenue = (f: Flows) => REVENUE_KEYS.reduce((a, k) => a + f[k], 0);
 export const sumCosts = (f: Flows) => COST_KEYS.reduce((a, k) => a + f[k], 0);
 /** Zmiana salda z przepływów: przychody − koszty − budowa + zwroty + kredyt − spłata kapitału. */
-export const balanceChange = (f: Flows) => sumRevenue(f) - sumCosts(f) - f.construction + f.refunds + f.loanIn - f.loanPrincipal;
+export const balanceChange = (f: Flows) => sumRevenue(f) - sumCosts(f) - f.construction - f.equipment + f.refunds + f.loanIn - f.loanPrincipal;
 
 function addFlows(a: Flows, b: Flows): void {
   for (const k of Object.keys(a) as (keyof Flows)[]) a[k] += b[k];
@@ -93,6 +105,57 @@ export interface Construction {
   leftDays: number;
   totalDays: number;
   orderedOn: string;
+  /** Wykop tylko latem (rurociąg, zbiornik) – zimą budowa stoi. */
+  summerOnly?: boolean;
+}
+
+/** Ratrak we flocie (etap 7). */
+export interface Groomer {
+  id: string;
+  typeId: string;
+  leased: boolean;
+  boughtOn: string;
+  /** Wiek przy zakupie [lata] (używany sprzęt – później). */
+  ageAtPurchase: number;
+  /** Ile jeszcze nocy w naprawie. */
+  brokenNights: number;
+}
+
+/** Stan naśnieżania i ratraków w grze (etap 7). */
+export interface OpsState {
+  reservoirM3: number;
+  /** Plan naśnieżania tras: docelowa baza [cm], priorytet (1 najważniejszy), włączone. */
+  snowPlan: Record<string, { targetCm: number; priority: number; enabled: boolean }>;
+  /** Ręczne sterowanie armatek (brak – automat). */
+  gunModes: Record<string, 'auto' | 'on' | 'off'>;
+  groomers: Groomer[];
+  nextGroomerId: number;
+  /** Plan nocy: priorytet, włączone, ratrak (null – automat). */
+  groomPlan: Record<string, { priority: number; enabled: boolean; groomerId: string | null }>;
+  /** Trasy ratrakowane dziś w dzień (zamknięte dla gości). */
+  dayGroom: string[];
+  /** Ostatnia doba naśnieżania i noc ratraków – do paneli i mapy. */
+  last: OpsSummary | null;
+}
+
+export interface OpsSummary {
+  date: string;
+  hourly: { hour: number; powerKw: number; gunKw: number; pumpKw: number; otherKw: number; waterM3: number; running: number; reservoirM3: number }[];
+  gridLimitKw: number;
+  reservoirCapacityM3: number;
+  inflowM3: number;
+  snowM3: number;
+  waterM3: number;
+  energyKWh: number;
+  offPisteShare: number;
+  /** Armatki pracujące w każdej godzinie: id → [godzina, wydajność m³/h, wiatr skąd °, m/s]. */
+  gunHours: Record<string, [number, number, number, number][]>;
+  jobs: { groomerId: string; pisteId: string; startH: number; endH: number; complete: boolean; steepDone: boolean; mode: number }[];
+  unfinished: string[];
+  steepSkipped: string[];
+  finishH: number;
+  fuelL: number;
+  broken: string[];
 }
 
 export interface DayRecord {
@@ -113,6 +176,14 @@ export interface DayRecord {
   compGuests: number[];
   compOpen: boolean[];
   label: string;
+  /** Etap 7: śnieg z armatek [m³], woda [m³], energia naśnieżania [kWh], paliwo ratraków [l], trasy ratrakowane / niedokończone, dzień otwarty dzięki naśnieżaniu. */
+  snowM3?: number;
+  waterM3?: number;
+  snowKWh?: number;
+  fuelL?: number;
+  groomed?: number;
+  unfinished?: number;
+  techOpen?: boolean;
 }
 
 export interface SeasonReport {
@@ -147,6 +218,8 @@ export interface GameState {
   /** Reputacja: suma ważonych ocen i suma wag (bez oceny początkowej). */
   reputation: { sum: number; weight: number };
   construction: Record<string, Construction>;
+  /** Naśnieżanie i ratraki (etap 7; w starszych zapisach brak – uzupełnia ensureOps). */
+  ops?: OpsState;
   /** Zapłacony koszt i „podpis” geometrii obiektu (wykrywanie przebudowy). */
   paid: Record<string, { costPln: number; signature: string }>;
   negativeDays: number;
@@ -187,6 +260,7 @@ export function newGameState(o: { mode: GameMode; seed: number; date: CalendarDa
     history: [],
     log: [],
     lastDay: null,
+    ops: { reservoirM3: 0, snowPlan: {}, gunModes: {}, groomers: [], nextGroomerId: 1, groomPlan: {}, dayGroom: [], last: null },
   };
 }
 
@@ -208,7 +282,8 @@ function log(state: GameState, text: string): void {
 
 export interface ObjectCost {
   id: string;
-  kind: 'lift' | 'piste' | 'building';
+  kind: 'lift' | 'piste' | 'building' | 'pipeline' | 'gun';
+  summerOnly?: boolean;
   name: string;
   costPln: number;
   buildDays: number;
@@ -232,9 +307,27 @@ export function objectCosts(layout: ResortLayout, analysis: ResortAnalysis, ep: 
   }
   for (const b of [...layout.bases, ...(layout.buildings ?? [])]) {
     const t = buildingTypeById(ep, b.typeId);
-    out.push({ id: b.id, kind: 'building', name: b.name, costPln: t?.costPln ?? 0, buildDays: Math.max(1, Math.round(t?.buildDays ?? 1)), signature: sig(b) });
+    const infra = ep.snowmaking?.buildings.find((x) => x.id === b.typeId) ?? null;
+    out.push({ id: b.id, kind: 'building', name: b.name, costPln: t?.costPln ?? infra?.costPln ?? 0, buildDays: Math.max(1, Math.round(t?.buildDays ?? infra?.buildDays ?? 1)), signature: sig(b), ...(infra?.summerOnly ? { summerOnly: true } : {}) });
+  }
+  const sp = ep.snowmaking;
+  if (sp) {
+    for (const pipe of layout.pipelines ?? []) {
+      const c = pipelineCost(pipe, sp);
+      out.push({ id: pipe.id, kind: 'pipeline', name: pipe.name, costPln: c.costPln, buildDays: c.buildDays, signature: sig(pipe), summerOnly: true });
+    }
+    for (const g of layout.snowGuns ?? []) {
+      const t = sp.guns.find((x) => x.id === g.typeId);
+      out.push({ id: g.id, kind: 'gun', name: t?.name ?? g.typeId, costPln: t?.costPln ?? 0, buildDays: 1, signature: sig({ typeId: g.typeId }) });
+    }
   }
   return out;
+}
+
+/** Stan naśnieżania (domyślny dla nowej gry i starszych zapisów). */
+export function ensureOps(state: GameState): OpsState {
+  if (!state.ops) state.ops = { reservoirM3: 0, snowPlan: {}, gunModes: {}, groomers: [], nextGroomerId: 1, groomPlan: {}, dayGroom: [], last: null };
+  return state.ops;
 }
 
 const WINTER_MONTHS = (d: CalendarDate, ep: EconomyParams) => yearPhase(d, ep) === 'winter';
@@ -270,7 +363,7 @@ function reconcileInternal(state: GameState, objects: ObjectCost[], ep: EconomyP
       charge += cost;
       if (!dry) {
         state.paid[o.id] = { costPln: o.costPln, signature: o.signature };
-        if (!sandbox) state.construction[o.id] = { leftDays: o.buildDays, totalDays: o.buildDays, orderedOn: today };
+        if (!sandbox) state.construction[o.id] = { leftDays: o.buildDays, totalDays: o.buildDays, orderedOn: today, ...(o.summerOnly ? { summerOnly: true } : {}) };
         if (!sandbox) messages.push(`Zamówiono budowę: ${o.name} (${fmtPln(cost)}, ok. ${o.buildDays} dni${winter ? ', zimą drożej i wolniej' : ''})`);
       }
     } else if (prev.signature !== o.signature) {
@@ -282,7 +375,7 @@ function reconcileInternal(state: GameState, objects: ObjectCost[], ep: EconomyP
         state.paid[o.id] = { costPln: Math.max(prev.costPln, o.costPln), signature: o.signature };
         if (!sandbox && !building) {
           const days = Math.max(1, Math.round(o.buildDays * c.rebuildDaysShare));
-          state.construction[o.id] = { leftDays: days, totalDays: days, orderedOn: today };
+          state.construction[o.id] = { leftDays: days, totalDays: days, orderedOn: today, ...(o.summerOnly ? { summerOnly: true } : {}) };
           messages.push(`Przebudowa: ${o.name} (${fmtPln(cost)}, ok. ${days} dni)`);
         }
       }
@@ -313,9 +406,18 @@ export function markAllBuilt(state: GameState, objects: ObjectCost[]): void {
 }
 
 /** Układ bez obiektów w budowie (do gości i sieci). */
-export function operationalLayout(layout: ResortLayout, state: GameState): ResortLayout {
+export function operationalLayout(layout: ResortLayout, state: GameState, blocked: Set<string> | null = null): ResortLayout {
   const ok = (id: string) => !state.construction[id];
-  return { ...layout, lifts: layout.lifts.filter((l) => ok(l.id)), pistes: layout.pistes.filter((p) => ok(p.id)), bases: layout.bases.filter((b) => ok(b.id)), buildings: (layout.buildings ?? []).filter((b) => ok(b.id)) };
+  return {
+    ...layout,
+    lifts: layout.lifts.filter((l) => ok(l.id)),
+    // Trasy z pryzmami albo ratrakowane w dzień – zamknięte dla gości.
+    pistes: layout.pistes.filter((p) => ok(p.id)).map((p) => (blocked?.has(p.id) ? { ...p, closed: true } : p)),
+    bases: layout.bases.filter((b) => ok(b.id)),
+    buildings: (layout.buildings ?? []).filter((b) => ok(b.id)),
+    pipelines: (layout.pipelines ?? []).filter((p) => ok(p.id)),
+    snowGuns: (layout.snowGuns ?? []).filter((g) => ok(g.id) && ok(g.pipelineId)),
+  };
 }
 
 // ------------------------------------------------------------------ fakty o ośrodku
@@ -369,7 +471,7 @@ export interface ResortFacts {
 }
 
 /** Fakty dla ekonomii z układu, jego analizy, sieci gości (układ bez budów) i stanu budów. */
-export function resortFacts(layout: ResortLayout, analysis: ResortAnalysis, net: GuestNet | null, state: GameState, lp: LiftParams, ep: EconomyParams): ResortFacts {
+export function resortFacts(layout: ResortLayout, analysis: ResortAnalysis, net: GuestNet | null, state: GameState, lp: LiftParams, ep: EconomyParams, blocked: Set<string> | null = null): ResortFacts {
   const lifts: LiftFact[] = layout.lifts.map((l) => {
     const t = liftTypeById(lp, l.typeId);
     const a = analysis.lifts.get(l.id);
@@ -401,7 +503,7 @@ export function resortFacts(layout: ResortLayout, analysis: ResortAnalysis, net:
   const pistes: PisteFact[] = layout.pistes.map((p) => {
     const a = analysis.pistes.get(p.id);
     const built = !state.construction[p.id];
-    return { id: p.id, name: p.name, classIndex: a?.classIndex ?? 0, lengthM: a?.lengthM ?? 0, areaM2: a?.areaM2 ?? 0, built, open: built && !p.closed && anyLift };
+    return { id: p.id, name: p.name, classIndex: a?.classIndex ?? 0, lengthM: a?.lengthM ?? 0, areaM2: a?.areaM2 ?? 0, built, open: built && !p.closed && anyLift && !blocked?.has(p.id) };
   });
   const buildings: BuildingFact[] = [];
   for (const b of [...layout.bases, ...(layout.buildings ?? [])]) {
@@ -438,13 +540,15 @@ export interface ResortSnow {
   /** Udział długości otwartych tras ze zbyt cienką bazą (skala ≥ 0,3). */
   thinShare: number;
   meanBaseCm: number;
+  /** Etap 7: to samo na samym śniegu naturalnym (bez technicznego). */
+  thinShareNatural?: number;
 }
 
 /** Śnieg na otwartych trasach z mapy śniegu (stan i zapas wody) i podłoża. */
 export function resortSnow(
   analysis: ResortAnalysis,
   facts: ResortFacts,
-  snow: { quality: Uint8Array; sweMm: Float32Array } | null,
+  snow: { quality: Uint8Array; sweMm: Float32Array; techMm?: Float32Array } | null,
   cellAt: (xM: number, yM: number) => number,
   riding: RidingParams,
   gp: GuestParams,
@@ -453,6 +557,7 @@ export function resortSnow(
   let len = 0;
   let scoreSum = 0;
   let thinLen = 0;
+  let thinNatLen = 0;
   let baseSum = 0;
   const ground = analysis.ground;
   for (const pf of facts.pistes) {
@@ -474,12 +579,14 @@ export function resortSnow(
       const qs = gp.satisfaction.snowScoreByQuality[q] ?? 0;
       scoreSum += w * (qs * (1 - sev) + gp.thinBase.snowScore * sev);
       if (sev >= 0.3) thinLen += w;
+      const tech = snow.techMm ? Math.min(swe, snow.techMm[k]) : 0;
+      if (thinSeverity(packedBaseCm(swe - tech, riding), minBaseCm(g === GROUND_FOREST ? 4 : g, riding)) >= 0.3) thinNatLen += w;
       baseSum += w * base;
       len += w;
     }
   }
   if (len <= 0) return { score: 0, thinShare: 1, meanBaseCm: 0 };
-  return { score: scoreSum / len, thinShare: thinLen / len, meanBaseCm: baseSum / len };
+  return { score: scoreSum / len, thinShare: thinLen / len, meanBaseCm: baseSum / len, thinShareNatural: thinNatLen / len };
 }
 
 // ------------------------------------------------------------------ popyt
@@ -753,9 +860,29 @@ export interface CloseDayResult {
 }
 
 /** Koszty i przychody dnia, raty, przeglądy, budowy, reputacja; przejście do następnego dnia. */
-export function closeDay(state: GameState, ctx: DayContext, plan: DayPlan, outcome: DayOutcome, ep: EconomyParams, names: { ids: string[]; names: string[] } | null = null): CloseDayResult {
+export interface DayExtra {
+  /** Koszty naśnieżania i ratraków tej doby (dodawane do kosztów dnia). */
+  flows: Partial<Flows>;
+  snowM3: number;
+  waterM3: number;
+  snowKWh: number;
+  fuelL: number;
+  groomed: number;
+  unfinished: number;
+}
+
+export function closeDay(
+  state: GameState,
+  ctx: DayContext,
+  plan: DayPlan,
+  outcome: DayOutcome,
+  ep: EconomyParams,
+  names: { ids: string[]; names: string[] } | null = null,
+  extra: DayExtra | null = null,
+): CloseDayResult {
   const c = ep.costs;
   const flows = zeroFlows();
+  if (extra) for (const [k, v] of Object.entries(extra.flows)) flows[k as keyof Flows] += v ?? 0;
   const facts = ctx.facts;
   const date = ctx.date;
   const wage = c.hourlyWagePln * c.employerCostFactor;
@@ -776,8 +903,6 @@ export function closeDay(state: GameState, ctx: DayContext, plan: DayPlan, outco
     flows.cashiers += Math.max(1, Math.ceil(g / c.guestsPerCashier)) * staffH * wage;
     flows.patrol += Math.max(c.patrolMin, Math.ceil(facts.kmOpen * c.patrolPerKm)) * staffH * c.patrolHourlyPln * c.employerCostFactor;
     flows.seasonal += Math.max(c.seasonalMin, Math.ceil((g / 1000) * c.seasonalPer1000Guests)) * staffH * wage;
-    // TYMCZASOWE (etap 7 – ratraki): ratrakowanie co noc wszystkich otwartych tras.
-    flows.grooming += facts.pistes.filter((p) => p.open).reduce((a, p) => a + p.areaM2 / 10_000, 0) * c.groomingPlnPerHa;
     // Przychody: karnety, parking, budynki.
     passes = sellPasses(outcome, state.prices, facts.pointsPerRide, ep);
     flows.passes += passes.revenuePln;
@@ -831,8 +956,9 @@ export function closeDay(state: GameState, ctx: DayContext, plan: DayPlan, outco
   // Budowy: postęp (zimą wolniej).
   const finished: string[] = [];
   const progress = WINTER_MONTHS(date, ep) ? c.winterBuildProgressFactor : 1;
+  const trench = ep.snowmaking ? date.month >= ep.snowmaking.pipe.trenchFromMonth && date.month <= ep.snowmaking.pipe.trenchToMonth : true;
   for (const [id, b] of Object.entries(state.construction)) {
-    b.leftDays -= progress;
+    b.leftDays -= b.summerOnly && !trench ? 0 : progress;
     if (b.leftDays <= 0) {
       delete state.construction[id];
       finished.push(id);
@@ -848,7 +974,7 @@ export function closeDay(state: GameState, ctx: DayContext, plan: DayPlan, outco
   const dayFlows = zeroFlows();
   addFlows(dayFlows, flows);
   addFlows(dayFlows, state.pending);
-  state.balancePln += sumRevenue(flows) - sumCosts(flows) - flows.loanPrincipal;
+  state.balancePln += sumRevenue(flows) - sumCosts(flows) - flows.loanPrincipal - flows.equipment;
   state.pending = zeroFlows();
   addFlows(state.year.flows, dayFlows);
   if (state.mode === 'career') {
@@ -868,7 +994,7 @@ export function closeDay(state: GameState, ctx: DayContext, plan: DayPlan, outco
     rating: working && outcome.ratingCount > 0 ? outcome.ratingSum / outcome.ratingCount : null,
     revenuePln: sumRevenue(dayFlows),
     costPln: sumCosts(dayFlows),
-    capitalPln: dayFlows.construction - dayFlows.refunds - dayFlows.loanIn + dayFlows.loanPrincipal,
+    capitalPln: dayFlows.construction + dayFlows.equipment - dayFlows.refunds - dayFlows.loanIn + dayFlows.loanPrincipal,
     balancePln: state.balancePln,
     src: working ? (outcome.source === 'agents' ? 'a' : 'q') : '-',
     snowScore: ctx.snow.score,
@@ -876,6 +1002,14 @@ export function closeDay(state: GameState, ctx: DayContext, plan: DayPlan, outco
     compGuests: plan.compGuests.map((x) => Math.round(x)),
     compOpen: ctx.competitors.map((x) => x.open),
     label: plan.info.label,
+    snowM3: extra?.snowM3 ?? 0,
+    waterM3: extra?.waterM3 ?? 0,
+    snowKWh: extra?.snowKWh ?? 0,
+    fuelL: extra?.fuelL ?? 0,
+    groomed: extra?.groomed ?? 0,
+    unfinished: extra?.unfinished ?? 0,
+    // Dzień otwarty dzięki naśnieżaniu: na samym śniegu naturalnym trasy byłyby za cienkie.
+    techOpen: working && ctx.snow.thinShare < 0.5 && (ctx.snow.thinShareNatural ?? ctx.snow.thinShare) >= 0.5,
   };
   state.year.days.push(record);
   state.lastDay = { ...record, flows: dayFlows };

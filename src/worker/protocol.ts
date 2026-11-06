@@ -1,4 +1,5 @@
 /** Wiadomości wymieniane między widokiem (wątek główny) a wątkami obliczeń (Web Worker). */
+import type { SnowOps } from '../sim/snowOps';
 import type {
   CalendarDate,
   ContourLine,
@@ -63,6 +64,15 @@ export interface InitSnowRequest {
   snowJson: unknown;
   /** data/guests.json – wpływ narciarzy na śnieg (etap 5). */
   guestsJson?: unknown;
+  /** data/snowmaking.json – śnieg techniczny i ratrakowanie (etap 7). */
+  snowmakingJson?: unknown;
+}
+
+/** Naśnieżanie i ratrakowanie z dnia `date` (etap 7) – dokładane na koniec dnia jak przejazdy. */
+export interface SetOperationsRequest {
+  type: 'setOperations';
+  date: CalendarDate;
+  ops: SnowOps;
 }
 
 /** Przejazdy gości w danym dniu (koniec dnia) – model śniegu dolicza ubijanie, zsuwanie i muldy. */
@@ -151,6 +161,9 @@ export interface SnowStateMessage {
   densityKgM3: Float32Array;
   quality: Uint8Array;
   moguls: Uint8Array;
+  pileMm: Float32Array;
+  techMm: Float32Array;
+  liquidMm: Float32Array;
 }
 
 export interface WorkerErrorMessage {
@@ -168,6 +181,7 @@ export type WorkerRequest =
   | InitSnowRequest
   | SetLandCoverRequest
   | SetTrafficRequest
+  | SetOperationsRequest
   | SnowStateRequest;
 export type WorkerResponse =
   | TerrainReadyMessage

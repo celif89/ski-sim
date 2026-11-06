@@ -6,8 +6,8 @@
 import type { ClimateProfile } from './climate';
 import { seasonWeather } from './environment';
 import type { GuestConditions } from './guests';
-import { daysBetween } from './time';
-import type { CalendarDate, DailyWeather, ForecastDay, Location, WeatherParams } from './weather';
+import { addDays, daysBetween } from './time';
+import type { CalendarDate, DailyWeather, ForecastDay, HourlyWeather, Location, WeatherParams } from './weather';
 import { dailyAtElevation, hourlyAt, makeForecast } from './weather';
 
 export interface DayWeather {
@@ -80,6 +80,26 @@ export class WeatherBook {
       tMeanTopC: top.tMeanC,
       windTopMs: top.windMs,
     };
+  }
+
+  /** Pogoda w godzinie `hour` (0–24, może wyjść poza dobę: 25 = 1:00 następnego dnia) na wysokości z. */
+  hourAt(date: CalendarDate, hour: number, elevationM: number): HourlyWeather {
+    let d = date;
+    let h = hour;
+    while (h >= 24) {
+      h -= 24;
+      d = addDays(d, 1);
+    }
+    const { series, index } = this.locate(d);
+    const i = Math.max(1, Math.min(series.length - 2, index));
+    return hourlyAt(series[i - 1], series[i], series[i + 1], h, elevationM, this.profile, this.weatherParams, this.location);
+  }
+
+  /** Suma opadu z `days` dni przed datą (na wysokości odniesienia) [mm] – do oceny suchej jesieni. */
+  precipitationBefore(date: CalendarDate, days: number): number {
+    let sum = 0;
+    for (let k = 1; k <= days; k++) sum += this.daily(addDays(date, -k)).precipitationMm;
+    return sum;
   }
 
   /** Prognoza na `date` wydana dzień wcześniej (wyprzedzenie 1 dzień); temperatura na górze ośrodka. */

@@ -8,7 +8,7 @@ import type { PisteParams } from '../sim/pistes';
 import type { RealPisteComparison, ResortAnalysis, ResortLayout } from '../sim/resort';
 import type { ThinSegment } from '../sim/snowRiding';
 
-export type BuildTool = 'select' | 'lift' | 'pisteBrush' | 'pisteAxis' | 'base';
+export type BuildTool = 'select' | 'lift' | 'pisteBrush' | 'pisteAxis' | 'base' | 'pipeline' | 'gun';
 
 export interface BuildPanelHandlers {
   onTool(tool: BuildTool): void;
@@ -22,11 +22,13 @@ export interface BuildPanelHandlers {
   onClearAll(): void;
   onToggleNetwork(): void;
   onToggleReality(): void;
-  onSelect(kind: 'lift' | 'piste' | 'base', id: string): void;
+  onSelect(kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun', id: string): void;
   /** Nowe trasy z wyrównaniem terenu (koszt, łąka wyrównana – mniej śniegu potrzeba). */
   onGradeNew(on: boolean): void;
   /** Etap 6: typ budynku do postawienia. */
   onBuildingType(id: string): void;
+  /** Etap 7: typ stawianej armatki. */
+  onGunType(id: string): void;
 }
 
 export interface BuildPanelState {
@@ -40,7 +42,7 @@ export interface BuildPanelState {
   showReality: boolean;
   layout: ResortLayout;
   analysis: ResortAnalysis;
-  selection: { kind: 'lift' | 'piste' | 'base'; id: string } | null;
+  selection: { kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun'; id: string } | null;
   real: RealPisteComparison[] | null;
   message: string;
   gradeNew: boolean;
@@ -49,6 +51,7 @@ export interface BuildPanelState {
   buildingTypeId: string;
   /** Budowy w toku: postęp 0–1. */
   construction: Map<string, number>;
+  gunTypeId: string;
 }
 
 const fmt0 = (x: number) => Math.round(x).toLocaleString('pl-PL');
@@ -59,6 +62,8 @@ const TOOLS: { tool: BuildTool; key: string; label: string; title: string }[] = 
   { tool: 'lift', key: 'L', label: 'Wyciąg', title: 'Kliknij dolną stację, potem górną. Esc – anuluj' },
   { tool: 'pisteBrush', key: 'T', label: 'Trasa – pędzel', title: 'Przeciągnij myszą od góry do dołu (przesuwanie mapy: prawy przycisk albo klawisze). [ ] – szerokość' },
   { tool: 'pisteAxis', key: 'O', label: 'Trasa – oś', title: 'Klikaj kolejne punkty osi trasy; podwójne kliknięcie lub Enter – koniec, Backspace – cofnij punkt, Esc – anuluj' },
+  { tool: 'pipeline', key: 'H', label: 'Rurociąg', title: 'Rurociąg naśnieżania z hydrantami: klikaj punkty od pompowni wzdłuż trasy, Enter – koniec. Wykop tylko latem' },
+  { tool: 'gun', key: 'J', label: 'Armatka', title: 'Armatka lub lanca na hydrancie: kliknij kropkę na rurociągu' },
   { tool: 'base', key: 'B', label: 'Budynek', title: 'Parking (baza – tu przyjeżdżają goście), gastronomia, wypożyczalnia, szkółka – wybierz typ i kliknij na mapie' },
 ];
 
@@ -77,9 +82,17 @@ export class BuildPanel {
   private readonly msg: HTMLElement;
   private readonly grade: HTMLInputElement;
   private readonly buildingSelect: HTMLSelectElement | null;
+  private readonly gunSelect: HTMLSelectElement | null;
   private collapsed = false;
 
-  constructor(parent: HTMLElement, liftParams: LiftParams, private readonly pisteParams: PisteParams, h: BuildPanelHandlers, buildingTypes: { id: string; name: string; costPln: number }[] | null = null) {
+  constructor(
+    parent: HTMLElement,
+    liftParams: LiftParams,
+    private readonly pisteParams: PisteParams,
+    h: BuildPanelHandlers,
+    buildingTypes: { id: string; name: string; costPln: number }[] | null = null,
+    gunTypes: { id: string; name: string; costPln: number }[] | null = null,
+  ) {
     this.root = document.createElement('div');
     this.root.className = 'build-panel';
     this.root.innerHTML = `
@@ -89,6 +102,7 @@ export class BuildPanel {
         <div class="build-row"><label>Typ wyciągu <select class="build-type"></select></label></div>
         <div class="build-row"><label>Szerokość trasy <input type="range" class="build-width"> <span class="build-width-label"></span></label></div>
         ${buildingTypes ? '<div class="build-row"><label>Budynek <select class="build-building"></select></label></div>' : ''}
+        ${gunTypes ? '<div class="build-row"><label>Armatka <select class="build-gun"></select></label></div>' : ''}
         <div class="build-row"><label title="Usunięcie kamieni i pniaków, niwelacja – kosztuje, ale na łące wyrównanej wystarczy mniej śniegu"><input type="checkbox" class="build-grade"> wyrównaj teren pod nowymi trasami</label></div>
         <div class="build-row build-buttons">
           <button type="button" class="b-undo" title="Cofnij (Ctrl+Z)">↶ Cofnij</button>
@@ -163,6 +177,16 @@ export class BuildPanel {
       this.buildingSelect.appendChild(plain);
       this.buildingSelect.addEventListener('change', () => h.onBuildingType(this.buildingSelect!.value));
     }
+    this.gunSelect = this.root.querySelector('.build-gun');
+    if (this.gunSelect && gunTypes) {
+      for (const t of gunTypes) {
+        const o = document.createElement('option');
+        o.value = t.id;
+        o.textContent = `${t.name} – ${money(t.costPln)}`;
+        this.gunSelect.appendChild(o);
+      }
+      this.gunSelect.addEventListener('change', () => h.onGunType(this.gunSelect!.value));
+    }
     this.grade = this.root.querySelector('.build-grade')!;
     this.grade.addEventListener('change', () => h.onGradeNew(this.grade.checked));
     this.msg = this.root.querySelector('.build-message')!;
@@ -189,6 +213,7 @@ export class BuildPanel {
     this.realBtn.classList.toggle('active', s.showReality);
     this.grade.checked = s.gradeNew;
     if (this.buildingSelect) this.buildingSelect.value = s.buildingTypeId;
+    if (this.gunSelect) this.gunSelect.value = s.gunTypeId;
     const building = (id: string) => {
       const p = s.construction.get(id);
       return p === undefined ? '' : ` <span class="g-warn" title="plac budowy">🚧 ${fmt0(p * 100)} %</span>`;
@@ -216,6 +241,14 @@ export class BuildPanel {
     const bases = [...s.layout.bases, ...(s.layout.buildings ?? [])]
       .map((b) => `<tr data-kind="base" data-id="${b.id}" class="${sel('base', b.id)}"><td><b>${b.typeId === 'parking' || !b.typeId ? 'P' : b.typeId === 'gastronomy' ? 'G' : b.typeId === 'rental' ? 'W' : 'S'}</b></td><td colspan="5">${b.name}${building(b.id)}</td></tr>`)
       .join('');
+    const pipes = (s.layout.pipelines ?? [])
+      .map((pp) => {
+        let L = 0;
+        for (let i = 1; i < pp.points.length; i++) L += Math.hypot(pp.points[i].xM - pp.points[i - 1].xM, pp.points[i].yM - pp.points[i - 1].yM);
+        const guns = (s.layout.snowGuns ?? []).filter((g) => g.pipelineId === pp.id).length;
+        return `<tr data-kind="pipeline" data-id="${pp.id}" class="${sel('pipeline', pp.id)}"><td><b>${pp.name}</b>${building(pp.id)}</td><td colspan="5">${fmt0(L)} m · armatek: ${guns}</td></tr>`;
+      })
+      .join('');
     const issues = s.analysis.network.issues.map((i) => `<li class="warning">⚠ ${i.message}</li>`).join('');
     const empty = !lifts && !pistes && !bases;
     let real = '';
@@ -236,6 +269,7 @@ export class BuildPanel {
       ${lifts ? `<div class="build-section">Wyciągi</div><table class="build-list"><tbody>${lifts}</tbody></table>` : ''}
       ${pistes ? `<div class="build-section">Trasy</div><table class="build-list"><tbody>${pistes}</tbody></table>` : ''}
       ${bases ? `<div class="build-section">Budynki</div><table class="build-list"><tbody>${bases}</tbody></table>` : ''}
+      ${pipes ? `<div class="build-section">Naśnieżanie – rurociągi</div><table class="build-list"><tbody>${pipes}</tbody></table>` : ''}
       ${!empty ? `<div class="build-total">Razem: ${money(s.analysis.totals.costPln)} · ${fmt0(s.analysis.totals.buildDays)} dni pracy · wycinka ${(s.analysis.totals.clearedForestM2 / 10_000).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} ha lasu</div>` : ''}
       ${issues ? `<div class="build-section">Sieć – ostrzeżenia</div><ul class="build-issues">${issues}</ul>` : !empty ? '<div class="build-ok">✓ sieć: wszystkie trasy i wyciągi połączone</div>' : ''}
       ${real}`;

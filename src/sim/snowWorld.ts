@@ -12,6 +12,9 @@ import { SnowSeason, createSnowDomain, solarCacheBuilder } from './snowSeason';
 import type { SnowImpactParams } from './guestParams';
 import { applySkierTraffic, decayMoguls, downhillNeighbors } from './skierTraffic';
 import { addDays, daysBetween, formatIsoDate } from './time';
+import type { SnowOps } from './snowOps';
+import { applySnowOps, clampTechnical } from './snowOps';
+import type { SnowmakingParams } from './snowmakingParams';
 import type { CalendarDate } from './weather';
 
 /** Co ile dni zapamiętywać stan (do cofania się w czasie). */
@@ -32,6 +35,10 @@ export interface SnowSnapshot {
   quality: Uint8Array;
   /** Muldy od narciarzy 0–255 (0–1). */
   moguls: Uint8Array;
+  /** Etap 7: śnieg w pryzmach i śnieg techniczny w pokrywie, woda ciekła [mm]. */
+  pileMm: Float32Array;
+  techMm: Float32Array;
+  liquidMm: Float32Array;
 }
 
 interface SeasonRun {
@@ -48,6 +55,10 @@ export class SnowWorld {
   private current: SeasonRun | null = null;
   /** Przejazdy gości w poszczególnych dniach (klucz – data RRRR-MM-DD); doliczane po kroku dnia. */
   private readonly traffic = new Map<string, Float32Array>();
+  /** Etap 7: naśnieżanie i ratrakowanie z poszczególnych dni (klucz – data); doliczane po przejazdach. */
+  private readonly ops = new Map<string, SnowOps>();
+  /** Parametry naśnieżania – bez nich operacje są pomijane. */
+  snowmaking: SnowmakingParams | null = null;
   private down: Int32Array | null = null;
 
   constructor(
@@ -74,10 +85,15 @@ export class SnowWorld {
       }
     }
     cur.run.stepDay();
-    if (!this.impact) return;
-    decayMoguls(cur.run.state, mogulCells, before, this.impact);
-    const passes = this.traffic.get(formatIsoDate(cur.run.dateOfLastDay()));
-    if (passes) this.applyTraffic(cur.run.state, passes);
+    const key = formatIsoDate(cur.run.dateOfLastDay());
+    if (this.impact) {
+      decayMoguls(cur.run.state, mogulCells, before, this.impact);
+      const passes = this.traffic.get(key);
+      if (passes) this.applyTraffic(cur.run.state, passes);
+    }
+    const ops = this.ops.get(key);
+    if (ops && this.snowmaking) applySnowOps(cur.run.state, ops, this.sp, this.snowmaking);
+    clampTechnical(cur.run.state);
   }
 
   private applyTraffic(state: SnowState, passes: Float32Array): void {
@@ -99,14 +115,34 @@ export class SnowWorld {
    */
   setTraffic(date: CalendarDate, passes: Float32Array): void {
     const key = formatIsoDate(date);
-    const had = this.traffic.has(key);
+    const had = this.traffic.has(key) || this.ops.has(key);
     this.traffic.set(key, passes);
+    this.dayInputChanged(date, had, (st) => this.applyTraffic(st, passes));
+  }
+
+  /** Operacje dnia (naśnieżanie, ratrakowanie) – jak przejazdy: na koniec dnia, z cofnięciem w razie potrzeby. */
+  setOperations(date: CalendarDate, ops: SnowOps): void {
+    const key = formatIsoDate(date);
+    const had = this.ops.has(key);
+    this.ops.set(key, ops);
+    this.dayInputChanged(date, had, (st) => {
+      if (this.snowmaking) applySnowOps(st, ops, this.sp, this.snowmaking);
+      clampTechnical(st);
+    });
+  }
+
+  /** Zapamiętane operacje (do zapisu gry). */
+  operationDays(): Map<string, SnowOps> {
+    return this.ops;
+  }
+
+  private dayInputChanged(date: CalendarDate, had: boolean, applyNow: (s: SnowState) => void): void {
     const cur = this.current;
     if (!cur) return;
     const idx = daysBetween(addSeasonStart(cur, this.env), date);
     if (idx < 0 || idx >= cur.run.dayIndex) return; // jeszcze nie policzony – doliczy się w swoim kroku
     if (!had && idx === cur.run.dayIndex - 1) {
-      this.applyTraffic(cur.run.state, passes);
+      applyNow(cur.run.state);
       if (cur.snapshots.has(cur.run.dayIndex)) cur.snapshots.set(cur.run.dayIndex, { state: cur.run.state.clone(), balance: { ...cur.run.balance } });
       this.version++;
       return;
@@ -208,6 +244,9 @@ export class SnowWorld {
     const densityKgM3 = new Float32Array(n);
     const quality = new Uint8Array(n);
     const moguls = new Uint8Array(n);
+    const pileMm = new Float32Array(n);
+    const techMm = new Float32Array(n);
+    const liquidMm = new Float32Array(n);
     if (cur) {
       const s = cur.run.state;
       for (let k = 0; k < n; k++) {
@@ -220,11 +259,14 @@ export class SnowWorld {
         densityKgM3[k] = s.bulkDensity(k);
         quality[k] = SNOW_QUALITY_CODES.indexOf(classifySnow(s, k, this.sp));
         moguls[k] = Math.round(Math.min(1, s.moguls[k]) * 255);
+        pileMm[k] = s.pileMm[k];
+        techMm[k] = s.techMm[k];
+        liquidMm[k] = s.topLiquid[k] + s.botLiquid[k];
       }
     }
     // Data stanu = ostatni policzony dzień (koniec dnia).
     const date = cur ? cur.run.dateOfLastDay() : { year: 0, month: 1, day: 1 };
-    return { date, depthCm, sweMm, densityKgM3, quality, moguls };
+    return { date, depthCm, sweMm, densityKgM3, quality, moguls, pileMm, techMm, liquidMm };
   }
 }
 

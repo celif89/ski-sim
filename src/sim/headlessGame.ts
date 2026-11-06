@@ -32,6 +32,9 @@ import type { CalendarDate, Location, WeatherParams } from './weather';
 import { WeatherBook } from './weatherBook';
 import type { GameSave } from './gameSave';
 import { makeSave } from './gameSave';
+import type { DayOpsResult } from './operations';
+import { blockedPistes, runDayOperations } from './operations';
+import type { SnowOps } from './snowOps';
 
 export interface HeadlessGameOptions {
   grid: TerrainGrid;
@@ -76,8 +79,9 @@ export class HeadlessGame {
   /** Wynik ostatniego dnia (do raportów). */
   last: CloseDayResult | null = null;
   lastOutcome: DayOutcome | null = null;
+  lastOps: DayOpsResult | null = null;
 
-  constructor(readonly o: HeadlessGameOptions, init?: { state: GameState; layout: ResortLayout; traffic?: Map<string, Float32Array> }) {
+  constructor(readonly o: HeadlessGameOptions, init?: { state: GameState; layout: ResortLayout; traffic?: Map<string, Float32Array>; ops?: Map<string, SnowOps> }) {
     const g = o.grid;
     const { minM, maxM } = g.elevationRangeM();
     this.env = new Environment(g, o.horizon, o.profile, o.weatherParams, o.radiationParams, o.seed, o.location);
@@ -85,7 +89,9 @@ export class HeadlessGame {
     this.snow = new SnowWorld(this.env, o.forest, o.shrub, o.snowParams, o.guestParams.snowImpact);
     this.state = init?.state ?? newGameState({ mode: o.mode, seed: o.seed, date: o.startDate, ep: o.economy });
     this.layout = init?.layout ?? { version: 1, lifts: [], pistes: [], bases: [], nextId: 1 };
+    if (o.economy.snowmaking) this.snow.snowmaking = o.economy.snowmaking;
     if (init?.traffic) for (const [k, v] of init.traffic) this.snow.setTraffic(parseIso(k), v);
+    if (init?.ops) for (const [k, v] of init.ops) this.snow.setOperations(parseIso(k), v);
     this.analysis = this.analyze();
     this.facts = this.refreshFacts();
     this.updateLandCover();
@@ -96,9 +102,12 @@ export class HeadlessGame {
     return analyzeResort(this.layout, { grid: o.grid, lifts: o.liftParams, pistes: o.pisteParams, clearing: o.clearing, forest: o.forest, shrub: o.shrub, ground: o.ground });
   }
 
+  /** Trasy zamknięte przez pryzmy / ratrakowanie w dzień (etap 7). */
+  private blocked: Set<string> | null = null;
+
   private refreshFacts(): ResortFacts {
     const o = this.o;
-    const op = operationalLayout(this.layout, this.state);
+    const op = operationalLayout(this.layout, this.state, this.blocked);
     this.net = buildGuestNet({
       layout: op,
       lifts: this.analysis.lifts,
@@ -110,7 +119,7 @@ export class HeadlessGame {
       foodPoints: [],
       grid: { cellSizeM: o.grid.cellSizeM, widthCells: o.grid.widthCells, heightCells: o.grid.heightCells },
     });
-    this.facts = resortFacts(this.layout, this.analysis, this.net, this.state, o.liftParams, o.economy);
+    this.facts = resortFacts(this.layout, this.analysis, this.net, this.state, o.liftParams, o.economy, this.blocked);
     return this.facts;
   }
 
@@ -173,7 +182,7 @@ export class HeadlessGame {
   /** Kontekst dnia (fakty, śnieg na trasach, pogoda, prognoza, konkurencja). */
   context(date: CalendarDate): DayContext {
     const snap = this.snowOn(date);
-    const snow = resortSnow(this.analysis, this.facts, snap ? { quality: snap.quality, sweMm: snap.sweMm } : null, this.cellAt, this.o.riding, this.o.guestParams);
+    const snow = resortSnow(this.analysis, this.facts, snap ? { quality: snap.quality, sweMm: snap.sweMm, techMm: snap.techMm } : null, this.cellAt, this.o.riding, this.o.guestParams);
     return { date, facts: this.facts, snow, weather: this.book.day(date), forecast: this.book.forecastFor(date), competitors: this.competitors(date) };
   }
 
@@ -181,6 +190,7 @@ export class HeadlessGame {
   stepDay(): CloseDayResult {
     this.o.policy?.(this);
     const date = { ...this.state.date };
+    this.blocked = blockedPistes(this.state, this.analysis, this.snowOn(date), this.cellAt, this.o.economy.snowmaking);
     this.refreshFacts();
     const ctx = this.context(date);
     const plan = planDay(this.state, ctx, this.o.economy);
@@ -189,7 +199,31 @@ export class HeadlessGame {
     else outcome = quickDayOutcome(this.state, plan, ctx, this.o.economy, this.o.guestParams);
     this.lastOutcome = outcome;
     const names = { ids: [...this.layout.lifts, ...this.layout.pistes, ...this.layout.bases, ...(this.layout.buildings ?? [])].map((x) => x.id), names: [...this.layout.lifts, ...this.layout.pistes, ...this.layout.bases, ...(this.layout.buildings ?? [])].map((x) => x.name) };
-    const r = closeDay(this.state, ctx, plan, outcome, this.o.economy, names);
+    // Etap 7: doba naśnieżania i noc ratraków (gdy są parametry naśnieżania).
+    let extra = null;
+    if (this.o.economy.snowmaking) {
+      const snap = this.snowOn(date);
+      const res = runDayOperations({
+        state: this.state,
+        layout: this.layout,
+        analysis: this.analysis,
+        facts: this.facts,
+        grid: this.o.grid,
+        cellAt: this.cellAt,
+        snow: snap,
+        book: this.book,
+        ep: this.o.economy,
+        riding: this.o.riding,
+        date,
+      });
+      extra = res.extra;
+      this.lastOps = res;
+      if (res.ops.addSweMm || res.ops.groomGroup) {
+        this.snow.setOperations(date, res.ops);
+        this.lastSnap = null;
+      }
+    }
+    const r = closeDay(this.state, ctx, plan, outcome, this.o.economy, names, extra);
     if (r.finishedConstruction.length) this.refreshFacts();
     this.last = r;
     return r;
@@ -221,7 +255,7 @@ export class HeadlessGame {
   }
 
   save(savedAt = '2026-01-01T00:00:00Z'): GameSave {
-    return makeSave(this.state, this.layout, this.snow.trafficDays(), this.o.mapName ?? 'pilsko', savedAt);
+    return makeSave(this.state, this.layout, this.snow.trafficDays(), this.o.mapName ?? 'pilsko', savedAt, this.snow.operationDays());
   }
 }
 
