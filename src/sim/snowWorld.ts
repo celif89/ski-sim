@@ -87,6 +87,11 @@ export class SnowWorld {
     applySkierTraffic(state, { elevationM: d.elevationM, widthCells: d.widthCells, heightCells: d.heightCells, cellSizeM: d.cellSizeM }, this.down, passes, this.impact, this.sp);
   }
 
+  /** Zapamiętane przejazdy gości (do zapisu gry). */
+  trafficDays(): Map<string, Float32Array> {
+    return this.traffic;
+  }
+
   /**
    * Przejazdy gości w dniu `date` (koniec dnia). Gdy ten dzień jest właśnie ostatnim policzonym –
    * doliczane od razu; gdy policzono już dalej (albo ruch tego dnia był już doliczony) – sezon

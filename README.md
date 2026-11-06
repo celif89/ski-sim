@@ -3,11 +3,15 @@
 Realistyczny symulator budowy i prowadzenia ośrodka narciarskiego na północnych stokach Pilska.
 Zasady projektu i plan etapów: plik [CLAUDE.md](CLAUDE.md).
 
-**Stan: etap 4 – budowa wyciągów i tras.** (Etap 3 – model śniegu.) Mapa to Numeryczny Model Terenu z Geoportalu (GUGiK)
-w siatce 10 m: od granicy ze Słowacją pod Pilskiem do dna doliny w Korbielowie, z lasem
-(ESA WorldCover). Na mapie widać cienie terenu w dowolnym dniu i godzinie, nasłonecznienie,
-temperaturę, grubość i stan śniegu; pogodę daje generator oparty na danych IMGW z lat 2001–2025.
-Śnieg jest na razie tylko naturalny (bez narciarzy, naśnieżania i ratraków).
+**Stan: etap 6 – sezon i ekonomia, pierwsza grywalna wersja.** Kariera od pustej góry z ograniczonym
+kapitałem (budowa kosztuje i trwa, kredyt, bankructwo) albo piaskownica bez limitu pieniędzy. Goście
+przyjeżdżają według popytu (dzień tygodnia, ferie, święta, śnieg, prognoza, reputacja, ceny, konkurencja,
+parking), płacą za karnety, ośrodek ponosi koszty (energia, obsługa, ratownicy, przeglądy, ubezpieczenie,
+ratrakowanie – na razie tymczasowo za hektar). Mapa to NMT z Geoportalu (GUGiK) w siatce 10 m, pogoda –
+generator oparty na danych IMGW 2001–2025, śnieg – model fizyczny (bez naśnieżania – etap 7).
+
+**Raport ekonomii** (10 sezonów prostego ośrodka: orczyk i dwie trasy, tryb kariery):
+https://celif89.github.io/ski-sim/raport-ekonomii.html
 
 **Raport zimy** (model śniegu obok pomiarów IMGW, punkty kontrolne, mapy grubości, 30 zim):
 https://celif89.github.io/ski-sim/raport-zimy.html
@@ -26,6 +30,44 @@ Gra jest publikowana automatycznie pod adresem:
 Nic nie trzeba instalować. Nowa wersja pojawia się tam kilka minut po każdej zmianie na gałęzi
 `main` – ale **tylko wtedy, gdy wszystkie testy przeszły**. Jeśli testy nie przejdą, na stronie
 zostaje poprzednia, sprawna wersja.
+
+### Gra: kariera i piaskownica (etap 6)
+
+Po otwarciu strony pojawia się okno wyboru:
+
+- **Nowa kariera** – pusta góra, 15 mln zł na koncie, start 1 maja 2026 (lato – czas budowy).
+  Każdy obiekt kosztuje i buduje się przez określoną liczbę dni (orczyk ok. 3 miesiące, trasa
+  2–4 tygodnie, parking miesiąc); zimą budowa idzie 4× wolniej i jest o 25 % droższa. Na mapie widać
+  **plac budowy** (pomarańczowa przerywana linia i procent postępu). Gdy brakuje pieniędzy, budowa jest
+  odrzucana z komunikatem – można wziąć kredyt. Saldo poniżej −1 mln zł albo ujemne dłużej niż 90 dni =
+  **bankructwo** (koniec kariery).
+- **Piaskownica** – bez limitu pieniędzy, wszystko gotowe od razu; zostaje Twój dotychczasowy układ
+  (np. „Wczytaj prawdziwy ośrodek Pilsko” w panelu „Goście”). Liczbę gości dnia możesz wpisać ręcznie.
+- **Kontynuuj** – gra zapisuje się sama co dzień w przeglądarce; **Wczytaj grę z pliku** – plik z
+  przycisku „Zapisz grę”. Adres `…/ski-sim/?tryb=kariera` lub `?tryb=piaskownica` od razu zaczyna grę.
+
+Rok gry: **lato (V–IX)** – budowa, zegar idzie tygodniami (doba 7× szybciej); **jesień (X–XI)** –
+przeglądy wyciągów (1 X); **zima** – codzienna eksploatacja; **wiosna (IV)** – koniec sezonu, 1 maja
+sam otwiera się **raport sezonu**. O otwarciu i zamknięciu sezonu decydujesz Ty: pole **„Sezon otwarty”**
+w panelu „Goście” (można od listopada do kwietnia).
+
+Panel **„Finanse”** (po prawej): saldo, reputacja (gwiazdki z ocen gości, świeże ważą więcej), wczoraj
+(goście, przychody, koszty), rok gry, budowa, kredyt; karnet dzienny wobec średniej konkurencji; opis
+dzisiejszego popytu; wydarzenia (gotowe budowy, przeglądy, raty). Przyciski:
+- **Cennik i godziny** – karnety dzienny, 4 h, 2 h, punktowy (cena punktu), godziny pracy wyciągów;
+  zmiany od następnego dnia;
+- **Raport sezonu** – wynik, przepływy (przychody, koszty, budowa, kredyt), dni otwarte, goście dzień po
+  dniu, ocena, porównanie z 4 ośrodkami konkurencji;
+- **Kredyt inwestycyjny** – kwota i liczba lat (rata co miesiąc, 7,5 % rocznie), „Spłać”;
+- **Zapisz grę / Wczytaj grę / Nowa gra**.
+
+Narzędzie **„Budynek” (B)**: typ w panelu budowy – parking (300 aut, tu przyjeżdżają goście; opłata
+parkingowa), gastronomia, wypożyczalnia, szkółka (przychód od części gości), albo baza bez parkingu.
+Bez parkingu goście mieszczą się tylko na poboczach (ok. 40 aut).
+
+Przewijanie: kalendarz albo „Przewiń sezon” – dni pominięte liczą się **modelem zgrubnym** (popyt,
+przejazdy ograniczone przepustowością, kolejki, ocena – skalibrowany na pełnej symulacji gości); dni
+oglądane zegarem (×1, ×5, ×20) – **pełną symulacją gości**. W karierze nie można cofać czasu.
 
 ### Sterowanie
 
@@ -205,6 +247,15 @@ kontrolnych (zima 2026/27 na tle 30 zim), mapy grubości 1 XII – 1 IV, mapa li
 bilans wody i czas obliczeń. Lokalnie: `npm run winter-report` → `reports/raport-zimy.html`
 (ok. 8–10 minut; szybki podgląd na 4 zimach: `npm run winter-report -- reports/raport-zimy.html 4`).
 
+### Raport ekonomii (10 sezonów)
+
+https://celif89.github.io/ski-sim/raport-ekonomii.html – prosty ośrodek (orczyk Korbielów–Buczynka
+788–1009 m, dwie trasy, parking) w trybie kariery przez 10 sezonów, liczony tym samym kodem co gra (bez
+grafiki): tabela sezon po sezonie (dni otwarte, goście, ocena, przychody, koszty, wynik, saldo,
+reputacja), wykresy gości i wyniku, przychody i koszty średnio na sezon, dzień po dniu w najlepszym
+i najsłabszym sezonie, porównanie z konkurencją, porównanie pełnej symulacji gości z modelem zgrubnym
+w te same dni, założenia. Lokalnie: `npm run economy-report` → `reports/raport-ekonomii.html` (ok. 1,5 min).
+
 ### Jednorazowa konfiguracja publikacji (zrobione przy etapie 0)
 
 W repozytorium na GitHubie: **Settings → Pages → Build and deployment → Source:
@@ -247,6 +298,17 @@ Co sprawdzają testy (katalog `tests/`):
   (masa zachowana), tworzą muldy, a wielodniowy ruch wyciera stromiznę do przetarć; świeży śnieg
   zasypuje muldy; ten sam seed = ten sam dzień (także przy innym podziale czasu); prawdziwy Pilsko
   z OSM – dzień 2000 gości bez błędów,
+- **sezon i ekonomia (etap 6):** pełny rok gry od maja do kwietnia bez grafiki (budowa w czasie,
+  sezon, kredyt w trakcie, dzień z symulacją gości) przechodzi bez błędów; **saldo końcowe = saldo
+  początkowe + przychody − koszty − budowa + kredyt − spłata kapitału**; wyższa cena karnetu – mniej
+  gości; weekendy i ferie (śląskie 2027) – ponad 2× więcej niż wtorek, w tygodniu więcej grup
+  szkolnych, w weekend rodzin; zamknięty ośrodek – zero przychodów z karnetów (koszty stałe zostają);
+  **zapis i wczytanie dają identyczny dalszy przebieg** (także dni z symulacją gości); ferie 2026 zgodne
+  z komunikatem MEN; parking ogranicza przyjazdy; lepsza reputacja i śnieg – więcej gości, konkurencja
+  bez śniegu – więcej dla nas; budowa kosztuje i trwa, zimą drożej i wolniej, anulowana tego samego dnia
+  – pełny zwrot, piaskownica – za darmo; kredyt spłaca się w terminie; bankructwo kończy karierę;
+  karnety (krótki pobyt – 2 h/4 h, dzieci ulgowo); model zgrubny dnia zgodny z pełną symulacją gości
+  (ocena ±0,45, przejazdy ±25–35 %, przychód na gościa ±25 % przy 100–800 gościach),
 - **edycja i śnieg a jazda (etap 5b):** przesunięcie punktu osi zmienia profil i kolor trasy,
   usunięcie punktu działa, szerokość zmienia obrys i koszt; stacja kątowa w limicie – droższa
   i poprawna, ponad limit (kanapa 45°, orczyk 8°) – odrzucona; stacja pośrednia jest węzłem sieci

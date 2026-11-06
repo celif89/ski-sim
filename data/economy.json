@@ -1,0 +1,1062 @@
+{
+  "_opis": "Ekonomia ośrodka (etap 6): kalendarz roku, karnety, popyt, ferie, koszty, kredyt, reputacja, konkurencja, budynki. Kwoty w zł netto, ceny z sezonu 2025/26 (bez inflacji w kolejnych latach gry).",
+  "calendar": {
+    "_opis": "Rok gry: lato (budowa, kroki tygodniowe), jesień (przygotowania), zima (codzienna eksploatacja), wiosna (raport sezonu). Miesiące początku pór roku.",
+    "summerStartMonth": {
+      "value": 5,
+      "unit": "miesiąc",
+      "source": "lato od 1 maja – po zamknięciu sezonu, czas budowy"
+    },
+    "autumnStartMonth": {
+      "value": 10,
+      "unit": "miesiąc",
+      "source": "jesień od 1 października – przeglądy, przygotowania"
+    },
+    "winterStartMonth": {
+      "value": 12,
+      "unit": "miesiąc",
+      "source": "zima od 1 grudnia"
+    },
+    "springStartMonth": {
+      "value": 4,
+      "unit": "miesiąc",
+      "source": "wiosna od 1 kwietnia – koniec sezonu i raport"
+    },
+    "earliestOpenMonth": {
+      "value": 11,
+      "unit": "miesiąc",
+      "source": "najwcześniej otwarcie sezonu od listopada (śnieg naturalny)"
+    },
+    "latestCloseMonth": {
+      "value": 4,
+      "unit": "miesiąc",
+      "source": "sezon zamyka się najpóźniej z końcem kwietnia (koniec serii pogody sezonu)"
+    },
+    "summerWeekDays": {
+      "value": 7,
+      "unit": "dni",
+      "source": "latem jeden krok zegara gry = tydzień (budowa)"
+    },
+    "fixedChargesMonth": {
+      "value": 10,
+      "unit": "miesiąc",
+      "source": "przeglądy wyciągów (UDT) przed sezonem – opłata 1 października"
+    }
+  },
+  "career": {
+    "startDate": "2026-05-01",
+    "_startDateInfo": "Kariera zaczyna się wiosną, przed latem budowy (RRRR-MM-DD).",
+    "startCapitalPln": {
+      "value": 15000000,
+      "unit": "zł",
+      "source": "kapitał startowy kariery – wystarczy na mały ośrodek (orczyk + 2 trasy + parking); większe inwestycje z kredytu; do kalibracji"
+    },
+    "overdraftLimitPln": {
+      "value": 1000000,
+      "unit": "zł",
+      "source": "debet w rachunku bieżącym – poniżej tej kwoty gra się kończy (bankructwo); do kalibracji"
+    },
+    "bankruptcyDays": {
+      "value": 90,
+      "unit": "dni",
+      "source": "saldo ujemne przez tyle dni z rzędu – bankructwo (tryb kariery); do kalibracji"
+    }
+  },
+  "loan": {
+    "interestRatePerYear": {
+      "value": 0.075,
+      "unit": "1/rok",
+      "source": "WIBOR 3M 3,82 % (31.07.2026, direct.money.pl) + marża kredytu inwestycyjnego 3,9–4,9 p.p. (cennik BS Rzemiosła, kredyty instytucjonalne, sierpień 2026) → ok. 7,5 %"
+    },
+    "maxTermYears": {
+      "value": 15,
+      "unit": "lata",
+      "source": "kredyt inwestycyjny długoterminowy do 15 lat (cennik BS Rzemiosła 2026)"
+    },
+    "minTermYears": {
+      "value": 1,
+      "unit": "lata",
+      "source": "najkrótszy kredyt"
+    },
+    "maxLoanToAssets": {
+      "value": 0.7,
+      "unit": "-",
+      "source": "łączny kredyt najwyżej 70 % wartości majątku (wyciągi, trasy, budynki) + 100 % kapitału własnego na koncie; do kalibracji"
+    }
+  },
+  "passes": {
+    "_opis": "Ceny domyślne (gracz je zmienia). Karnety czasowe od pierwszego przejścia przez bramkę.",
+    "dayPln": {
+      "value": 170,
+      "unit": "zł",
+      "source": "karnet dzienny dorosły: Pilsko 160 zł (2024/25, OnTheSnow, Korbielów–Pilsko 2024/25: dzienny dorosły (dzień roboczy) 160 zł, pół dnia 145 zł; https://onthesnow.co.uk/silesia/korbielow-pilsko/skipass), Wisła–Nowa Osada 170 zł (2025/26, skiinfo.fr), Szczyrk SON 219 zł (2025/26, skiinfo.fr)"
+    },
+    "fourHourPln": {
+      "value": 135,
+      "unit": "zł",
+      "source": "karnet 4-godzinny: Pilsko pół dnia 145 zł (2024/25), Wisła–Nowa Osada 125 zł, Zwardoń 95 zł (2025/26, skiinfo.fr)"
+    },
+    "twoHourPln": {
+      "value": 100,
+      "unit": "zł",
+      "source": "karnet 2-godzinny: Kompleks Beskid 100 zł (2024/25, kompleksbeskid.wa.profitroom.com)"
+    },
+    "pointPln": {
+      "value": 4,
+      "unit": "zł/punkt",
+      "source": "karnet punktowy (np. 100 pkt = 400 zł); do kalibracji"
+    },
+    "pointsSurfaceRide": {
+      "value": 4,
+      "unit": "punkty",
+      "source": "przejazd orczykiem/talerzykiem; do kalibracji"
+    },
+    "pointsChairRide": {
+      "value": 8,
+      "unit": "punkty",
+      "source": "przejazd kanapą; do kalibracji"
+    },
+    "pointsGondolaRide": {
+      "value": 10,
+      "unit": "punkty",
+      "source": "przejazd gondolą; do kalibracji"
+    },
+    "reducedFactor": {
+      "value": 0.8,
+      "unit": "-",
+      "source": "ulgowy (dzieci, seniorzy) ok. 80 % ceny: Szczyrk 176/219 zł, Wisła 145/170 zł (skiinfo.fr 2025/26)"
+    },
+    "dayPassHabitShare": {
+      "value": 0.3,
+      "unit": "-",
+      "source": "część gości kupuje karnet dzienny z przyzwyczajenia, choć krótszy wyszedłby taniej; do kalibracji"
+    },
+    "minPricePln": {
+      "value": 0,
+      "unit": "zł",
+      "source": "najniższa cena w cenniku"
+    },
+    "maxPricePln": {
+      "value": 600,
+      "unit": "zł",
+      "source": "najwyższa cena w cenniku"
+    }
+  },
+  "hours": {
+    "openH": {
+      "value": 8.5,
+      "unit": "h",
+      "source": "domyślne otwarcie wyciągów 8:30 (jak w guests.json)"
+    },
+    "closeH": {
+      "value": 16,
+      "unit": "h",
+      "source": "domyślne zamknięcie 16:00 (bez oświetlenia tras)"
+    },
+    "minOpenH": {
+      "value": 7,
+      "unit": "h",
+      "source": "najwcześniejsze otwarcie"
+    },
+    "maxCloseH": {
+      "value": 16.5,
+      "unit": "h",
+      "source": "najpóźniejsze zamknięcie – jazda wieczorna wymaga oświetlenia (później)"
+    }
+  },
+  "demand": {
+    "_opis": "Goście dnia = pula regionu × dzień tygodnia × okres (święta, ferie) × miesiąc × prognoza × udział ośrodka. Udział = A / (A + ΣA_konkurencji + A_inne); A = (otwarte km)^w × śnieg × reputacja × cena.",
+    "regionPoolPerDay": {
+      "value": 20000,
+      "unit": "osób/dzień",
+      "source": "pula narciarzy dnia odniesienia (sobota, styczeń, dobra prognoza) wybierających ośrodek w Beskidzie Żywieckim i Śląskim; dobrana tak, by ośrodek wielkości Pilska (ok. 15 km) miał w sobotę 2–3 tys. gości; do kalibracji"
+    },
+    "weekdayFactors": {
+      "value": [
+        0.35,
+        0.33,
+        0.33,
+        0.36,
+        0.5,
+        1.0,
+        0.8
+      ],
+      "unit": "× (pon…niedz)",
+      "source": "w tygodniu kilkakrotnie mniej niż w sobotę; do kalibracji"
+    },
+    "monthFactors": {
+      "value": [
+        1.0,
+        1.0,
+        0.75,
+        0.3,
+        0.05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.05,
+        0.4,
+        0.85
+      ],
+      "unit": "× (I…XII)",
+      "source": "zainteresowanie nartami w miesiącu (początek i koniec sezonu słabsze); do kalibracji"
+    },
+    "holidayDayFactor": {
+      "value": 0.95,
+      "unit": "×",
+      "source": "w czasie ferii i przerwy świątecznej dzień tygodnia prawie bez znaczenia (zamiast współczynnika dnia tygodnia dla gości z regionu na feriach); do kalibracji"
+    },
+    "feriaBoost": {
+      "value": 1.6,
+      "unit": "×",
+      "source": "region na feriach daje tyle razy więcej gości (wyjazdy kilkudniowe); do kalibracji"
+    },
+    "christmasBoost": {
+      "value": 1.4,
+      "unit": "×",
+      "source": "przerwa świąteczna 23 XII–1 I: wszystkie regiony wolne; do kalibracji"
+    },
+    "christmasStartDay": {
+      "value": 23,
+      "unit": "dzień grudnia",
+      "source": "przerwa świąteczna w szkołach 22–31 XII (kalendarz MEN 2025/26), wyjazdy od 23 XII"
+    },
+    "newYearEveFactor": {
+      "value": 0.6,
+      "unit": "×",
+      "source": "Sylwester (31 XII) – mniej gości na stoku; do kalibracji"
+    },
+    "newYearDayFactor": {
+      "value": 0.7,
+      "unit": "×",
+      "source": "1 stycznia – późny start; do kalibracji"
+    },
+    "publicHolidayFactor": {
+      "value": 1.0,
+      "unit": "×",
+      "source": "6 stycznia (Trzech Króli) liczony jak niedziela (współczynnik niedzieli)"
+    },
+    "offerExponent": {
+      "value": 0.7,
+      "unit": "-",
+      "source": "A rośnie z otwartymi km tras wolniej niż liniowo; do kalibracji"
+    },
+    "snowExponent": {
+      "value": 1.5,
+      "unit": "-",
+      "source": "wpływ jakości śniegu (0–1) na atrakcyjność; do kalibracji"
+    },
+    "reputationRef": {
+      "value": 3.5,
+      "unit": "gwiazdki",
+      "source": "reputacja odniesienia (A × 1)"
+    },
+    "reputationExponent": {
+      "value": 1.5,
+      "unit": "-",
+      "source": "A × (reputacja / odniesienie)^w; do kalibracji"
+    },
+    "priceElasticity": {
+      "value": 1.6,
+      "unit": "-",
+      "source": "A × (cena dzienna / średnia cena konkurencji)^(−e); popyt na narty umiarkowanie wrażliwy na cenę; do kalibracji"
+    },
+    "otherAttractiveness": {
+      "value": 20,
+      "unit": "-",
+      "source": "atrakcyjność innych możliwości (Tatry, Słowacja, inne zajęcia) w tych samych jednostkach co A (A ośrodka 10 km, dobry śnieg = 10^0,7 ≈ 5); do kalibracji"
+    },
+    "rainProbabilityPenalty": {
+      "value": 0.5,
+      "unit": "-",
+      "source": "prognoza deszczu: × (1 − kara × prawdopodobieństwo); do kalibracji"
+    },
+    "coldLimitC": {
+      "value": -15,
+      "unit": "°C",
+      "source": "prognoza zimniej niż tyle na górze – mniej gości"
+    },
+    "coldFactor": {
+      "value": 0.7,
+      "unit": "×",
+      "source": "mróz poniżej progu; do kalibracji"
+    },
+    "windLimitMs": {
+      "value": 14,
+      "unit": "m/s",
+      "source": "prognoza silnego wiatru"
+    },
+    "windFactor": {
+      "value": 0.8,
+      "unit": "×",
+      "source": "silny wiatr w prognozie; do kalibracji"
+    },
+    "sunnyCloudMax": {
+      "value": 0.3,
+      "unit": "-",
+      "source": "zachmurzenie poniżej – słońce"
+    },
+    "sunnyFactor": {
+      "value": 1.15,
+      "unit": "×",
+      "source": "słoneczna prognoza przyciąga; do kalibracji"
+    },
+    "personsPerCar": {
+      "value": 2.8,
+      "unit": "osób/auto",
+      "source": "rodziny i grupy znajomych; do kalibracji"
+    },
+    "busShareSchool": {
+      "value": 1.0,
+      "unit": "-",
+      "source": "grupy szkolne przyjeżdżają autokarem – nie zajmują parkingu"
+    },
+    "streetParkingCars": {
+      "value": 40,
+      "unit": "aut",
+      "source": "bez własnego parkingu: pobocza i parkingi we wsi; do kalibracji"
+    },
+    "lowSnowLimit": {
+      "value": 0.25,
+      "unit": "-",
+      "source": "przy jakości śniegu poniżej tej wartości goście praktycznie nie przyjeżdżają (A × 0)"
+    },
+    "noiseSd": {
+      "value": 0.12,
+      "unit": "-",
+      "source": "losowy rozrzut liczby gości dnia (odchylenie względne, ten sam seed – ten sam dzień); do kalibracji"
+    }
+  },
+  "mix": {
+    "_opis": "Skład grup gości (udziały typów z guests.json: narciarz, snowboardzista, rodzina z dziećmi, grupa szkolna) wg rodzaju dnia.",
+    "weekday": {
+      "value": [
+        0.34,
+        0.12,
+        0.2,
+        0.34
+      ],
+      "unit": "udziały typów",
+      "source": "w tygodniu grupy szkolne i zorganizowane; do kalibracji"
+    },
+    "weekend": {
+      "value": [
+        0.4,
+        0.16,
+        0.44,
+        0.0
+      ],
+      "unit": "udziały typów",
+      "source": "w weekend rodziny i przyjazdy jednodniowe; do kalibracji"
+    },
+    "holiday": {
+      "value": [
+        0.4,
+        0.15,
+        0.42,
+        0.03
+      ],
+      "unit": "udziały typów",
+      "source": "ferie i święta: rodziny, zimowiska; do kalibracji"
+    }
+  },
+  "ferie": {
+    "_opis": "Wzór: ferie zimowe 2026 (rok szkolny 2025/26, 3 tury). W kolejnych latach tura zaczyna się w poniedziałek tego samego tygodnia roku (ISO). Źródło: komunikat MEN – portaloswiatowy.pl, „Terminy ferii zimowych 2025/2026 – tylko 3 tury”.",
+    "turns": [
+      {
+        "start": "2026-01-19",
+        "regions": [
+          "mazowieckie",
+          "pomorskie",
+          "podlaskie",
+          "świętokrzyskie",
+          "warmińsko-mazurskie"
+        ]
+      },
+      {
+        "start": "2026-02-02",
+        "regions": [
+          "dolnośląskie",
+          "kujawsko-pomorskie",
+          "łódzkie",
+          "zachodniopomorskie",
+          "małopolskie",
+          "opolskie"
+        ]
+      },
+      {
+        "start": "2026-02-16",
+        "regions": [
+          "podkarpackie",
+          "lubelskie",
+          "wielkopolskie",
+          "lubuskie",
+          "śląskie"
+        ]
+      }
+    ],
+    "durationDays": {
+      "value": 16,
+      "unit": "dni",
+      "source": "dwa tygodnie ferii z weekendami po obu stronach (sobota przed – niedziela po)"
+    },
+    "regionWeights": {
+      "_opis": "Udział regionu wśród gości Pilska (suma 1) – Śląsk i Małopolska najważniejsze; do kalibracji",
+      "śląskie": {
+        "value": 0.42,
+        "unit": "udział",
+        "source": "najbliższa aglomeracja (Katowice, Bielsko-Biała); do kalibracji"
+      },
+      "małopolskie": {
+        "value": 0.24,
+        "unit": "udział",
+        "source": "Kraków, Wadowice; do kalibracji"
+      },
+      "mazowieckie": {
+        "value": 0.07,
+        "unit": "udział",
+        "source": "do kalibracji"
+      },
+      "łódzkie": {
+        "value": 0.05,
+        "unit": "udział",
+        "source": "do kalibracji"
+      },
+      "opolskie": {
+        "value": 0.03,
+        "unit": "udział",
+        "source": "do kalibracji"
+      },
+      "dolnośląskie": {
+        "value": 0.03,
+        "unit": "udział",
+        "source": "do kalibracji"
+      },
+      "wielkopolskie": {
+        "value": 0.03,
+        "unit": "udział",
+        "source": "do kalibracji"
+      },
+      "świętokrzyskie": {
+        "value": 0.03,
+        "unit": "udział",
+        "source": "do kalibracji"
+      },
+      "podkarpackie": {
+        "value": 0.02,
+        "unit": "udział",
+        "source": "do kalibracji"
+      },
+      "lubelskie": {
+        "value": 0.02,
+        "unit": "udział",
+        "source": "do kalibracji"
+      },
+      "kujawsko-pomorskie": {
+        "value": 0.02,
+        "unit": "udział",
+        "source": "do kalibracji"
+      },
+      "pomorskie": {
+        "value": 0.01,
+        "unit": "udział",
+        "source": "do kalibracji"
+      },
+      "podlaskie": {
+        "value": 0.01,
+        "unit": "udział",
+        "source": "do kalibracji"
+      },
+      "warmińsko-mazurskie": {
+        "value": 0.01,
+        "unit": "udział",
+        "source": "do kalibracji"
+      },
+      "zachodniopomorskie": {
+        "value": 0.005,
+        "unit": "udział",
+        "source": "do kalibracji"
+      },
+      "lubuskie": {
+        "value": 0.005,
+        "unit": "udział",
+        "source": "do kalibracji"
+      }
+    }
+  },
+  "costs": {
+    "energyPlnPerKWh": {
+      "value": 1.3,
+      "unit": "zł/kWh",
+      "source": "energia z dystrybucją dla firmy (taryfa C21/B21): sprzedaż 1,2 zł/kWh (Fortum, cennik od 31.12.2025) + dystrybucja; ceny sprzedawców C21 2026: 1,33–2,09 zł/kWh (akademia-fotowoltaiki.pl); duży odbiorca – taniej; do kalibracji"
+    },
+    "hourlyWagePln": {
+      "value": 36,
+      "unit": "zł/h",
+      "source": "obsługa wyciągu, kasy: minimalna stawka godzinowa 2026 – 31,40 zł brutto (infakt.pl) + dodatek za pracę w górach; do kalibracji"
+    },
+    "employerCostFactor": {
+      "value": 1.21,
+      "unit": "×",
+      "source": "składki pracodawcy (ZUS, FP, FGŚP) ok. 21 % ponad brutto"
+    },
+    "staffExtraHours": {
+      "value": 1.5,
+      "unit": "h",
+      "source": "przygotowanie przed otwarciem i zamknięcie po – dolicza się do godzin pracy"
+    },
+    "staffSurfaceLift": {
+      "value": 2,
+      "unit": "osób",
+      "source": "orczyk/talerzyk: dolna i górna stacja"
+    },
+    "staffAerialLift": {
+      "value": 3,
+      "unit": "osób",
+      "source": "kanapa/gondola: dolna, górna, dyżurny maszynista; do kalibracji"
+    },
+    "staffMidStation": {
+      "value": 1,
+      "unit": "osób",
+      "source": "stacja pośrednia z wsiadaniem"
+    },
+    "guestsPerCashier": {
+      "value": 800,
+      "unit": "gości/dzień",
+      "source": "kasa: jedna osoba na tyle gości (część kupuje online); do kalibracji"
+    },
+    "patrolPerKm": {
+      "value": 0.5,
+      "unit": "osób/km",
+      "source": "ratownicy narciarscy na km otwartych tras; do kalibracji"
+    },
+    "patrolMin": {
+      "value": 2,
+      "unit": "osób",
+      "source": "najmniej ratowników w dniu otwarcia (wymóg bezpieczeństwa na trasach)"
+    },
+    "patrolHourlyPln": {
+      "value": 45,
+      "unit": "zł/h",
+      "source": "ratownik narciarski (kwalifikacje); do kalibracji"
+    },
+    "seasonalPer1000Guests": {
+      "value": 3,
+      "unit": "osób",
+      "source": "parkingi, porządek, informacja – na 1000 gości; do kalibracji"
+    },
+    "seasonalMin": {
+      "value": 1,
+      "unit": "osób",
+      "source": "najmniej w dniu otwarcia"
+    },
+    "permanentStaff": {
+      "value": 2,
+      "unit": "osób",
+      "source": "kierownik ośrodka, technik – cały rok"
+    },
+    "permanentMonthlyPln": {
+      "value": 11000,
+      "unit": "zł/miesiąc",
+      "source": "koszt pracodawcy na osobę (ok. 9 tys. brutto); do kalibracji"
+    },
+    "inspectionSurfacePln": {
+      "value": 8000,
+      "unit": "zł/rok",
+      "source": "coroczny przegląd wyciągu powierzchniowego (UDT + serwis); do kalibracji"
+    },
+    "inspectionAerialPln": {
+      "value": 40000,
+      "unit": "zł/rok",
+      "source": "coroczny przegląd kolei krzesełkowej/gondolowej (UDT, badania liny, serwis); do kalibracji"
+    },
+    "insuranceRatePerYear": {
+      "value": 0.004,
+      "unit": "1/rok",
+      "source": "ubezpieczenie majątku i OC – 0,4 % wartości rocznie; do kalibracji"
+    },
+    "maintenanceLiftsRatePerYear": {
+      "value": 0.02,
+      "unit": "1/rok",
+      "source": "utrzymanie wyciągów – 2 % wartości rocznie (części, smarowanie, liny); do kalibracji"
+    },
+    "maintenancePistesRatePerYear": {
+      "value": 0.01,
+      "unit": "1/rok",
+      "source": "utrzymanie tras (odwodnienie, siatki, oznakowanie); do kalibracji"
+    },
+    "maintenanceBuildingsRatePerYear": {
+      "value": 0.015,
+      "unit": "1/rok",
+      "source": "utrzymanie budynków; do kalibracji"
+    },
+    "groomingPlnPerHa": {
+      "value": 120,
+      "unit": "zł/ha",
+      "source": "TYMCZASOWE do etapu 7 – ratrakowanie usługą zewnętrzną co noc na otwartych trasach: paliwo ok. 16–19 l/h (PistenBully 300/400/600 E+, pistenbully.com, iloveski.org) × 6,5 zł/l ÷ ok. 3 ha/h ≈ 40 zł + operator ≈ 20 zł + maszyna (wynajem, amortyzacja) ≈ 60 zł; do kalibracji"
+    },
+    "winterBuildProgressFactor": {
+      "value": 0.25,
+      "unit": "×",
+      "source": "zimą (XII–III) budowa postępuje 4× wolniej (mróz, śnieg, krótki dzień); do kalibracji"
+    },
+    "winterBuildCostFactor": {
+      "value": 1.25,
+      "unit": "×",
+      "source": "obiekt zamówiony zimą kosztuje o 25 % więcej; do kalibracji"
+    },
+    "rebuildFeeShare": {
+      "value": 0.1,
+      "unit": "-",
+      "source": "przebudowa gotowego obiektu: dopłata 10 % nowego kosztu + różnica kosztu; do kalibracji"
+    },
+    "rebuildDaysShare": {
+      "value": 0.25,
+      "unit": "-",
+      "source": "przebudowa trwa 25 % czasu budowy; do kalibracji"
+    },
+    "cancelRefundShare": {
+      "value": 0.7,
+      "unit": "-",
+      "source": "usunięcie obiektu w budowie: zwrot 70 % (100 % tego samego dnia); do kalibracji"
+    }
+  },
+  "reputation": {
+    "initial": {
+      "value": 3.0,
+      "unit": "gwiazdki",
+      "source": "nowy ośrodek bez historii"
+    },
+    "priorWeight": {
+      "value": 3000,
+      "unit": "ocen",
+      "source": "waga oceny początkowej (ile ocen gości ją zastępuje); do kalibracji"
+    },
+    "dailyDecay": {
+      "value": 0.997,
+      "unit": "1/dzień",
+      "source": "stare oceny tracą wagę: po roku ok. 1/3 – świeże ważą więcej, liczą się ostatnie 2–3 sezony; do kalibracji"
+    }
+  },
+  "quickDay": {
+    "_opis": "Model zgrubny dnia (dni przewijane bez symulacji gości): cykl = wjazd + zjazd; czekanie z bilansu – goście na stoku × udział jazdy / przepustowość; przy kolejkach goście wyjeżdżają wcześniej. Skalibrowany na pełnej symulacji gości (orczyk 840 m, 100–1200 gości).",
+    "meanStayH": {
+      "value": 4.9,
+      "unit": "h",
+      "source": "średni pobyt bez kolejek – pełna symulacja gości (data/guests.json) przy 100–250 gościach na orczyku: 4,9 h"
+    },
+    "matchScore": {
+      "value": 0.9,
+      "unit": "-",
+      "source": "dopasowanie tras do umiejętności (składnik oceny); dopasowane do symulacji gości"
+    },
+    "sampleGuests": {
+      "value": 400,
+      "unit": "osób",
+      "source": "reprezentatywna próbka gości do sprzedaży karnetów w modelu zgrubnym"
+    },
+    "maxQueueMin": {
+      "value": 60,
+      "unit": "min",
+      "source": "najdłuższe średnie czekanie w modelu zgrubnym"
+    },
+    "onPisteShare": {
+      "value": 0.5,
+      "unit": "-",
+      "source": "część gości na stoku jadących trasą (reszta w kolejkach, na wyciągach, na przerwie); do kalibracji"
+    },
+    "activeShare": {
+      "value": 0.8,
+      "unit": "-",
+      "source": "część pobytu na jeździe (reszta: przerwy, posiłek, dojście); dopasowane do symulacji gości – czekanie 6–13 min przy 500–1200 gościach na orczyku"
+    },
+    "descentSpeedMs": {
+      "value": 3.5,
+      "unit": "m/s",
+      "source": "średnia prędkość zjazdu z zatrzymaniami i czekaniem na grupę – dopasowane do symulacji gości (przejazdy na godzinę na orczyku 840 m)"
+    },
+    "cycleExtraMin": {
+      "value": 1,
+      "unit": "min",
+      "source": "dojście do kolejki, wsiadanie i wysiadanie"
+    },
+    "stayQueueTauMin": {
+      "value": 25,
+      "unit": "min",
+      "source": "pobyt × exp(−czekanie/τ): przy 7 min kolejki goście są ok. 20 % krócej, przy 16 min – o połowę (symulacja gości)"
+    }
+  },
+  "competitors": {
+    "_opis": "Wirtualne ośrodki w regionie (nazwy wymyślone, wielkość i ceny wzorowane na ośrodkach Beskidu Śląskiego i Żywieckiego). Śnieg z tej samej pogody (model w punkcie na średniej wysokości) + naśnieżanie.",
+    "snowmakingMmPerDay": {
+      "value": 25,
+      "unit": "mm SWE/dzień",
+      "source": "naśnieżanie przy mrozie dokłada tyle wody w śniegu na naśnieżanych trasach (ok. 6 cm ubitego); do kalibracji"
+    },
+    "snowmakingMaxTempC": {
+      "value": -2,
+      "unit": "°C",
+      "source": "naśnieżanie przy średniej dobowej temperaturze najwyżej tyle (temperatura mokrego termometru ok. −3 °C); do kalibracji"
+    },
+    "openBaseCm": {
+      "value": 30,
+      "unit": "cm",
+      "source": "otwierają trasę przy bazie co najmniej tyle (wyrównane, naśnieżane stoki); do kalibracji"
+    },
+    "seasonStartDay": {
+      "value": 1,
+      "unit": "dzień grudnia",
+      "source": "najwcześniej otwierają 1 grudnia (naśnieżanie od listopada); do kalibracji"
+    },
+    "seasonEndMonth": {
+      "value": 3,
+      "unit": "miesiąc",
+      "source": "zamykają najpóźniej z końcem marca (spadek popytu); do kalibracji"
+    },
+    "list": [
+      {
+        "name": "Groń Wielki",
+        "bottomM": {
+          "value": 600,
+          "unit": "m n.p.m.",
+          "source": "duży ośrodek, wzór: Szczyrk"
+        },
+        "topM": {
+          "value": 1250,
+          "unit": "m n.p.m.",
+          "source": "wzór: Szczyrk"
+        },
+        "pisteKm": {
+          "value": 18,
+          "unit": "km",
+          "source": "wzór: Szczyrk Mountain Resort ok. 25 km; do kalibracji"
+        },
+        "snowmakingShare": {
+          "value": 0.8,
+          "unit": "-",
+          "source": "do kalibracji"
+        },
+        "dayPln": {
+          "value": 219,
+          "unit": "zł",
+          "source": "Szczyrk SON 2025/26 (skiinfo.fr)"
+        },
+        "reputation": {
+          "value": 4.2,
+          "unit": "gwiazdki",
+          "source": "do kalibracji"
+        }
+      },
+      {
+        "name": "Hala Jaworowa",
+        "bottomM": {
+          "value": 700,
+          "unit": "m n.p.m.",
+          "source": "średni ośrodek, wzór: Wisła"
+        },
+        "topM": {
+          "value": 1100,
+          "unit": "m n.p.m.",
+          "source": "do kalibracji"
+        },
+        "pisteKm": {
+          "value": 8,
+          "unit": "km",
+          "source": "do kalibracji"
+        },
+        "snowmakingShare": {
+          "value": 0.9,
+          "unit": "-",
+          "source": "do kalibracji"
+        },
+        "dayPln": {
+          "value": 170,
+          "unit": "zł",
+          "source": "Wisła–Nowa Osada 2025/26 (skiinfo.fr)"
+        },
+        "reputation": {
+          "value": 3.8,
+          "unit": "gwiazdki",
+          "source": "do kalibracji"
+        }
+      },
+      {
+        "name": "Stok pod Lipą",
+        "bottomM": {
+          "value": 650,
+          "unit": "m n.p.m.",
+          "source": "mały ośrodek, wzór: Zwardoń"
+        },
+        "topM": {
+          "value": 850,
+          "unit": "m n.p.m.",
+          "source": "do kalibracji"
+        },
+        "pisteKm": {
+          "value": 2.5,
+          "unit": "km",
+          "source": "do kalibracji"
+        },
+        "snowmakingShare": {
+          "value": 1.0,
+          "unit": "-",
+          "source": "do kalibracji"
+        },
+        "dayPln": {
+          "value": 135,
+          "unit": "zł",
+          "source": "Zwardoń 2025/26 dorosły (skiinfo.fr)"
+        },
+        "reputation": {
+          "value": 3.5,
+          "unit": "gwiazdki",
+          "source": "do kalibracji"
+        }
+      },
+      {
+        "name": "Dolina Czarna",
+        "bottomM": {
+          "value": 550,
+          "unit": "m n.p.m.",
+          "source": "mały stok przy wsi"
+        },
+        "topM": {
+          "value": 780,
+          "unit": "m n.p.m.",
+          "source": "do kalibracji"
+        },
+        "pisteKm": {
+          "value": 1.5,
+          "unit": "km",
+          "source": "do kalibracji"
+        },
+        "snowmakingShare": {
+          "value": 1.0,
+          "unit": "-",
+          "source": "do kalibracji"
+        },
+        "dayPln": {
+          "value": 110,
+          "unit": "zł",
+          "source": "Zwardoń 2025/26 ulgowy (skiinfo.fr) – tani mały stok"
+        },
+        "reputation": {
+          "value": 3.3,
+          "unit": "gwiazdki",
+          "source": "do kalibracji"
+        }
+      }
+    ],
+    "meltMmPerDegreeDay": {
+      "value": 4,
+      "unit": "mm/(°C·dzień)",
+      "source": "topnienie śniegu naśnieżonego (wskaźnik stopniodniowy dla ubitego śniegu 2–5 mm/°C/d); do kalibracji"
+    }
+  },
+  "buildings": {
+    "_opis": "Budynki z prostym przychodem na gościa. Parking jest bazą (tu przyjeżdżają goście).",
+    "types": [
+      {
+        "id": "parking",
+        "name": "Parking",
+        "base": true,
+        "costPln": {
+          "value": 1200000,
+          "unit": "zł",
+          "source": "parking utwardzony na 300 aut, ok. 4 tys. zł za miejsce; do kalibracji"
+        },
+        "cars": {
+          "value": 300,
+          "unit": "aut",
+          "source": "do kalibracji"
+        },
+        "feePerCarPln": {
+          "value": 20,
+          "unit": "zł/dzień",
+          "source": "opłata parkingowa pod wyciągami w Beskidach 15–25 zł; do kalibracji"
+        },
+        "buildDays": {
+          "value": 30,
+          "unit": "dni",
+          "source": "do kalibracji"
+        },
+        "staffPerDay": {
+          "value": 1,
+          "unit": "osób",
+          "source": "obsługa parkingu"
+        },
+        "revenuePerGuestPln": {
+          "value": 0,
+          "unit": "zł",
+          "source": "przychód z opłat – osobno"
+        },
+        "costShare": {
+          "value": 0,
+          "unit": "-",
+          "source": "-"
+        },
+        "useShare": {
+          "value": 0,
+          "unit": "-",
+          "source": "-"
+        },
+        "capacityPerDay": {
+          "value": 0,
+          "unit": "-",
+          "source": "-"
+        }
+      },
+      {
+        "id": "gastronomy",
+        "name": "Gastronomia",
+        "base": false,
+        "costPln": {
+          "value": 3000000,
+          "unit": "zł",
+          "source": "restauracja/bistro przy stoku na ok. 120 miejsc; do kalibracji"
+        },
+        "cars": {
+          "value": 0,
+          "unit": "aut",
+          "source": "-"
+        },
+        "feePerCarPln": {
+          "value": 0,
+          "unit": "zł",
+          "source": "-"
+        },
+        "buildDays": {
+          "value": 120,
+          "unit": "dni",
+          "source": "do kalibracji"
+        },
+        "staffPerDay": {
+          "value": 6,
+          "unit": "osób",
+          "source": "do kalibracji"
+        },
+        "revenuePerGuestPln": {
+          "value": 50,
+          "unit": "zł",
+          "source": "średni rachunek gościa jedzącego (obiad + napój); do kalibracji"
+        },
+        "costShare": {
+          "value": 0.4,
+          "unit": "-",
+          "source": "koszt towaru 40 % przychodu; do kalibracji"
+        },
+        "useShare": {
+          "value": 0.6,
+          "unit": "-",
+          "source": "część gości jedząca w ośrodku; do kalibracji"
+        },
+        "capacityPerDay": {
+          "value": 600,
+          "unit": "gości/dzień",
+          "source": "120 miejsc × ok. 5 zmian; do kalibracji"
+        }
+      },
+      {
+        "id": "rental",
+        "name": "Wypożyczalnia",
+        "base": false,
+        "costPln": {
+          "value": 1000000,
+          "unit": "zł",
+          "source": "budynek + 150 kompletów sprzętu; do kalibracji"
+        },
+        "cars": {
+          "value": 0,
+          "unit": "aut",
+          "source": "-"
+        },
+        "feePerCarPln": {
+          "value": 0,
+          "unit": "zł",
+          "source": "-"
+        },
+        "buildDays": {
+          "value": 60,
+          "unit": "dni",
+          "source": "do kalibracji"
+        },
+        "staffPerDay": {
+          "value": 2,
+          "unit": "osób",
+          "source": "do kalibracji"
+        },
+        "revenuePerGuestPln": {
+          "value": 90,
+          "unit": "zł",
+          "source": "komplet narty+buty+kask na dzień; do kalibracji"
+        },
+        "costShare": {
+          "value": 0.15,
+          "unit": "-",
+          "source": "serwis i zużycie sprzętu; do kalibracji"
+        },
+        "useShare": {
+          "value": 0.18,
+          "unit": "-",
+          "source": "część gości wypożyczająca sprzęt (więcej wśród początkujących); do kalibracji"
+        },
+        "capacityPerDay": {
+          "value": 150,
+          "unit": "kompletów",
+          "source": "do kalibracji"
+        }
+      },
+      {
+        "id": "school",
+        "name": "Szkółka narciarska",
+        "base": false,
+        "costPln": {
+          "value": 400000,
+          "unit": "zł",
+          "source": "kontener, taśma ćwiczebna nie wliczona; do kalibracji"
+        },
+        "cars": {
+          "value": 0,
+          "unit": "aut",
+          "source": "-"
+        },
+        "feePerCarPln": {
+          "value": 0,
+          "unit": "zł",
+          "source": "-"
+        },
+        "buildDays": {
+          "value": 30,
+          "unit": "dni",
+          "source": "do kalibracji"
+        },
+        "staffPerDay": {
+          "value": 1,
+          "unit": "osób",
+          "source": "recepcja; instruktorzy w koszcie lekcji"
+        },
+        "revenuePerGuestPln": {
+          "value": 170,
+          "unit": "zł",
+          "source": "lekcja godzinna indywidualna; do kalibracji"
+        },
+        "costShare": {
+          "value": 0.55,
+          "unit": "-",
+          "source": "wynagrodzenie instruktora; do kalibracji"
+        },
+        "useShare": {
+          "value": 0.3,
+          "unit": "-",
+          "source": "część początkujących biorąca lekcję; do kalibracji"
+        },
+        "capacityPerDay": {
+          "value": 80,
+          "unit": "lekcji",
+          "source": "10 instruktorów × 8 h; do kalibracji"
+        }
+      }
+    ]
+  }
+}

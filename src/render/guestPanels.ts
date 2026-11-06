@@ -47,6 +47,7 @@ export class GuestPanel {
   private readonly count: HTMLInputElement;
   private readonly osm: HTMLButtonElement;
   private readonly open: HTMLInputElement;
+  private readonly planNote: HTMLElement;
   private readonly warnings: HTMLElement;
   private collapsed = false;
   private lastHtml = '';
@@ -58,13 +59,14 @@ export class GuestPanel {
       <button type="button" class="build-toggle">Goście ▾</button>
       <div class="build-content">
         <div class="build-row g-row">
-          <label class="g-open-label" title="Ośrodek otwarty – przyjeżdżają goście. Zamknięty (przed sezonem i po sezonie) – nikt nie przyjeżdża, wyciągi stoją."><input type="checkbox" class="g-open"> Ośrodek otwarty</label>
+          <label class="g-open-label" title="Ośrodek otwarty – przyjeżdżają goście. Zamknięty (przed sezonem i po sezonie) – nikt nie przyjeżdża, wyciągi stoją."><input type="checkbox" class="g-open"> Sezon otwarty</label>
         </div>
         <div class="build-row g-row">
           <label title="Ilu gości przyjedzie danego dnia (parametr scenariusza – popyt i ceny w etapie 6)">Gości dziś <input type="number" class="g-count" min="0" max="8000" step="100"></label>
           <button type="button" class="g-restart" title="Zacznij ten dzień od nowa (ten sam seed – ten sam przebieg)">↺ Od nowa</button>
           <button type="button" class="g-report" title="Raport dnia: przejazdy, kolejki, oceny, wypadki, zatłoczone miejsca">Raport dnia</button>
         </div>
+        <div class="g-plan muted"></div>
         <div class="g-status"></div>
         <div class="g-hint"></div>
         <div class="g-lifts"></div>
@@ -81,6 +83,7 @@ export class GuestPanel {
     this.count = this.root.querySelector('.g-count')!;
     this.osm = this.root.querySelector('.g-osm')!;
     this.open = this.root.querySelector('.g-open')!;
+    this.planNote = this.root.querySelector('.g-plan')!;
     this.warnings = this.root.querySelector('.g-warnings')!;
     this.open.checked = true;
     this.open.addEventListener('change', () => h.onResortOpen(this.open.checked));
@@ -139,6 +142,15 @@ export class GuestPanel {
 
   setGuests(n: number): void {
     this.count.value = String(n);
+  }
+
+  setPlanNote(text: string): void {
+    this.planNote.textContent = text;
+  }
+
+  setManualGuests(on: boolean): void {
+    this.count.disabled = !on;
+    this.count.title = on ? 'Ilu gości przyjedzie dziś (piaskownica – możesz zmienić)' : 'Liczba gości wynika z popytu: dzień tygodnia, ferie, śnieg, prognoza, reputacja, ceny, konkurencja, parking';
   }
 
   setResortOpen(open: boolean): void {

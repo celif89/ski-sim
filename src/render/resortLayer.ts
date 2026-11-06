@@ -60,7 +60,18 @@ export interface ResortDrawState {
   handles?: EditHandle[];
   /** Odcinki tras ze zbyt cienką bazą (oś od góry, odległości [m]). */
   thinMarks?: Map<string, { fromM: number; toM: number }[]>;
+  /** Etap 6: budowy w toku (id → postęp 0–1) – plac budowy na mapie. */
+  construction?: Map<string, number>;
+  buildingTypes?: { id: string; name: string }[] | null;
 }
+
+const BUILDING_STYLE: Record<string, { color: number; letter: string }> = {
+  parking: { color: 0x2563eb, letter: 'P' },
+  gastronomy: { color: 0xd9480f, letter: 'G' },
+  rental: { color: 0x7048e8, letter: 'W' },
+  school: { color: 0x2b8a3e, letter: 'S' },
+};
+const SITE_COLOR = 0xf59f00;
 
 export type HandleKind = 'pistePoint' | 'pisteAdd' | 'pisteWidth' | 'liftBottom' | 'liftTop' | 'liftBend' | 'liftAdd';
 
@@ -514,11 +525,70 @@ export class ResortLayer {
       g.circle(bdg.x, bdg.y, 12).fill({ color: bdg.color }).stroke({ width: 2.5, color: 0xffffff });
       this.label(li++, bdg.text, bdg.x, bdg.y, { size: 14, fill: 0xffffff, stroke: bdg.color });
     }
-    for (const b of st.layout.bases) {
+    for (const b of [...st.layout.bases, ...(st.layout.buildings ?? [])]) {
       const p = toS(b.xM, b.yM);
       const sel = st.selection?.kind === 'base' && st.selection.id === b.id;
-      g.roundRect(p.xPx - 10, p.yPx - 10, 20, 20, 5).fill({ color: 0x2563eb }).stroke({ width: sel ? 3 : 2, color: sel ? SELECT_COLOR : 0xffffff });
-      this.label(li++, 'P', p.xPx, p.yPx, { size: 13, fill: 0xffffff, stroke: 0x2563eb });
+      const style = BUILDING_STYLE[b.typeId ?? 'parking'] ?? BUILDING_STYLE.parking;
+      // Widok z góry z cieniem w prawo w dół (styl A).
+      g.roundRect(p.xPx - 8, p.yPx - 8, 20, 20, 5).fill({ color: 0x0f172a, alpha: 0.18 });
+      g.roundRect(p.xPx - 10, p.yPx - 10, 20, 20, 5).fill({ color: style.color }).stroke({ width: sel ? 3 : 2, color: sel ? SELECT_COLOR : 0xffffff });
+      this.label(li++, style.letter, p.xPx, p.yPx, { size: 13, fill: 0xffffff, stroke: style.color });
+    }
+
+    // ---- plac budowy (etap 6): przerywana pomarańczowa linia, postęp w procentach
+    if (st.construction && st.construction.size) {
+      const dashed = (pts: { xPx: number; yPx: number }[]) => {
+        let on = true;
+        let acc = 0;
+        for (let i = 1; i < pts.length; i++) {
+          const a = pts[i - 1];
+          const b = pts[i];
+          const len = Math.hypot(b.xPx - a.xPx, b.yPx - a.yPx);
+          let t = 0;
+          while (t < len) {
+            const step = Math.min(len - t, 8 - acc);
+            if (on) g.moveTo(a.xPx + ((b.xPx - a.xPx) * t) / len, a.yPx + ((b.yPx - a.yPx) * t) / len).lineTo(a.xPx + ((b.xPx - a.xPx) * (t + step)) / len, a.yPx + ((b.yPx - a.yPx) * (t + step)) / len);
+            t += step;
+            acc += step;
+            if (acc >= 8) {
+              acc = 0;
+              on = !on;
+            }
+          }
+        }
+        g.stroke({ width: 4, color: SITE_COLOR, alpha: 0.95 });
+      };
+      const tag = (x: number, y: number, prog: number) => {
+        g.roundRect(x - 34, y - 11, 68, 22, 11).fill({ color: SITE_COLOR }).stroke({ width: 2, color: 0xffffff });
+        this.label(li++, `budowa ${Math.round(prog * 100)} %`, x, y, { size: 12, fill: 0xffffff, stroke: SITE_COLOR });
+      };
+      for (const [id, prog] of st.construction) {
+        const pa = st.analysis.pistes.get(id);
+        if (pa) {
+          const pts = pa.axis.filter((q) => !Number.isNaN(q.elevationM)).map((q) => toS(q.xM, q.yM));
+          if (pts.length > 1) {
+            dashed(pts);
+            const m = pts[Math.floor(pts.length / 2)];
+            tag(m.xPx, m.yPx + 18, prog);
+          }
+          continue;
+        }
+        const lift = st.layout.lifts.find((l) => l.id === id);
+        if (lift) {
+          const pts = liftPath(lift).map((q) => toS(q.xM, q.yM));
+          dashed(pts);
+          const a = pts[0];
+          const b = pts[pts.length - 1];
+          tag((a.xPx + b.xPx) / 2, (a.yPx + b.yPx) / 2 - 20, prog);
+          continue;
+        }
+        const bld = [...st.layout.bases, ...(st.layout.buildings ?? [])].find((x) => x.id === id);
+        if (bld) {
+          const p = toS(bld.xM, bld.yM);
+          g.circle(p.xPx, p.yPx, 16).stroke({ width: 3, color: SITE_COLOR });
+          tag(p.xPx, p.yPx + 26, prog);
+        }
+      }
     }
 
     // ---- sieć: węzły i ostrzeżenia

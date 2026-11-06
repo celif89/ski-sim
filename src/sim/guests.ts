@@ -110,6 +110,25 @@ export interface GuestDayOptions {
   guests: number;
   /** Wysokość terenu w komórkach (do temperatury w miejscu gościa). */
   elevationM: Float32Array;
+  /** Godziny pracy wyciągów (cennik i godziny gracza – etap 6); brak – z guests.json. */
+  hours?: { openH: number; closeH: number };
+  /** Udziały typów grup tego dnia (w tygodniu szkoły, w weekend rodziny – etap 6); brak – z guests.json. */
+  typeShares?: number[];
+}
+
+/** Dane dnia dla ekonomii (etap 6): pobyt i przejazdy każdego gościa, wjazdy na wyciągach, oceny. */
+export interface GuestEconomySummary {
+  stayH: Float32Array;
+  rides: Int32Array;
+  child: Uint8Array;
+  skill: Uint8Array;
+  /** Wjazdy i godziny pracy każdego wyciągu (kolejność jak net.lifts). */
+  liftIds: string[];
+  liftBoarded: number[];
+  liftHours: number[];
+  ratingSum: number;
+  ratingCount: number;
+  meanQueueMin: number;
 }
 
 export interface GuestCounts {
@@ -202,6 +221,17 @@ export function satisfactionScore(i: SatisfactionInputs, p: GuestParams['satisfa
   const sRatio = clamp01((ratio - p.rideRatioZero) / Math.max(1e-6, p.rideRatioFull - p.rideRatioZero));
   const s = p.rideRatioWeight * sRatio + p.snowWeight * i.snowScore + p.crowdWeight * i.crowdScore + p.weatherWeight * i.weatherScore + p.matchWeight * i.matchScore;
   return clamp01(s - (i.accident ? p.accidentPenalty : 0));
+}
+
+/** Ocena pogody 0–1 w miejscu o temperaturze tempC i wietrze windMs (opad, wiatr, odczuwalny chłód, chmury). */
+export function weatherScoreFor(c: GuestConditions, tempC: number, windMs: number, comfortTempC: number): number {
+  const ta = apparentTempC(tempC, windMs);
+  let s = 1;
+  if (c.precipMmH > 0) s -= (c.rain ? 0.35 : 0.15) + Math.min(0.3, c.precipMmH * 0.1);
+  s -= 0.3 * clamp01((windMs - 8) / 12);
+  s -= 0.25 * clamp01((comfortTempC - ta) / 15);
+  s -= 0.1 * c.cloud;
+  return clamp01(s + 0.1);
 }
 
 /** Ocena 1–5 z zadowolenia. */
@@ -401,8 +431,8 @@ export class GuestDay {
     this.cell = net.cellSizeM;
     this.wCells = net.widthCells;
     this.hCells = net.heightCells;
-    this.openS = p.operation.liftsOpenH * 3600;
-    this.closeS = p.operation.liftsCloseH * 3600;
+    this.openS = (o.hours?.openH ?? p.operation.liftsOpenH) * 3600;
+    this.closeS = (o.hours?.closeH ?? p.operation.liftsCloseH) * 3600;
     this.t = Math.min(p.scenario.arrivalMinH * 3600, this.openS);
     this.nextDecayT = this.t + 60;
     this.nextHourT = Math.ceil(this.t / 3600) * 3600;
@@ -415,7 +445,7 @@ export class GuestDay {
 
     // ---- skład gości i grup
     const groups: { type: number; members: { skill: number; child: boolean }[] }[] = [];
-    const typeShares = p.types.map((t) => t.share);
+    const typeShares = o.typeShares && o.typeShares.length === p.types.length ? o.typeShares : p.types.map((t) => t.share);
     const skillShares = p.skills.map((s) => s.share);
     const pick = (w: number[]) => {
       const total = w.reduce((a, b) => a + b, 0);
@@ -1514,13 +1544,7 @@ export class GuestDay {
   private weatherScore(z: number): number {
     const c = this.cond;
     if (!c) return 0.8;
-    const ta = apparentTempC(this.tempAt(z), this.windAt(z));
-    let s = 1;
-    if (c.precipMmH > 0) s -= (c.rain ? 0.35 : 0.15) + Math.min(0.3, c.precipMmH * 0.1);
-    s -= 0.3 * clamp01((this.windAt(z) - 8) / 12);
-    s -= 0.25 * clamp01((this.p.needs.comfortTempC - ta) / 15);
-    s -= 0.1 * c.cloud;
-    return clamp01(s + 0.1);
+    return weatherScoreFor(c, this.tempAt(z), this.windAt(z), this.p.needs.comfortTempC);
   }
 
   private groupElevation(g: number): number {
@@ -1606,6 +1630,8 @@ export class GuestDay {
 
   satisfaction(i: number): number {
     const p = this.p.satisfaction;
+    // Wyjechał bez ani jednego zjazdu (np. brak trasy na jego poziom) – rozczarowany.
+    if (this.skiS[i] === 0 && this.liftRides[i] === 0 && this.gState[this.grp[i]] === G_GONE) return p.noSkiSatisfaction;
     const base = satisfactionScore(
       {
         skiS: this.skiS[i],
@@ -1761,6 +1787,38 @@ export class GuestDay {
     const out = this.events.slice(this.eventsSent);
     this.eventsSent = this.events.length;
     return out;
+  }
+
+  /** Podsumowanie dnia dla ekonomii (karnety, energia, reputacja). */
+  economySummary(): GuestEconomySummary {
+    const stayH = new Float32Array(this.n);
+    const rides = new Int32Array(this.n);
+    let ratingSum = 0;
+    let ratingCount = 0;
+    for (let g = 0; g < this.g; g++) {
+      if (this.gState[g] === G_NOT_ARRIVED) continue;
+      const end = this.gState[g] === G_GONE ? this.gGoneT[g] : this.t;
+      for (let i = this.gStart[g]; i < this.gStart[g] + this.gCount[g]; i++) {
+        stayH[i] = Math.max(0, end - this.gArrive[g]) / 3600;
+        rides[i] = this.liftRides[i];
+        ratingSum += this.gState[g] === G_GONE ? this.rating[i] : ratingFromSatisfaction(this.satisfaction(i));
+        ratingCount++;
+      }
+    }
+    const hours = Math.max(0, (Math.min(this.t, this.closeS) - this.openS) / 3600);
+    const rep = this.report();
+    return {
+      stayH,
+      rides,
+      child: this.child.slice(),
+      skill: this.skill.slice(),
+      liftIds: this.net.lifts.map((l) => l.id),
+      liftBoarded: [...this.liftBoarded],
+      liftHours: this.net.lifts.map((l, i) => (!l.closed && this.liftHasDescent[i] ? hours : 0)),
+      ratingSum,
+      ratingCount,
+      meanQueueMin: rep.meanQueueMin,
+    };
   }
 
   report(): GuestDayReport {

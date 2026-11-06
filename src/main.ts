@@ -20,6 +20,14 @@ import snowJson from '../data/snow.json';
 import liftsJson from '../data/lifts.json';
 import pistesJson from '../data/pistes.json';
 import constructionJson from '../data/construction.json';
+import economyJson from '../data/economy.json';
+import { parseEconomyParams } from './sim/economyParams';
+import { WeatherBook } from './sim/weatherBook';
+import { parseClimateProfile } from './sim/climate';
+import { parseWeatherParams } from './sim/weather';
+import { parseRadiationParams } from './sim/radiation';
+import { parseSnowParams } from './sim/snow';
+import { GameController } from './render/gameController';
 import {
   addDays,
   advanceClock,
@@ -283,11 +291,16 @@ async function start(): Promise<void> {
       layerBtn('real').classList.toggle('active', build.realityShown);
     };
 
+    // Gra (etap 6) – tworzona niżej, gdy gotowe są budowa i goście.
+    let game: GameController | null = null;
     const timePanel = new TimePanel(
       topBar.details,
       { date: parseIsoDate(simSettings.startDate), hour: simSettings.startHour },
       simSettings.playDayDurationS,
-      (t) => requestState(t),
+      (t) => {
+        requestState(t);
+        game?.onDateChange(t.date, t.hour);
+      },
     );
     const weatherPanel = new WeatherPanel(topBar.weatherPop);
     function setGameSpeed(sp: GameSpeed): void {
@@ -310,6 +323,7 @@ async function start(): Promise<void> {
     let onGuestLayout: (layout: ResortLayout, analysis: ResortAnalysis) => void = () => {};
     const liftParams = parseLiftParams(liftsJson);
     const ridingParams = parseRidingParams(snowJson);
+    const economyParams = parseEconomyParams(economyJson);
     // Ostrzeżenia „za mało śniegu” → panel gości (ustawiane niżej, gdy kontroler gości gotowy).
     let onSnowWarnings: (w: SnowWarning[]) => void = () => {};
     const build = new BuildController({
@@ -325,6 +339,8 @@ async function start(): Promise<void> {
       ground: parseGroundParams(constructionJson),
       riding: ridingParams,
       onSnowWarnings: (w) => onSnowWarnings(w),
+      beforeCommit: (next, a) => game?.beforeCommit(next, a) ?? null,
+      buildingTypes: economyParams.buildings.map((b) => ({ id: b.id, name: b.name, base: b.base, costPln: b.costPln })),
       forest: landCover?.forest ?? null,
       shrub: landCover?.shrub ?? null,
       osm: (OSM_RESORTS[`../data/maps/${simSettings.mapName}/osm-resort.json`] as OsmResort | undefined) ?? null,
@@ -336,7 +352,8 @@ async function start(): Promise<void> {
       onLandCover: (f, sh) => onLandCoverChange(f, sh),
       onLayoutChange: (layout, analysis) => {
         terrain.setLayout(layout, new Map([...analysis.pistes].map(([id, a]) => [id, a.axis.filter((x) => !Number.isNaN(x.elevationM))])), liftParams);
-        onGuestLayout(layout, analysis);
+        if (game?.state) game.onLayoutChange(layout, analysis);
+        else onGuestLayout(layout, analysis);
         sendGuestSnow();
         if (overlay === 'ground') refreshField();
       },
@@ -501,6 +518,11 @@ async function start(): Promise<void> {
     let snowInflight = 0;
     let latestSnowRequest = 0;
     function requestSnow(date: CalendarDate): void {
+      // Ekonomia przelicza dni (pyta wątek o śnieg dzień po dniu) – mapa dostanie śnieg po zakończeniu.
+      if (game?.busy) {
+        snowRequestedDate = date;
+        return;
+      }
       if (!snowReady) {
         snowRequestedDate = date;
         return;
@@ -571,11 +593,14 @@ async function start(): Promise<void> {
     const clockParams = { gameDayDurationS: simSettings.gameDayDurationS, nightSpeedup: simSettings.nightSpeedup };
     function clockTick(dtS: number): void {
       if (gameSpeed === 0 || timePanel.isPlaying || timePanel.seasonPlaying) return;
+      // Ekonomia zamyka dni (np. po przewinięciu) – zegar czeka.
+      if (game?.busy) return;
       // Wątek gości nie nadąża (np. ×20 przy kilku tysiącach gości) – zegar czeka.
       if (guests?.holdClock(timePanel.hour)) return;
       // Nowy dzień dopiero, gdy śnieg poprzedniego jest policzony (przy ×20 model nie nadąża za zegarem).
       const { sunrise, sunset } = timePanel.sunHours;
-      const step = advanceClock(timePanel.hour, Math.min(dtS, 0.25), gameSpeed, clockParams, sunrise, sunset);
+      // Latem (budowa) zegar idzie tygodniami: doba ×7 szybciej.
+      const step = advanceClock(timePanel.hour, Math.min(dtS, 0.25), gameSpeed * (game?.speedFactor(timePanel.date) ?? 1), clockParams, sunrise, sunset);
       if (step.daysAdvanced > 0) {
         if (snowReady && lastSnow && !sameDate(lastSnow.date, timePanel.date)) return;
         timePanel.setDateTime(addDays(timePanel.date, step.daysAdvanced), step.hour);
@@ -689,8 +714,11 @@ async function start(): Promise<void> {
       panelParent: rightColumn,
       cardParent: document.body,
       initialGuests: Number.isFinite(urlGuests) && urlGuests > 0 ? urlGuests : guestParams.scenario.guestsPerDay,
+      onDaySummary: (date, summary) => game?.onDaySummary(date, summary),
+      manualGuests: () => !game?.state || game.mode === 'sandbox',
       onDayTraffic: (date, passes) => {
         // Przejazdy dnia → model śniegu (ubijanie, zsuwanie, muldy); śnieg na mapie od nowa.
+        game?.onDayTraffic(date, passes);
         sim.setTraffic(date, passes);
         lastSnow = null;
         snowRequestedDate = null;
@@ -707,7 +735,7 @@ async function start(): Promise<void> {
         const layout = layoutFromOsm(osm, grid, liftParams, pisteParamsAll, (e, n) => grid.puwg92ToLocal(e, n), { snapToStationM: 150, parkings }, (id, t, name, b, top) => designLift(grid, liftParams, id, t, name, b, top));
         build.loadLayout(layout, 'Wczytano prawdziwy ośrodek Pilsko z OpenStreetMap (Cofnij przywraca poprzedni).');
       },
-      onResortOpen: (open) => build.setResortOpen(open),
+      onResortOpen: (open) => (game?.state ? game.setSeasonOpen(open) : build.setResortOpen(open)),
     });
     guests = guestCtl;
     guestsRef.current = guestCtl;
@@ -730,6 +758,67 @@ async function start(): Promise<void> {
         }),
       );
     onGuestLayout(build.current.layout, build.current.analysis);
+
+    // ---------------------------------------------------------------- gra: ekonomia i sezon (etap 6)
+    const climateProfile = parseClimateProfile(climateJson);
+    const weatherParamsMain = parseWeatherParams(weatherJson);
+    const elevRange = grid.elevationRangeM();
+    const weatherBook = new WeatherBook(climateProfile, weatherParamsMain, simSettings.seed, location, Math.round(elevRange.minM), Math.round(elevRange.maxM));
+    const waitMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    game = new GameController({
+      ep: economyParams,
+      gp: guestParams,
+      lp: liftParams,
+      riding: ridingParams,
+      grid,
+      book: weatherBook,
+      competition: { snowParams: parseSnowParams(snowJson), radiationParams: parseRadiationParams(radiationJson), location, packedDensityKgM3: ridingParams.packedDensityKgM3 },
+      build,
+      guests: guestCtl,
+      mapName: simSettings.mapName,
+      seed: simSettings.seed,
+      sandboxDate: parseIsoDate(simSettings.startDate),
+      panelParent: rightColumn,
+      modalParent: document.body,
+      snowOn: async (date) => {
+        while (!snowReady) await waitMs(200);
+        for (;;) {
+          try {
+            const m = await sim.snowState(date);
+            return { quality: m.quality, sweMm: m.sweMm };
+          } catch (e) {
+            // Pytanie zastąpione innym (np. mapą) – ponawiamy.
+            if (!(e instanceof Error && e.message === '__superseded__')) throw e;
+            await waitMs(50);
+          }
+        }
+      },
+      onCaughtUp: () => {
+        lastSnow = null;
+        requestSnow(timePanel.date);
+      },
+      buildNet: (layout, analysis) =>
+        buildGuestNet({
+          layout,
+          lifts: analysis.lifts,
+          pistes: analysis.pistes,
+          network: analysis.network,
+          liftParams,
+          pisteParams: pisteParamsAll,
+          stationWalkRadiusM: guestParams.operation.stationWalkRadiusM,
+          foodPoints: hutPoints,
+          grid: { cellSizeM: grid.cellSizeM, widthCells: grid.widthCells, heightCells: grid.heightCells },
+        }),
+      setDateTime: (date, hour) => timePanel.setDateTime(date, hour),
+      setTraffic: (date, passes) => sim.setTraffic(date, passes),
+      toast: (text) => buildBar.showToast(text),
+    });
+    {
+      const mode = new URLSearchParams(window.location.search).get('tryb');
+      if (mode === 'kariera') game.newGame('career');
+      else if (mode === 'piaskownica') game.newGame('sandbox');
+      else if (mode !== 'widok') void game.showStart();
+    }
     const devMenu = new DevMenu(document.body);
 
     // ---------------------------------------------------------------- sterowanie
@@ -827,6 +916,7 @@ async function start(): Promise<void> {
       guests: guestCtl,
       setSpeed: (sp: number) => setGameSpeed(sp as GameSpeed),
       build,
+      game,
     };
   } catch (error) {
     console.error(error);

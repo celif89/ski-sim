@@ -25,6 +25,8 @@ export interface BuildPanelHandlers {
   onSelect(kind: 'lift' | 'piste' | 'base', id: string): void;
   /** Nowe trasy z wyrównaniem terenu (koszt, łąka wyrównana – mniej śniegu potrzeba). */
   onGradeNew(on: boolean): void;
+  /** Etap 6: typ budynku do postawienia. */
+  onBuildingType(id: string): void;
 }
 
 export interface BuildPanelState {
@@ -44,6 +46,9 @@ export interface BuildPanelState {
   gradeNew: boolean;
   /** Odcinki tras ze zbyt cienką bazą. */
   thin: Map<string, ThinSegment[]>;
+  buildingTypeId: string;
+  /** Budowy w toku: postęp 0–1. */
+  construction: Map<string, number>;
 }
 
 const fmt0 = (x: number) => Math.round(x).toLocaleString('pl-PL');
@@ -54,7 +59,7 @@ const TOOLS: { tool: BuildTool; key: string; label: string; title: string }[] = 
   { tool: 'lift', key: 'L', label: 'Wyciąg', title: 'Kliknij dolną stację, potem górną. Esc – anuluj' },
   { tool: 'pisteBrush', key: 'T', label: 'Trasa – pędzel', title: 'Przeciągnij myszą od góry do dołu (przesuwanie mapy: prawy przycisk albo klawisze). [ ] – szerokość' },
   { tool: 'pisteAxis', key: 'O', label: 'Trasa – oś', title: 'Klikaj kolejne punkty osi trasy; podwójne kliknięcie lub Enter – koniec, Backspace – cofnij punkt, Esc – anuluj' },
-  { tool: 'base', key: 'B', label: 'Baza', title: 'Kliknij miejsce bazy (parking, wioska) – tam mogą kończyć się trasy' },
+  { tool: 'base', key: 'B', label: 'Budynek', title: 'Parking (baza – tu przyjeżdżają goście), gastronomia, wypożyczalnia, szkółka – wybierz typ i kliknij na mapie' },
 ];
 
 export class BuildPanel {
@@ -71,9 +76,10 @@ export class BuildPanel {
   private readonly body: HTMLElement;
   private readonly msg: HTMLElement;
   private readonly grade: HTMLInputElement;
+  private readonly buildingSelect: HTMLSelectElement | null;
   private collapsed = false;
 
-  constructor(parent: HTMLElement, liftParams: LiftParams, private readonly pisteParams: PisteParams, h: BuildPanelHandlers) {
+  constructor(parent: HTMLElement, liftParams: LiftParams, private readonly pisteParams: PisteParams, h: BuildPanelHandlers, buildingTypes: { id: string; name: string; costPln: number }[] | null = null) {
     this.root = document.createElement('div');
     this.root.className = 'build-panel';
     this.root.innerHTML = `
@@ -82,6 +88,7 @@ export class BuildPanel {
         <div class="build-tools"></div>
         <div class="build-row"><label>Typ wyciągu <select class="build-type"></select></label></div>
         <div class="build-row"><label>Szerokość trasy <input type="range" class="build-width"> <span class="build-width-label"></span></label></div>
+        ${buildingTypes ? '<div class="build-row"><label>Budynek <select class="build-building"></select></label></div>' : ''}
         <div class="build-row"><label title="Usunięcie kamieni i pniaków, niwelacja – kosztuje, ale na łące wyrównanej wystarczy mniej śniegu"><input type="checkbox" class="build-grade"> wyrównaj teren pod nowymi trasami</label></div>
         <div class="build-row build-buttons">
           <button type="button" class="b-undo" title="Cofnij (Ctrl+Z)">↶ Cofnij</button>
@@ -142,6 +149,20 @@ export class BuildPanel {
       if (file.files?.[0]) h.onImport(file.files[0]);
       file.value = '';
     });
+    this.buildingSelect = this.root.querySelector('.build-building');
+    if (this.buildingSelect && buildingTypes) {
+      for (const t of buildingTypes) {
+        const o = document.createElement('option');
+        o.value = t.id;
+        o.textContent = `${t.name} – ${money(t.costPln)}`;
+        this.buildingSelect.appendChild(o);
+      }
+      const plain = document.createElement('option');
+      plain.value = 'base';
+      plain.textContent = 'Baza bez parkingu (miejsce przyjazdu) – 0 zł';
+      this.buildingSelect.appendChild(plain);
+      this.buildingSelect.addEventListener('change', () => h.onBuildingType(this.buildingSelect!.value));
+    }
     this.grade = this.root.querySelector('.build-grade')!;
     this.grade.addEventListener('change', () => h.onGradeNew(this.grade.checked));
     this.msg = this.root.querySelector('.build-message')!;
@@ -167,6 +188,11 @@ export class BuildPanel {
     this.netBtn.classList.toggle('active', s.showNetwork);
     this.realBtn.classList.toggle('active', s.showReality);
     this.grade.checked = s.gradeNew;
+    if (this.buildingSelect) this.buildingSelect.value = s.buildingTypeId;
+    const building = (id: string) => {
+      const p = s.construction.get(id);
+      return p === undefined ? '' : ` <span class="g-warn" title="plac budowy">🚧 ${fmt0(p * 100)} %</span>`;
+    };
     this.msg.textContent = s.message;
     this.msg.classList.toggle('empty', !s.message);
     const sel = (kind: string, id: string) => (s.selection?.kind === kind && s.selection.id === id ? ' selected' : '');
@@ -174,7 +200,7 @@ export class BuildPanel {
       .map((l) => {
         const a = s.analysis.lifts.get(l.id);
         if (!a) return '';
-        return `<tr data-kind="lift" data-id="${l.id}" class="${a.ok ? '' : 'bad'}${sel('lift', l.id)}${l.closed ? ' g-closed' : ''}"><td><b>${l.name}</b>${l.closed ? ' <span class="muted">zamkn.</span>' : ''}${l.bends?.length ? ` <span class="muted">${l.bends.length}×∠</span>` : ''}</td><td>${a.type.name}</td><td>${fmt0(a.horizontalLengthM)} m</td><td>↑ ${fmt0(a.riseM)} m</td><td>${fmt0(a.capacityPerHour)} os./h</td><td>${money(a.cost.totalPln)}</td></tr>`;
+        return `<tr data-kind="lift" data-id="${l.id}" class="${a.ok ? '' : 'bad'}${sel('lift', l.id)}${l.closed ? ' g-closed' : ''}"><td><b>${l.name}</b>${building(l.id)}${l.closed ? ' <span class="muted">zamkn.</span>' : ''}${l.bends?.length ? ` <span class="muted">${l.bends.length}×∠</span>` : ''}</td><td>${a.type.name}</td><td>${fmt0(a.horizontalLengthM)} m</td><td>↑ ${fmt0(a.riseM)} m</td><td>${fmt0(a.capacityPerHour)} os./h</td><td>${money(a.cost.totalPln)}</td></tr>`;
       })
       .join('');
     const pistes = s.layout.pistes
@@ -184,10 +210,12 @@ export class BuildPanel {
         const c = this.pisteParams.classes[a.classIndex];
         const thin = s.thin.get(p.id);
         const flag = p.closed ? ' <span class="muted">zamkn.</span>' : thin ? ` <span class="g-bad" title="za mało śniegu: ${thin.map((t) => `${fmt0(t.fromM)}–${fmt0(t.toM)} m (${fmt0(t.baseCm)}/${fmt0(t.neededCm)} cm)`).join(', ')}">⚠ śnieg</span>` : '';
-        return `<tr data-kind="piste" data-id="${p.id}" class="${a.ok ? '' : 'bad'}${sel('piste', p.id)}${p.closed ? ' g-closed' : ''}"><td><b>${p.name}</b>${flag}${p.graded ? ' <span class="muted">wyr.</span>' : ''}</td><td><span class="piste-class" style="background:${c.color}">${c.name}</span></td><td>${fmt0(a.lengthM)} m</td><td>↓ ${fmt0(a.dropM)} m</td><td>maks. ${fmt0(a.maxSlopePercent)} %</td><td>${money(a.cost.totalPln)}</td></tr>`;
+        return `<tr data-kind="piste" data-id="${p.id}" class="${a.ok ? '' : 'bad'}${sel('piste', p.id)}${p.closed ? ' g-closed' : ''}"><td><b>${p.name}</b>${building(p.id)}${flag}${p.graded ? ' <span class="muted">wyr.</span>' : ''}</td><td><span class="piste-class" style="background:${c.color}">${c.name}</span></td><td>${fmt0(a.lengthM)} m</td><td>↓ ${fmt0(a.dropM)} m</td><td>maks. ${fmt0(a.maxSlopePercent)} %</td><td>${money(a.cost.totalPln)}</td></tr>`;
       })
       .join('');
-    const bases = s.layout.bases.map((b) => `<tr data-kind="base" data-id="${b.id}" class="${sel('base', b.id)}"><td><b>P</b></td><td colspan="5">${b.name}</td></tr>`).join('');
+    const bases = [...s.layout.bases, ...(s.layout.buildings ?? [])]
+      .map((b) => `<tr data-kind="base" data-id="${b.id}" class="${sel('base', b.id)}"><td><b>${b.typeId === 'parking' || !b.typeId ? 'P' : b.typeId === 'gastronomy' ? 'G' : b.typeId === 'rental' ? 'W' : 'S'}</b></td><td colspan="5">${b.name}${building(b.id)}</td></tr>`)
+      .join('');
     const issues = s.analysis.network.issues.map((i) => `<li class="warning">⚠ ${i.message}</li>`).join('');
     const empty = !lifts && !pistes && !bases;
     let real = '';
@@ -207,7 +235,7 @@ export class BuildPanel {
       ${empty ? '<div class="muted">Ośrodek jest pusty. Wybierz „Wyciąg” (L) i kliknij dolną, potem górną stację; potem „Trasa” (T lub O).</div>' : ''}
       ${lifts ? `<div class="build-section">Wyciągi</div><table class="build-list"><tbody>${lifts}</tbody></table>` : ''}
       ${pistes ? `<div class="build-section">Trasy</div><table class="build-list"><tbody>${pistes}</tbody></table>` : ''}
-      ${bases ? `<div class="build-section">Bazy</div><table class="build-list"><tbody>${bases}</tbody></table>` : ''}
+      ${bases ? `<div class="build-section">Budynki</div><table class="build-list"><tbody>${bases}</tbody></table>` : ''}
       ${!empty ? `<div class="build-total">Razem: ${money(s.analysis.totals.costPln)} · ${fmt0(s.analysis.totals.buildDays)} dni pracy · wycinka ${(s.analysis.totals.clearedForestM2 / 10_000).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} ha lasu</div>` : ''}
       ${issues ? `<div class="build-section">Sieć – ostrzeżenia</div><ul class="build-issues">${issues}</ul>` : !empty ? '<div class="build-ok">✓ sieć: wszystkie trasy i wyciągi połączone</div>' : ''}
       ${real}`;

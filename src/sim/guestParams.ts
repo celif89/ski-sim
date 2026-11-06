@@ -106,6 +106,8 @@ export interface GuestParams {
     /** Ocena śniegu wg kodu stanu (SNOW_QUALITY_CODES: none, powder, windPacked, settled, firn, slush, icy, thin). */
     snowScoreByQuality: number[];
     mogulPenaltyBeginner: number;
+    /** Zadowolenie gościa, który wyjechał bez zjazdu (etap 6). */
+    noSkiSatisfaction: number;
   };
   accidents: { basePerKm: number; crowdFactor: number; icyFactor: number; fatigueFactor: number; tooHardFactor: number; iconHours: number };
   snowImpact: SnowImpactParams;
@@ -176,6 +178,7 @@ export function parseGuestParams(raw: unknown): GuestParams {
     movement: readAll(mo, ['lateralMarginM', 'minGapM', 'lookAheadM', 'turnLengthMinM', 'turnLengthMaxM', 'turnAmplitudeM', 'flatSlopePercent', 'minSpeedMs', 'groupGapM', 'queueRowSize', 'queueSpacingM'] as const, { min: 0 }),
     satisfaction: {
       ...sat,
+      noSkiSatisfaction: readNumber(sa, 'noSkiSatisfaction', FILE, { min: 0, max: 1 }),
       snowScoreByQuality: [q('snowScoreNone'), q('snowScorePowder'), q('snowScoreWindPacked'), q('snowScoreSettled'), q('snowScoreFirn'), q('snowScoreSlush'), q('snowScoreIcy'), q('snowScoreThin')],
     },
     accidents: readAll(ac, ['basePerKm', 'crowdFactor', 'icyFactor', 'fatigueFactor', 'tooHardFactor', 'iconHours'] as const, { min: 0 }),

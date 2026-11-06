@@ -22,7 +22,7 @@ let seed = 0;
 let elevation: Float32Array | null = null;
 let net: GuestNet | null = null;
 let day: GuestDay | null = null;
-let dayInfo: { date: CalendarDate; guests: number } | null = null;
+let dayInfo: { date: CalendarDate; guests: number; hours?: { openH: number; closeH: number }; typeShares?: number[] } | null = null;
 let cond: GuestConditions | null = null;
 let snow: GuestSnow | null = null;
 /** Przewijanie w toku (numer – nowsze przerywa starsze) i cel. */
@@ -81,7 +81,7 @@ function newDay(): void {
     day = null;
     return;
   }
-  day = new GuestDay(net, params, { seed, date: dayInfo.date, guests: dayInfo.guests, elevationM: elevation });
+  day = new GuestDay(net, params, { seed, date: dayInfo.date, guests: dayInfo.guests, elevationM: elevation, hours: dayInfo.hours, typeShares: dayInfo.typeShares });
   if (cond) day.setConditions(cond);
   if (snow) day.setSnow(snow);
 }
@@ -128,7 +128,7 @@ function handle(r: GuestRequest): void {
       return;
     }
     case 'day':
-      dayInfo = { date: r.date, guests: r.guests };
+      dayInfo = { date: r.date, guests: r.guests, hours: r.hours, typeShares: r.typeShares };
       newDay();
       void catchUp(r.timeS);
       return;
@@ -158,6 +158,11 @@ function handle(r: GuestRequest): void {
     case 'traffic': {
       const perHour = day ? day.trafficPerHour() : null;
       post({ type: 'traffic', requestId: r.requestId, perHour }, perHour ? [perHour.buffer] : []);
+      return;
+    }
+    case 'economy': {
+      const summary = day ? day.economySummary() : null;
+      post({ type: 'economy', requestId: r.requestId, date: dayInfo?.date ?? null, summary });
       return;
     }
     case 'dayTraffic': {
