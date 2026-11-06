@@ -20,7 +20,8 @@
     "radiation-validation-data": "tsx src/tools/radiationValidationData.ts",
     "winter-report": "tsx src/tools/winterReport.ts",
     "import-osm-resort": "tsx src/tools/importOsmResort.ts",
-    "piste-check": "tsx src/tools/pisteCheck.ts"
+    "piste-check": "tsx src/tools/pisteCheck.ts",
+    "economy-report": "tsx src/tools/economyReport.ts"
   },
   "engines": {
     "node": ">=22"
