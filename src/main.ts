@@ -76,7 +76,9 @@ import type { SnowReadoutData } from './render/hud';
 import { Camera } from './render/camera';
 import { FieldOverlay, fieldScale } from './render/fieldOverlay';
 import type { FieldKind } from './render/fieldOverlay';
-import { Hud } from './render/hud';
+import { Hud, describePoint } from './render/hud';
+import { CursorTip } from './render/cursorTip';
+import type { TipContent } from './render/cursorTip';
 import { MapInput } from './render/input';
 import { parseMapStyle } from './render/mapStyle';
 import { TopBar, type GameSpeed, type SnowAtPoints } from './render/topBar';
@@ -270,13 +272,19 @@ async function start(): Promise<void> {
       onZoom: (f) => camera.zoomAt(camera.viewportWidthPx / 2, camera.viewportHeightPx / 2, f),
     });
     mapNav.setRotated(camera.rotated);
+    const cursorTip = new CursorTip(document.body);
     const toolbar = new Toolbar(buildBar.layersPop, {
+      onTip: () => {
+        cursorTip.setEnabled(!cursorTip.enabled);
+        toolbar.setTipActive(cursorTip.enabled);
+      },
       onOverlay: (kind) => setOverlay(kind),
       onProfileTool: () => {
         if (!profile.active) build.setTool('select');
         profile.toggle();
       },
     });
+    toolbar.setTipActive(cursorTip.enabled);
     let topoOn = false;
     const layerExtras = document.createElement('div');
     layerExtras.className = 'a-layers-extra';
@@ -301,6 +309,8 @@ async function start(): Promise<void> {
 
     // Gra (etap 6) – tworzona niżej, gdy gotowe są budowa i goście.
     let game: GameController | null = null;
+    /** Etap 6b (woda): potok pod kursorem – ustawiane, gdy warstwa cieków jest gotowa. */
+    let streamAt: ((xM: number, yM: number) => { title: string; lines: string[] } | null) | null = null;
     const timePanel = new TimePanel(
       topBar.details,
       { date: parseIsoDate(simSettings.startDate), hour: simSettings.startHour },
@@ -1004,6 +1014,25 @@ async function start(): Promise<void> {
     }
     const devMenu = new DevMenu(document.body);
 
+    /** Etap 6b: treść dymku przy kursorze. */
+    function tipContent(c: { xPx: number; yPx: number }): TipContent | null {
+      const w = camera.screenToWorld(c.xPx, c.yPx);
+      const d = describePoint(grid, w.xM, w.yM, style.flatSlopePercent, lastSnow ? { ...lastSnow, ground: build.groundMap, riding: ridingParams } : null);
+      if (!d.elevation) return null;
+      const lines = [d.elevation, d.slope, d.aspect, d.snow];
+      const cell = grid.cellAt(w.xM, w.yM);
+      if (cell && lastState) {
+        const t = lastState.temperatureC[grid.index(cell.i, cell.j)];
+        if (Number.isFinite(t)) lines.push(`powietrze ${t.toLocaleString('pl-PL', { maximumFractionDigits: 1 })} °C (na tej wysokości, ${String(Math.floor(timePanel.hour)).padStart(2, '0')}:00)`);
+      }
+      const sections: { title: string; lines: string[] }[] = [];
+      const obj = build.describeAt(c.xPx, c.yPx);
+      if (obj) sections.push(obj);
+      const stream = streamAt?.(w.xM, w.yM);
+      if (stream) sections.push(stream);
+      return { lines, sections };
+    }
+
     // ---------------------------------------------------------------- sterowanie
     input.onClick = (x, y) => {
       if (profile.handleClick(x, y)) return;
@@ -1037,6 +1066,12 @@ async function start(): Promise<void> {
       }
       if (code === 'KeyM') {
         setOverlay(overlay === 'wetBulb' ? 'none' : 'wetBulb');
+        return true;
+      }
+      if (code === 'KeyI') {
+        cursorTip.setEnabled(!cursorTip.enabled);
+        toolbar.setTipActive(cursorTip.enabled);
+        buildBar.showToast(cursorTip.enabled ? 'Dymek przy kursorze włączony.' : 'Dymek przy kursorze wyłączony.');
         return true;
       }
       if (code === 'KeyG') {
@@ -1080,6 +1115,7 @@ async function start(): Promise<void> {
       profile.update(input.cursor);
       opsFrame();
       refreshSnowOps(false);
+      cursorTip.update(input.cursor, performance.now(), () => tipContent(input.cursor!));
       build.update(input.cursor, guestCtl.gameTimeS ?? nowS);
       hud.update(camera, grid, input.cursor, lastSnow ? { ...lastSnow, ground: build.groundMap, riding: ridingParams } : null);
       const wx = lastState?.top.now;

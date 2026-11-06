@@ -12,6 +12,8 @@ import type { OverlayKind } from './overlays';
 export interface ToolbarHandlers {
   onOverlay(kind: OverlayKind): void;
   onProfileTool(): void;
+  /** Etap 6b: dymek przy kursorze – włącz/wyłącz. */
+  onTip?(): void;
 }
 
 /** Nakładki w kolejności klawiszy 1–7 (7 = bez nakładki). */
@@ -60,11 +62,16 @@ export class Toolbar {
     sep.className = 'toolbar-sep';
     bar.appendChild(sep);
     add('profile', 'Profil terenu', 'P', 'Kliknij punkt A i punkt B na mapie, Esc – zamknij', () => handlers.onProfileTool());
+    if (handlers.onTip) add('tip', 'Dymek przy kursorze', 'I', 'Po chwili bez ruchu myszy: wysokość, nachylenie, śnieg, temperatura i obiekt pod kursorem', () => handlers.onTip!());
     parent.appendChild(bar);
   }
 
   setOverlay(kind: OverlayKind): void {
     for (const o of OVERLAY_KEYS) this.buttons.get(o.kind)!.classList.toggle('active', o.kind === kind);
+  }
+
+  setTipActive(active: boolean): void {
+    this.buttons.get('tip')?.classList.toggle('active', active);
   }
 
   setProfileActive(active: boolean): void {

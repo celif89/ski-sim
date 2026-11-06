@@ -1722,3 +1722,30 @@ tr.g-closed td {
 .snow-plan-dialog input[type='number'] {
   width: 4.5em;
 }
+
+/* ---------- etap 6b: dymek przy kursorze ---------- */
+.cursor-tip {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  max-width: 320px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #0f172a;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
+  font: 12px/1.35 'Barlow', system-ui, sans-serif;
+}
+.cursor-tip.hidden {
+  display: none;
+}
+.cursor-tip .ct-title {
+  font-weight: 700;
+  font-family: 'Barlow Condensed', 'Barlow', sans-serif;
+  font-size: 13px;
+}
+.cursor-tip .ct-sec {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid #e2e8f0;
+}

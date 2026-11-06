@@ -776,6 +776,56 @@ export class BuildController {
     return null;
   }
 
+  /** Etap 6b: obiekt pod kursorem (do dymka): nazwa, status i najważniejsze dane. */
+  describeAt(xPx: number, yPx: number): { title: string; lines: string[] } | null {
+    const p = this.o.camera.screenToWorld(xPx, yPx);
+    const hit = this.pick(xPx, yPx, p);
+    if (!hit) return null;
+    const f0 = (v: number) => Math.round(v).toLocaleString('pl-PL');
+    const building = this.construction.get(hit.id);
+    const status = (closed?: boolean) => (building !== undefined ? `w budowie (${Math.round(building * 100)} %)` : closed ? 'zamknięty' : 'otwarty');
+    if (hit.kind === 'lift') {
+      const l = this.layout.lifts.find((x) => x.id === hit.id);
+      const a = this.analysis.lifts.get(hit.id);
+      if (!l) return null;
+      const lines = [`status: ${status(l.closed)}`];
+      if (a) lines.push(`${a.type.name} · ${f0(a.slopeLengthM)} m, przewyższenie ${f0(a.riseM)} m`, `przepustowość ${f0(a.capacityPerHour)} os./h · przejazd ${f0(a.rideTimeS / 60)} min`);
+      return { title: l.name, lines };
+    }
+    if (hit.kind === 'piste') {
+      const pst = this.layout.pistes.find((x) => x.id === hit.id);
+      const a = this.analysis.pistes.get(hit.id);
+      if (!pst) return null;
+      const lines = [`status: ${status(pst.closed)}`];
+      if (a) {
+        lines.push(`${this.o.pisteParams.classes[a.classIndex]?.name ?? ''} · ${f0(a.lengthM)} m, średnio ${f0(a.meanSlopePercent)} %, maks. ${f0(a.maxSlopePercent)} %`);
+        const warn = this.thinWarningRows.filter((w) => w.pisteId === hit.id);
+        const seg = warn.flatMap((w) => w.segments);
+        if (seg.length) lines.push(`za mało śniegu na ${seg.length} odcinkach (najcieńsza baza ${f0(Math.min(...seg.map((x) => x.baseCm)))} cm, potrzeba ${f0(Math.max(...seg.map((x) => x.neededCm)))} cm)`);
+      }
+      return { title: pst.name, lines };
+    }
+    if (hit.kind === 'base') {
+      const b = [...this.layout.bases, ...(this.layout.buildings ?? [])].find((x) => x.id === hit.id);
+      if (!b) return null;
+      const t = this.o.buildingTypes?.find((x) => x.id === (b as { typeId?: string }).typeId);
+      return { title: b.name, lines: [t ? t.name : 'baza (miejsce przyjazdu)', `status: ${building !== undefined ? `w budowie (${Math.round(building * 100)} %)` : 'gotowy'}`] };
+    }
+    if (hit.kind === 'pipeline') {
+      const pipe = (this.layout.pipelines ?? []).find((x) => x.id === hit.id);
+      if (!pipe || !this.o.snowmaking) return null;
+      const n = pipelineHydrants(pipe, this.o.snowmaking).length;
+      const guns = (this.layout.snowGuns ?? []).filter((g) => g.pipelineId === pipe.id).length;
+      return { title: pipe.name, lines: [`rurociąg naśnieżania · ${n} hydrantów, ${guns} armatek`, `status: ${building !== undefined ? `w budowie (${Math.round(building * 100)} %)` : 'gotowy'}`] };
+    }
+    if (hit.kind === 'gun') {
+      const g = (this.layout.snowGuns ?? []).find((x) => x.id === hit.id);
+      const t = this.o.snowmaking?.guns.find((x) => x.id === g?.typeId);
+      return { title: t?.name ?? 'Armatka', lines: [t ? `start od ${t.curveWetBulbC[0]} °C temp. mokrej, do ${f0(Math.max(...t.curveSnowM3h))} m³/h śniegu` : ''] };
+    }
+    return null;
+  }
+
   private findSelected(): LiftDesign | { id: string } | null {
     const s = this.selection;
     if (!s) return null;
