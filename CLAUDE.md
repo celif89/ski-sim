@@ -307,7 +307,7 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
     2 h 100 zł, punkt 4 zł; ulga 80 %; Pilsko/Wisła/Szczyrk/Zwardoń 2024–26), godziny, popyt, skład gości
     (tydzień/weekend/ferie), ferie 2026 wg MEN (3 tury) z wagami regionów (śląskie 0,42, małopolskie
     0,24), koszty (energia 1,3 zł/kWh, płaca 36 zł/h + 21 %, ratownicy, przeglądy UDT, ubezpieczenie
-    0,4 %, utrzymanie 1–2 %, stała załoga, ratrakowanie TYMCZASOWE 120 zł/ha), budowa zimą ×0,25
+    0,4 %, utrzymanie 1–2 %, stała załoga, ratrakowanie tymczasowe 120 zł/ha – usunięte w etapie 7), budowa zimą ×0,25
     tempa i ×1,25 ceny, reputacja, model zgrubny, konkurencja (4 wymyślone ośrodki), budynki
     (parking 300 aut, gastronomia, wypożyczalnia, szkółka);
   - `src/sim`: `calendar.ts` (pory roku, ferie – ten sam tydzień ISO co wzór, święta), `economyParams.ts`,
@@ -334,8 +334,55 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
     bez naśnieżania inwestycja nie zwraca się w 10 lat; ok. 1/3 gości (początkujący) odjeżdża bez trasy
     na swój poziom;
   - testy `tests/economy.test.ts` (15), `tests/economyFixture.ts`.
-- **Następny: etap 7 – naśnieżanie i ratraki** (zastąpić tymczasowe ratrakowanie z `economy.ts` /
-  `costs.groomingPlnPerHa`).
+- **Etap 7 – zrobiony** (listopad 2026): naśnieżanie i ratraki; tymczasowe ratrakowanie za hektar usunięte.
+  - dane `data/snowmaking.json` (wartości startowe z sekcji „Dane do kalibracji” koncepcji + producenci,
+    źródła przy każdej liczbie): woda (ujęcie 60 m³/h latem, zimą ×0,4, po suchym miesiącu mniej –
+    opad z 30 dni wobec normy; napełnianie V–XI), pompowanie (η 0,75, straty 20 m/km, ρ, g), taryfa nocna
+    ×0,75 22–6, rurociąg 450 zł/m, wykop tylko V–X, hydranty co 60 m (18 tys. zł), śnieg techniczny
+    (gęstość 500 przy −2,5 °C → 400 przy −8 °C Twb, woda ciekła 6 % przy progu, straty 12 %, pryzma
+    > 8 mm SWE), armatki: śmigłowa (150 tys., krzywa Twb −2,5…−15 °C → 8…90 m³/h, 1,5 kWh/m³, ciśnienie
+    na dyszy 150 m, przestawna) i lanca (50 tys., od −4 °C, 5…45 m³/h, 0,65 kWh/m³, 250 m); budynki:
+    ujęcie, zbiorniki 20/50/100 tys. m³, pompownie 150/300/600 m³/h, przyłącza 500/1000/2000 kW, garaż
+    (3 ratraki), punkt kotwienia (lina 1000 m); ratraki: standardowy i z wyciągarką (wzór PistenBully 600:
+    5,5 m, 8 / 6,5 km/h, 22–25 l/h), paliwo, serwis, leasing 2,2 %/mies., awarie (1 %/noc × (1 + 0,25 ×
+    wiek)), okno 17:30–7:30, max 11 h, nachylenie +3 %/% ponad 15 %, wyciągarka od 40 %, świeży śnieg,
+    pryzmy 400 m³/h; dane kalibracyjne (woda 3501 m³/ha, energia 24 449 kWh/ha, 5,4 kWh/wizytę, 4 €/m³);
+  - `src/sim/snowmaking.ts`: temperatura mokra (Stull 2011), wydajność z krzywej, gęstość i woda ciekła
+    śniegu technicznego, wysokość podnoszenia = Δz + straty w rurach + ciśnienie dyszy, energia pompowania
+    ρ·g·h·V/η, rurociągi i hydranty (`pipelineHydrants`, `connectPipelines` – połączenie z pompownią),
+    `runSnowmakingDay` (godzina po godzinie: priorytet, potem najzimniej; limity pompowni, zbiornika
+    – nigdy < 0 – i mocy przyłącza razem z wyciągami; automat nie naśnieża otwartej trasy w godzinach
+    pracy; ręczne on/off), `depositSnow` (armatka celuje w oś trasy do zasięgu rzutu, wiatr znosi
+    2,5 m na 1 m/s – część poza trasę);
+  - `src/sim/snowOps.ts`: operacje dnia na modelu śniegu (`SnowState.pileMm`, `techMm`): dodanie
+    śniegu technicznego w pryzmach, ratrakowanie grupami (rozepchnięcie pryzm z zachowaniem masy, muldy
+    0, gęstość; tryby: mróz – twarda 480, odwilż – mokra 450, mokry śnieg ubity przed mrozem ≤ −3 °C –
+    lód); `SnowWorld.setOperations` jak `setTraffic` (zapamiętane na dzień, przeliczane przy cofnięciu);
+  - `src/sim/grooming.ts`: czas pracy = powierzchnia / (szerokość × prędkość) × (1 + nachylenie) ×
+    (1 + świeży śnieg) + pryzmy / 400 m³/h; `planNight` (priorytety, ręczny przydział albo automat –
+    ratrak, który najwcześniej skończy; strome odcinki tylko ratrakiem z wyciągarką i z kotwą w zasięgu;
+    czego nie zdąży do rana – część trasy nieratrakowana), `breakdownTonight`;
+  - `src/sim/operations.ts`: `infraFacts` (co zbudowane i połączone), `blockedPistes` (pryzmy na trasie
+    → zamknięta; ratrakowanie w dzień → zamknięta), `runDayOperations` (doba: zbiornik, plan naśnieżania,
+    noc ratraków, koszty: energia naśnieżania z taryfą, woda, paliwo, operatorzy z dodatkiem nocnym,
+    serwis, leasing, naprawy), `previewDayOperations` (to samo na kopii stanu – plan na dziś, przewidywany
+    koniec nocy), `acquireGroomer`;
+  - ekonomia: nowe pozycje kosztów (energia naśnieżania, woda, paliwo, operatorzy, serwis, leasing,
+    naprawy) i wydatek „zakup ratraków”, budowy „tylko latem” (rurociąg, zbiornik, ujęcie – postęp tylko
+    V–X), `DayRecord`: śnieg, woda, energia, paliwo, trasy ratrakowane, nieukończone, `techOpen` (dzień
+    otwarty, a na samym śniegu naturalnym ponad połowa tras byłaby za cienka); zapis gry z operacjami;
+  - widok: narzędzia rurociągu (`H`) i armatek (`J`) w `buildController.ts`, budynki naśnieżania w
+    narzędziu B; `resortLayer.ts` – rurociągi, hydranty, armatki, chmury śniegu z wiatrem; `opsView.ts` –
+    ratraki na trasach w nocy (przejazdy tam i z powrotem, sztruks w `terrain.groom`); `snowPanels.ts` –
+    panel „Naśnieżanie i ratraki” (zbiornik, moc vs limit z wykresem doby, armatki, flota – zakup/leasing,
+    noc), „Plan naśnieżania”, „Plan nocy” (z przewidywanym przebiegiem); nakładka `M` „Naśnieżanie teraz”
+    (temperatura mokra); raport sezonu z sekcją naśnieżania;
+  - raport ekonomii: ten sam orczyk z naśnieżaniem (25 armatek, zbiornik 50 tys. m³, 1 ratrak) na 30
+    zimach obok wersji bez naśnieżania + tabela kalibracji – WYNIKI_30_ZIM;
+  - testy `tests/snowmaking.test.ts` (12): Twb ponad progiem → 0, zimniej → więcej; energia ρgh/η;
+    zbiornik ≥ 0; limit mocy; stromizna bez wyciągarki nieratrakowana; czas pracy ze wzoru; pryzmy
+    blokują odcinek; mokry śnieg ubity przed mrozem → lód; wiatr znosi poza trasę; 30 zim z i bez.
+- **Następny: etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja.**
 
 Uwagi techniczne:
 - Ekonomia (6): pytania o śnieg do wątku obliczeń idą po kolei (`snowSerial`) – równoległe się

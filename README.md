@@ -3,14 +3,17 @@
 Realistyczny symulator budowy i prowadzenia ośrodka narciarskiego na północnych stokach Pilska.
 Zasady projektu i plan etapów: plik [CLAUDE.md](CLAUDE.md).
 
-**Stan: etap 6 – sezon i ekonomia, pierwsza grywalna wersja.** Kariera od pustej góry z ograniczonym
+**Stan: etap 7 – naśnieżanie i ratraki.** Kariera od pustej góry z ograniczonym
 kapitałem (budowa kosztuje i trwa, kredyt, bankructwo) albo piaskownica bez limitu pieniędzy. Goście
 przyjeżdżają według popytu (dzień tygodnia, ferie, święta, śnieg, prognoza, reputacja, ceny, konkurencja,
 parking), płacą za karnety, ośrodek ponosi koszty (energia, obsługa, ratownicy, przeglądy, ubezpieczenie,
-ratrakowanie – na razie tymczasowo za hektar). Mapa to NMT z Geoportalu (GUGiK) w siatce 10 m, pogoda –
-generator oparty na danych IMGW 2001–2025, śnieg – model fizyczny (bez naśnieżania – etap 7).
+naśnieżanie, ratraki). System naśnieżania: ujęcie wody, zbiornik, pompownia, przyłącze energetyczne,
+rurociąg z hydrantami, armatki śmigłowe i lance; flota ratraków z planem nocy. Mapa to NMT z Geoportalu
+(GUGiK) w siatce 10 m, pogoda – generator oparty na danych IMGW 2001–2025, śnieg – model fizyczny
+(naturalny i techniczny).
 
-**Raport ekonomii** (10 sezonów prostego ośrodka: orczyk i dwie trasy, tryb kariery):
+**Raport ekonomii** (10 sezonów prostego ośrodka: orczyk i dwie trasy, tryb kariery; ten sam ośrodek
+z naśnieżaniem na 30 zimach i tabela kalibracji naśnieżania):
 https://celif89.github.io/ski-sim/raport-ekonomii.html
 
 **Raport zimy** (model śniegu obok pomiarów IMGW, punkty kontrolne, mapy grubości, 30 zim):
@@ -69,6 +72,52 @@ Przewijanie: kalendarz albo „Przewiń sezon” – dni pominięte liczą się 
 przejazdy ograniczone przepustowością, kolejki, ocena – skalibrowany na pełnej symulacji gości); dni
 oglądane zegarem (×1, ×5, ×20) – **pełną symulacją gości**. W karierze nie można cofać czasu.
 
+### Naśnieżanie i ratraki (etap 7)
+
+Jak zbudować system naśnieżania (najlepiej latem – wykopy pod rurociąg i zbiornik tylko od maja do
+października):
+
+1. **Ujęcie wody z potoku** (narzędzie „Budynki”, `B`, typ w panelu budowy) – pobór ograniczony
+   (latem 60 m³/h, zimą 40 % tego; po suchym miesiącu mniej).
+2. **Zbiornik** (20, 50 lub 100 tys. m³) – napełnia się z ujęcia latem i jesienią; przy suchej jesieni
+   może nie dojść do pełna.
+3. **Pompownia** (150, 300 lub 600 m³/h) – postaw ją przy dolnej stacji; od niej zaczyna się rurociąg.
+4. **Przyłącze energetyczne** (500, 1000 lub 2000 kW) – ogranicza, ile armatek i pomp pracuje naraz
+   (razem z wyciągami w godzinach otwarcia).
+5. **Rurociąg** – przycisk „Naśnieżanie” na dolnym pasku albo klawisz `H`: klikaj punkty od pompowni
+   wzdłuż trasy (pierwszy punkt blisko pompowni albo innego rurociągu), `Enter` lub podwójne kliknięcie
+   – koniec. Hydranty (kropki) pojawiają się co 60 m. Koszt za metr + hydranty.
+6. **Armatki** – klawisz `J`, typ w panelu budowy (śmigłowa: wydajna, droższa, pracuje od −2,5 °C
+   temperatury mokrej, przestawna; lanca: tańsza, oszczędniejsza, od −4 °C), kliknij hydrant. Zaznaczoną
+   armatkę śmigłową przestawisz, klikając wolny hydrant (bez kosztu).
+7. **Garaż ratraków** (3 miejsca) i ratraki w panelu **„Naśnieżanie i ratraki”**: „Kup” albo „Leasing”
+   (rata miesięczna); standardowy albo z wyciągarką. Na stromych trasach (≥ 40 %) ratrak z wyciągarką
+   potrzebuje **punktu kotwienia** (budynek „Punkt kotwienia”) na górze stoku – lina sięga 1000 m.
+
+Panel **„Naśnieżanie i ratraki”** (po prawej): stan zbiornika, dopływ i zużycie dziś, moc chwilowa
+wobec limitu przyłącza (wykres doby: armatki, pompy, wyciągi; czerwona linia – limit), armatki gotowe
+i pracujące, trasy zamknięte przez pryzmy, flota ratraków, przewidywany koniec pracy w nocy.
+
+- **Plan naśnieżania** – dla każdej trasy: naśnieżać tak/nie, docelowa baza (cm śniegu ubitego),
+  priorytet 1–3. Automat (od listopada do marca) włącza armatki, gdy jest dość zimno (temperatura
+  mokra), a baza jest cieńsza niż docelowa – najpierw priorytet 1, w ramach priorytetu najzimniejsze
+  miejsca; ogranicza go woda, pompownia i moc. Na otwartej trasie w godzinach pracy wyciągów automat nie
+  naśnieża. Pojedyncze armatki można przełączyć na „włączona” / „wyłączona” (ręcznie).
+- Śnieg z armatek ląduje w **pryzmach** – dopóki ratrak go nie rozepchnie, ten odcinek trasy jest
+  nierówny, a trasa zamknięta. Wiatr znosi część śniegu poza trasę (do lasu).
+- **Plan nocy** – dla każdej trasy: ratrakować tak/nie, kolejność (1 – najpierw), ratrak (automat albo
+  konkretny), „w dzień” (ratrakowanie w dzień – trasa zamknięta dla gości do końca dnia). Pod tabelą
+  przewidywany przebieg nocy: który ratrak, która trasa, w jakich godzinach, czy zdąży do rana, czy
+  strome odcinki zostaną zrobione i jaka będzie trasa (mróz – twarda, odwilż – mokra, mokry śnieg ubity
+  przed mrozem – lód).
+- Nakładka **„Naśnieżanie teraz”** (klawisz `M`): gdzie temperatura mokra pozwala teraz robić śnieg
+  (przy inwersji na dole zimniej niż na górze).
+- Na mapie: rurociągi (niebieska linia), hydranty, armatki (okrągłe – śmigłowe, wąskie – lance), chmury
+  śniegu pracujących armatek z wiatrem, ratraki ze światłami w nocy i sztruks za nimi; budynki: U – ujęcie,
+  Z – zbiornik, Pm – pompownia, E – przyłącze, R – garaż ratraków, K – punkt kotwienia.
+- Raport sezonu: śnieg (m³), woda, energia, paliwo, koszty naśnieżania i ratraków, **dni otwarte dzięki
+  naśnieżaniu**.
+
 ### Sterowanie
 
 | Czynność | Jak |
@@ -78,7 +127,7 @@ oglądane zegarem (×1, ×5, ×20) – **pełną symulacją gości**. W karierze
 | Cała mapa na ekranie | klawisz `0` lub `Home` |
 | Obrót mapy o 180° | róża kierunków w prawym dolnym rogu (strzałka **N**). Domyślnie widok od Korbielowa: szczyt u góry, północ na dole |
 | Upływ czasu gry | prawy górny róg: pauza, **1:1** (czas rzeczywisty – do oglądania narciarzy z bliska), ×1 (dzień sezonu w ok. 10 minut, noc szybciej), ×5, ×20; spacja – pauza / ×1 |
-| Nakładki danych | przycisk **„Nakładki”** na dolnym pasku (tam też mapa topograficzna, sieć tras, prawdziwy ośrodek) albo klawisze `1`–`9`, `G`, `K` |
+| Nakładki danych | przycisk **„Nakładki”** na dolnym pasku (tam też mapa topograficzna, sieć tras, prawdziwy ośrodek) albo klawisze `1`–`9`, `G`, `K`, `M` |
 | Nakładka nachylenia | „Nakładki” → „Nachylenie” lub klawisz `1` |
 | Nakładka ekspozycji | przycisk „Ekspozycja” lub klawisz `2` |
 | Sama mapa | przycisk „Bez nakładki” lub klawisz `3` |
@@ -93,13 +142,14 @@ oglądane zegarem (×1, ×5, ×20) – **pełną symulacją gości**. W karierze
 | Goście | panel **„Goście”** po prawej: liczba gości dnia, „↺ Od nowa”, „Raport dnia”, tabela wyciągów; kliknięcie postaci na mapie – karta gościa |
 | Ruch na trasach / kolejki | klawisz `9` (natężenie ruchu) i `K` (czas oczekiwania przy stacjach) albo „Nakładki” |
 | Podłoże terenu | klawisz `G` albo „Nakładki” → „Podłoże”: łąka wyrównana, łąka naturalna, kamienie / skała, przecinka z pniakami, las |
+| Gdzie można teraz naśnieżać | klawisz `M` albo „Nakładki” → „Naśnieżanie teraz” (temperatura mokra) |
 | Menu deweloperskie | przycisk „Dev” w lewym dolnym rogu lub klawisz `` ` `` – licznik klatek, czas pracy na klatkę |
 | Profil terenu | przycisk „Profil terenu” lub klawisz `P`, potem kliknij punkt A i punkt B; `Esc` zamyka |
 
 ### Budowa ośrodka (dolny pasek i panel „Budowa ośrodka” po prawej)
 
-Dolny pasek: **Wyciąg**, **Trasa**, **Budynki** (baza), **Nakładki**. „Wycinka” i „Naśnieżanie”
-są wyszarzone – wycinka liczy się sama pod wyciągami i trasami, naśnieżanie to etap 7.
+Dolny pasek: **Wyciąg**, **Trasa**, **Naśnieżanie** (rurociąg `H`, armatki `J`), **Budynki** (baza, budynki
+naśnieżania), **Nakładki**. „Wycinka” jest wyszarzona – liczy się sama pod wyciągami i trasami.
 
 | Czynność | Jak |
 |---|---|
@@ -254,7 +304,11 @@ https://celif89.github.io/ski-sim/raport-ekonomii.html – prosty ośrodek (orcz
 grafiki): tabela sezon po sezonie (dni otwarte, goście, ocena, przychody, koszty, wynik, saldo,
 reputacja), wykresy gości i wyniku, przychody i koszty średnio na sezon, dzień po dniu w najlepszym
 i najsłabszym sezonie, porównanie z konkurencją, porównanie pełnej symulacji gości z modelem zgrubnym
-w te same dni, założenia. Lokalnie: `npm run economy-report` → `reports/raport-ekonomii.html` (ok. 1,5 min).
+w te same dni; **naśnieżanie**: ten sam ośrodek z ujęciem, zbiornikiem, pompownią, rurociągami i armatkami
+na 30 zimach obok wersji bez naśnieżania (dni otwarte zima po zimie, zysk w słabych i mocnych zimach,
+wynik, zwrot) i **tabela kalibracji** (woda i energia na hektar, energia na wizytę, koszt m³ śniegu – gra
+wobec danych z koncepcji); założenia. Lokalnie: `npm run economy-report` → `reports/raport-ekonomii.html`
+(ok. 4–5 min; szybciej: `WINTERS=5 npm run economy-report`).
 
 ### Jednorazowa konfiguracja publikacji (zrobione przy etapie 0)
 

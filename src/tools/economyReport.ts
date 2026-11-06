@@ -11,6 +11,7 @@ import { dirname } from 'node:path';
 import climateJson from '../../data/climate/pilsko.json';
 import constructionJson from '../../data/construction.json';
 import economyJson from '../../data/economy.json';
+import snowmakingJson from '../../data/snowmaking.json';
 import guestsJson from '../../data/guests.json';
 import liftsJson from '../../data/lifts.json';
 import pistesJson from '../../data/pistes.json';
@@ -21,8 +22,11 @@ import wxJson from '../../data/weather-generator.json';
 import { weekdayIndex } from '../sim/calendar';
 import { parseClimateProfile } from '../sim/climate';
 import type { SeasonReport } from '../sim/economy';
-import { COST_KEYS, FLOW_NAMES, REVENUE_KEYS, debtOf, fmtPln, reputationOf, sumCosts, sumRevenue } from '../sim/economy';
-import { parseEconomyParams } from '../sim/economyParams';
+import { COST_KEYS, FLOW_NAMES, REVENUE_KEYS, debtOf, fmtPln, objectCosts, reputationOf, sumCosts, sumRevenue } from '../sim/economy';
+import { parseEconomyParams, withSnowmaking } from '../sim/economyParams';
+import { acquireGroomer, infraFacts } from '../sim/operations';
+import { pipelineHydrants } from '../sim/snowmaking';
+import { parseSnowmakingParams } from '../sim/snowmakingParams';
 import { puwg92ToLatLon } from '../sim/geo';
 import { parseGroundParams } from '../sim/ground';
 import { parseGuestParams } from '../sim/guestParams';
@@ -44,7 +48,9 @@ import { loadMapFromDisk } from './loadMapFromDisk';
 import { esc, fmt } from './reportKit';
 
 const OUT = process.argv[2] ?? 'reports/raport-ekonomii.html';
-const SEASONS = 10;
+const SEASONS = Number(process.env.SEASONS ?? 10);
+/** Etap 7: liczba zim w porównaniu z naśnieżaniem i bez. */
+const WINTERS = Number(process.env.WINTERS ?? 30);
 const t0 = performance.now();
 const log = (s: string) => console.log(`[${((performance.now() - t0) / 1000).toFixed(0)} s] ${s}`);
 
@@ -199,6 +205,83 @@ const quickDays = new Map<string, { guests: number; rating: number; revenue: num
 }
 for (const c of cmp) c.quick = quickDays.get(c.date) ?? c.quick;
 
+// ------------------------------------------------------------------ etap 7: ten sam ośrodek z naśnieżaniem
+const sp = parseSnowmakingParams(snowmakingJson);
+const epS = withSnowmaking(ep, sp);
+/** Ośrodek z systemem naśnieżania: ujęcie, zbiornik, pompownia, przyłącze, garaż; rurociąg wzdłuż każdej trasy, armatki na hydrantach. */
+function snowLayout(): ResortLayout {
+  const l = JSON.parse(JSON.stringify(layout)) as ResortLayout;
+  const b = along(-0.03, -20);
+  l.buildings = [
+    { id: 'S1', typeId: 'intake', name: 'Ujęcie z potoku', xM: b.xM - 40, yM: b.yM + 20 },
+    { id: 'S2', typeId: 'reservoir50', name: 'Zbiornik', xM: b.xM - 20, yM: b.yM + 50 },
+    { id: 'S3', typeId: 'pump300', name: 'Pompownia', xM: b.xM, yM: b.yM },
+    { id: 'S4', typeId: 'grid1000', name: 'Przyłącze', xM: b.xM + 30, yM: b.yM + 30 },
+    { id: 'S5', typeId: 'garage', name: 'Garaż ratraków', xM: b.xM + 60, yM: b.yM + 10 },
+    // Punkt kotwienia wyciągarki przy górnej stacji (strome odcinki przy stacjach – ponad 40 %).
+    { id: 'S6', typeId: 'anchor', name: 'Punkt kotwienia', ...along(1.0, 0) },
+  ];
+  l.pipelines = [];
+  l.snowGuns = [];
+  let id = 50;
+  for (const [i, a] of pa.entries()) {
+    const ax = [...a.axis].filter((q) => !Number.isNaN(q.elevationM));
+    if (ax[0].elevationM > ax[ax.length - 1].elevationM) ax.reverse(); // od dołu w górę
+    const pts = [{ xM: b.xM, yM: b.yM }];
+    const step = Math.max(1, Math.floor(ax.length / 10));
+    for (let k = 0; k < ax.length; k += step) {
+      // Skraj trasy (hydranty z boku), ok. 0,35 szerokości od osi.
+      const q = ax[k];
+      const r = ax[Math.min(ax.length - 1, k + 1)];
+      const d = Math.hypot(r.xM - q.xM, r.yM - q.yM) || 1;
+      const side = (i === 0 ? 1 : -1) * q.widthM * 0.35;
+      pts.push({ xM: q.xM - ((r.yM - q.yM) / d) * side, yM: q.yM + ((r.xM - q.xM) / d) * side });
+    }
+    const pipe = { id: `R${id++}`, name: `Rurociąg ${i + 1}`, points: pts };
+    l.pipelines.push(pipe);
+    for (const h of pipelineHydrants(pipe, sp)) {
+      // Armatki na hydrantach przy trasie (od pierwszych 60 m za pompownią), na przemian śmigłowa i lanca.
+      if (Math.hypot(h.xM - b.xM, h.yM - b.yM) < 60) continue;
+      l.snowGuns.push({ id: `A${id++}`, typeId: h.index % 2 ? 'lance' : 'fan', pipelineId: pipe.id, hydrant: h.index });
+    }
+  }
+  l.nextId = id + 10;
+  return l;
+}
+const snowL = snowLayout();
+interface WinterRun {
+  seasons: SeasonReport[];
+  investPln: number;
+  snowInvestPln: number;
+  snowHa: number;
+}
+/** Piaskownica (budowa od razu, bez limitu pieniędzy), te same zasady otwierania sezonu, model zgrubny dni. */
+function runWinters(withSnow: boolean): WinterRun {
+  const e = withSnow ? epS : ep;
+  const g = new HeadlessGame({ ...game.o, economy: e, mode: 'sandbox', agentsOn: undefined });
+  const L = withSnow ? snowL : layout;
+  g.setLayout(L);
+  const costs = objectCosts(L, (g as unknown as { analysis: Parameters<typeof objectCosts>[1] }).analysis, e);
+  const investPln = costs.reduce((a, c) => a + c.costPln, 0);
+  const snowInvestPln = costs.filter((c) => c.kind === 'pipeline' || c.kind === 'gun' || ['S1', 'S2', 'S3', 'S4', 'S5', 'S6'].includes(c.id)).reduce((a, c) => a + c.costPln, 0);
+  let snowHa = 0;
+  if (withSnow) {
+    const an = (g as unknown as { analysis: Parameters<typeof infraFacts>[1] }).analysis;
+    const inf = infraFacts(L, an, g.state, sp, grid);
+    acquireGroomer(g.state, 'winch', false, inf.garageSlots, sp);
+    const pistesWithGuns = new Set(inf.guns.map((x) => x.pisteId));
+    for (const [i, p] of [piste1, piste2].entries()) if (pistesWithGuns.has(p.id)) snowHa += pa[i].areaM2 / 10000;
+  }
+  openSince = 0;
+  g.runUntil({ year: 2026 + WINTERS, month: 5, day: 1 });
+  return { seasons: g.state.history, investPln, snowInvestPln, snowHa };
+}
+log(`${WINTERS} zim bez naśnieżania…`);
+const winA = runWinters(false);
+log(`${WINTERS} zim z naśnieżaniem (${snowL.snowGuns!.length} armatek)…`);
+const winB = runWinters(true);
+log('Gotowe porównanie zim.');
+
 // ------------------------------------------------------------------ HTML
 const hist = game.state.history;
 const seasonName = (s: SeasonReport) => `${s.startYear}/${String((s.startYear + 1) % 100).padStart(2, '0')}`;
@@ -276,10 +359,86 @@ const meanRatingA = cmp.length ? cmp.reduce((a, c) => a + c.agents.rating, 0) / 
 const meanRatingQ = cmp.length ? cmp.reduce((a, c) => a + c.quick.rating, 0) / cmp.length : 0;
 const revPerGuestA = cmp.reduce((a, c) => a + c.agents.revenue, 0) / Math.max(1, cmp.reduce((a, c) => a + c.agents.guests, 0));
 const revPerGuestQ = cmp.reduce((a, c) => a + c.quick.revenue, 0) / Math.max(1, cmp.reduce((a, c) => a + c.quick.guests, 0));
+
+// ---- etap 7: zimy z naśnieżaniem i bez, kalibracja
+const nW = Math.min(winA.seasons.length, winB.seasons.length);
+const pairs = Array.from({ length: nW }, (_, i) => ({ a: winA.seasons[i], b: winB.seasons[i] }));
+const meanOf = (xs: number[]) => xs.reduce((a, x) => a + x, 0) / Math.max(1, xs.length);
+const sorted = [...pairs].sort((x, y) => x.a.openDays - y.a.openDays || x.a.startYear - y.a.startYear);
+const third = Math.max(1, Math.floor(nW / 3));
+const weak = sorted.slice(0, third);
+const strong = sorted.slice(nW - third);
+const gainOf = (xs: typeof pairs) => meanOf(xs.map((p) => p.b.openDays - p.a.openDays));
+const sumDays = (s: SeasonReport, k: 'snowM3' | 'waterM3' | 'snowKWh' | 'fuelL') => s.days.reduce((a, d) => a + (d[k] ?? 0), 0);
+const bSeasons = pairs.map((p) => p.b);
+const snowM3 = meanOf(bSeasons.map((s) => sumDays(s, 'snowM3')));
+const waterM3 = meanOf(bSeasons.map((s) => sumDays(s, 'waterM3')));
+const snowKWh = meanOf(bSeasons.map((s) => sumDays(s, 'snowKWh')));
+const fuelL = meanOf(bSeasons.map((s) => sumDays(s, 'fuelL')));
+const guestsB = meanOf(bSeasons.map((s) => s.guests));
+const opCostSnow = meanOf(bSeasons.map((s) => s.flows.snowEnergy + s.flows.water));
+const amortYears = 20;
+const fullCostSnow = opCostSnow + winB.snowInvestPln / amortYears + winB.snowInvestPln * (ep.costs.maintenanceBuildingsRatePerYear + ep.costs.insuranceRatePerYear);
+const cal = sp.calibration;
+const eurPln = cal.plnPerEur;
+const ratio = (game: number, data: number) => (data > 0 ? game / data : 0);
+const calRows: [string, number, number, string, string][] = [
+  ['Woda na hektar naśnieżanej trasy w sezonie', waterM3 / Math.max(0.01, winB.snowHa), cal.waterM3PerHa, 'm³/ha', 'koncepcja – dane do kalibracji'],
+  ['Energia naśnieżania na hektar w sezonie', snowKWh / Math.max(0.01, winB.snowHa), cal.energyKWhPerHa, 'kWh/ha', 'koncepcja – dane do kalibracji'],
+  ['Energia naśnieżania na wizytę narciarza', snowKWh / Math.max(1, guestsB), cal.energyKWhPerVisit, 'kWh', 'koncepcja – dane do kalibracji'],
+  ['Koszt śniegu – samo działanie (energia, woda)', opCostSnow / Math.max(1, snowM3), Number.NaN, 'zł/m³', 'dla porównania: dane podają pełny koszt (wiersz niżej)'],
+  [`Koszt śniegu – z amortyzacją (${amortYears} lat) i utrzymaniem`, fullCostSnow / Math.max(1, snowM3), cal.costEurPerM3 * eurPln, 'zł/m³', `dane: ${cal.costEurPerM3} €/m³ × ${eurPln} zł/€ (pełny koszt)`],
+];
+const calTable = calRows
+  .map(([name, g, d, unit, src]) => {
+    if (Number.isNaN(d)) return `<tr><td>${name}</td><td>${fmt(g, g < 100 ? 1 : 0)} ${unit}</td><td>–</td><td>–</td><td class="small muted">${esc(src)}</td></tr>`;
+    const r = ratio(g, d);
+    const ok = r >= 0.3 && r <= 3;
+    return `<tr><td>${name}</td><td>${fmt(g, g < 100 ? 1 : 0)} ${unit}</td><td>${fmt(d, d < 100 ? 1 : 0)} ${unit}</td><td class="${ok ? 'ok' : 'bad'}">× ${fmt(r, 2)}</td><td class="small muted">${esc(src)}</td></tr>`;
+  })
+  .join('');
+const winterRows = pairs
+  .map((p) => {
+    const tech = p.b.days.filter((d) => d.techOpen).length;
+    return `<tr><td>${seasonName(p.a)}</td><td>${p.a.openDays}</td><td>${p.b.openDays}</td><td class="${p.b.openDays >= p.a.openDays ? 'ok' : 'bad'}">${p.b.openDays - p.a.openDays >= 0 ? '+' : ''}${p.b.openDays - p.a.openDays}</td><td>${tech}</td><td>${p.a.guests.toLocaleString('pl-PL')}</td><td>${p.b.guests.toLocaleString('pl-PL')}</td><td>${fmt(sumDays(p.b, 'snowM3'), 0)}</td><td>${fmtPln(opResult(p.a))}</td><td>${fmtPln(opResult(p.b))}</td></tr>`;
+  })
+  .join('');
+const opA = meanOf(pairs.map((p) => opResult(p.a)));
+const opB = meanOf(pairs.map((p) => opResult(p.b)));
+const snowExtraInvest = winB.investPln - winA.investPln + sp.groomers.types.find((t) => t.winch)!.pricePln;
+/** Utrzymanie i ubezpieczenie instalacji naśnieżania rocznie (w piaskownicy nie wchodzą do wyniku dnia). */
+const snowFixedPln = snowExtraInvest * (ep.costs.maintenanceBuildingsRatePerYear + ep.costs.insuranceRatePerYear);
+const netGain = opB - opA - snowFixedPln;
+const payback = netGain > 0 ? snowExtraInvest / netGain : Infinity;
+/** Wykres: dni otwarte w każdej zimie (posortowane od najsłabszej naturalnej), bez i z naśnieżaniem. */
+function winterChart(): string {
+  const w = 900;
+  const h = 230;
+  const pad = { l: 40, r: 10, t: 14, b: 26 };
+  const max = Math.max(10, ...pairs.map((p) => Math.max(p.a.openDays, p.b.openDays)));
+  const pw = w - pad.l - pad.r;
+  const ph = h - pad.t - pad.b;
+  const bw = pw / Math.max(1, sorted.length);
+  const y = (v: number) => pad.t + ph * (1 - v / max);
+  let svg = `<svg viewBox="0 0 ${w} ${h}" class="chart">`;
+  sorted.forEach((p, i) => {
+    const x = pad.l + i * bw;
+    svg += `<rect x="${x + bw * 0.1}" y="${y(p.b.openDays)}" width="${bw * 0.8}" height="${pad.t + ph - y(p.b.openDays)}" fill="var(--c1)" rx="2"><title>${seasonName(p.b)} z naśnieżaniem: ${p.b.openDays} dni</title></rect>`;
+    svg += `<rect x="${x + bw * 0.28}" y="${y(p.a.openDays)}" width="${bw * 0.44}" height="${pad.t + ph - y(p.a.openDays)}" fill="var(--forest)" rx="2"><title>${seasonName(p.a)} bez naśnieżania: ${p.a.openDays} dni</title></rect>`;
+  });
+  svg += `<text x="${pad.l - 6}" y="${pad.t + 8}" class="tick" text-anchor="end">${max}</text><text x="${pad.l - 6}" y="${pad.t + ph}" class="tick" text-anchor="end">0</text>`;
+  svg += `<text x="${pad.l}" y="${h - 8}" class="tick">najsłabsza zima (śnieg naturalny)</text><text x="${w - pad.r}" y="${h - 8}" class="tick" text-anchor="end">najlepsza</text>`;
+  svg += `<text x="${pad.l}" y="${pad.t - 4}" class="unit">dni otwarte w sezonie</text></svg>`;
+  return `<div class="legend"><span><i style="background:var(--forest)"></i>bez naśnieżania</span><span><i style="background:var(--c1)"></i>z naśnieżaniem</span></div>${svg}`;
+}
+log(`Naśnieżanie (${nW} zim): dni otwarte ${fmt(meanOf(pairs.map((p) => p.a.openDays)), 1)} → ${fmt(meanOf(pairs.map((p) => p.b.openDays)), 1)}; słabe zimy +${fmt(gainOf(weak), 1)}, mocne +${fmt(gainOf(strong), 1)}; goście ${fmt(meanOf(pairs.map((p) => p.a.guests)), 0)} → ${fmt(meanOf(pairs.map((p) => p.b.guests)), 0)}; wynik ${fmtPln(opA)} → ${fmtPln(opB)}; inwestycja ${fmtPln(snowExtraInvest)}, stałe ${fmtPln(snowFixedPln)}/rok; zwrot ${Number.isFinite(payback) ? fmt(payback, 1) + ' lat' : '—'}`);
+for (const [name, g, d, unit] of calRows) log(`  kalibracja: ${name}: gra ${fmt(g, 1)} ${unit}${Number.isNaN(d) ? '' : `, dane ${fmt(d, 1)} ${unit} (× ${fmt(ratio(g, d), 2)})`}`);
+const gunsN = snowL.snowGuns!.length;
+const fansN = snowL.snowGuns!.filter((g) => g.typeId === 'fan').length;
 const totalS = (performance.now() - t0) / 1000;
 
 const html = `<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Raport ekonomii – 10 sezonów</title>
+<title>Raport ekonomii</title>
 <style>
 :root{--bg:#fbfaf7;--fg:#1d2329;--muted:#5d6670;--grid:#e3e1db;--card:#ffffff;--c1:#1f6fd1;--c2:#d1495b;--forest:#3f7a3a;--ok:#1e7d3c;--bad:#b3261e}
 @media (prefers-color-scheme: dark){:root{--bg:#16191d;--fg:#e9ecef;--muted:#a3abb4;--grid:#2c3238;--card:#1e2227;--c1:#5aa0ff;--c2:#ff7a8a;--forest:#7cc07a;--ok:#5cc87a;--bad:#ff8a80}}
@@ -294,8 +453,8 @@ table{border-collapse:collapse;width:100%;font-size:13.5px;font-variant-numeric:
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}.kpis div{background:var(--card);border:1px solid var(--grid);border-radius:12px;padding:10px 12px}.kpis b{display:block;font-size:22px}
 @media(max-width:700px){.kpis{grid-template-columns:repeat(2,1fr)}}
 </style></head><body><main>
-<h1>Raport ekonomii – ${n} sezonów prostego ośrodka</h1>
-<p class="muted">Tryb kariery, kapitał startowy ${fmtPln(ep.career.startCapitalPln)}, start 1 maja 2026. Ośrodek: <b>${esc(lift.name)}</b> (orczyk, ${fmt(la.slopeLengthM, 0)} m, ${fmt(la.ground[0].elevationM, 0)}–${fmt(la.ground[la.ground.length - 1].elevationM, 0)} m n.p.m., ${fmt(lp.types.find((t) => t.id === 'orczyk')!.capacityPerHour, 0)} os./h), trasy ${pa.map((a, i) => `${[piste1, piste2][i].name} ${fmt(a.lengthM, 0)} m – ${pp.classes[a.classIndex].name}`).join(', ')}, parking na ${ep.buildings[0].cars} aut. Bez naśnieżania (etap 7) – tylko śnieg naturalny z modelu śniegu na mapie. Gracz otwiera sezon od grudnia do połowy kwietnia, gdy na trasach jest śnieg, i zamyka po 3 dniach bez śniegu. Ceny domyślne: dzienny ${ep.passes.dayPln} zł, 4 h ${ep.passes.fourHourPln} zł, 2 h ${ep.passes.twoHourPln} zł.</p>
+<h1>Raport ekonomii – ${n} sezonów prostego ośrodka i naśnieżanie</h1>
+<p class="muted">Tryb kariery, kapitał startowy ${fmtPln(ep.career.startCapitalPln)}, start 1 maja 2026. Ośrodek: <b>${esc(lift.name)}</b> (orczyk, ${fmt(la.slopeLengthM, 0)} m, ${fmt(la.ground[0].elevationM, 0)}–${fmt(la.ground[la.ground.length - 1].elevationM, 0)} m n.p.m., ${fmt(lp.types.find((t) => t.id === 'orczyk')!.capacityPerHour, 0)} os./h), trasy ${pa.map((a, i) => `${[piste1, piste2][i].name} ${fmt(a.lengthM, 0)} m – ${pp.classes[a.classIndex].name}`).join(', ')}, parking na ${ep.buildings[0].cars} aut. Bez naśnieżania i bez ratraków – tylko śnieg naturalny z modelu śniegu na mapie (ten sam ośrodek z naśnieżaniem – część 6). Gracz otwiera sezon od grudnia do połowy kwietnia, gdy na trasach jest śnieg, i zamyka po 3 dniach bez śniegu. Ceny domyślne: dzienny ${ep.passes.dayPln} zł, 4 h ${ep.passes.fourHourPln} zł, 2 h ${ep.passes.twoHourPln} zł.</p>
 <div class="kpis">
 <div><span class="muted small">wynik operacyjny (10 lat)</span><b class="${totalOp >= 0 ? 'ok' : 'bad'}">${fmtPln(totalOp)}</b></div>
 <div><span class="muted small">inwestycja (budowa)</span><b>${fmtPln(invest)}</b></div>
@@ -320,7 +479,7 @@ table{border-collapse:collapse;width:100%;font-size:13.5px;font-variant-numeric:
 <h2>2. Przychody i koszty – średnio na sezon</h2>
 <div class="grid2"><div class="card"><b>Przychody</b><table><tbody>${flowRows(REVENUE_KEYS)}<tr><td><b>razem</b></td><td><b>${fmtPln(avg((s) => sumRevenue(s.flows)))}</b></td></tr></tbody></table></div>
 <div class="card"><b>Koszty</b><table><tbody>${flowRows(COST_KEYS)}<tr><td><b>razem</b></td><td><b>${fmtPln(avg((s) => sumCosts(s.flows)))}</b></td></tr></tbody></table>
-<p class="small muted">Ratrakowanie – tymczasowo usługa za hektar (etap 7: własne ratraki).</p></div></div>
+<p class="small muted">Bez ratraków i naśnieżania – ich koszty w części 6.</p></div></div>
 
 <h2>3. Dzień po dniu – sezon ${seasonName(best)} (najlepszy) i ${seasonName(worst)} (najsłabszy)</h2>
 <div class="card">${dailyChart(best)}</div>
@@ -336,7 +495,28 @@ ${compRows}</tbody></table><p class="small muted">Konkurenci naśnieżają (${fm
 <div class="card table-wrap"><table><thead><tr><th>dzień</th><th>goście (symulacja)</th><th>goście (zgrubny)</th><th>ocena (symulacja)</th><th>ocena (zgrubny)</th><th>przychód (symulacja)</th><th>przychód (zgrubny)</th></tr></thead><tbody>${cmpRows}</tbody></table>
 <p class="small">Średnio: ocena ${fmt(meanRatingA, 2)} (symulacja) wobec ${fmt(meanRatingQ, 2)} (zgrubny); przychód na gościa ${fmt(revPerGuestA, 0)} zł wobec ${fmt(revPerGuestQ, 0)} zł. Liczba gości jest ta sama (wynika z popytu), różnią się wynik dnia i ocena. Dni przewijane w grze liczą się modelem zgrubnym, dni oglądane – symulacją gości.</p></div>
 
-<h2>6. Założenia (data/economy.json)</h2>
+<h2>6. Naśnieżanie i ratraki – ten sam ośrodek, ${nW} zim z naśnieżaniem i bez</h2>
+<p>Ośrodek jak wyżej + system naśnieżania: ujęcie z potoku (${fmt(sp.buildings.find((b) => b.id === 'intake')!.capacity, 0)} m³/h latem), zbiornik ${fmt(sp.buildings.find((b) => b.id === 'reservoir50')!.capacity, 0)} m³, pompownia ${fmt(sp.buildings.find((b) => b.id === 'pump300')!.capacity, 0)} m³/h, przyłącze ${fmt(sp.buildings.find((b) => b.id === 'grid1000')!.capacity, 0)} kW, rurociągi wzdłuż obu tras z hydrantami co ${sp.pipe.hydrantSpacingM} m i ${gunsN} armatek (${fansN} śmigłowych, ${gunsN - fansN} lanc), garaż, punkt kotwienia przy górnej stacji i jeden ratrak z wyciągarką (strome odcinki przy stacjach). Naśnieżana powierzchnia ${fmt(winB.snowHa, 1)} ha. Inwestycja w naśnieżanie ${fmtPln(winB.snowInvestPln)} (cały ośrodek ${fmtPln(winB.investPln)}; ratrak ${fmtPln(sp.groomers.types.find((t) => t.winch)!.pricePln)} osobno). Plan naśnieżania domyślny (docelowa baza 50 cm, automat od listopada do marca), plan nocy automatyczny. Te same zasady otwierania sezonu co wyżej; tryb piaskownicy (budowa od razu, bez limitu pieniędzy), dni liczone modelem zgrubnym.</p>
+<div class="kpis">
+<div><span class="muted small">dni otwarte – bez naśnieżania</span><b>${fmt(meanOf(pairs.map((p) => p.a.openDays)), 1)}</b></div>
+<div><span class="muted small">dni otwarte – z naśnieżaniem</span><b>${fmt(meanOf(pairs.map((p) => p.b.openDays)), 1)}</b></div>
+<div><span class="muted small">zysk dni w 1/3 najsłabszych zim</span><b class="ok">+${fmt(gainOf(weak), 1)}</b></div>
+<div><span class="muted small">zysk dni w 1/3 najlepszych zim</span><b>+${fmt(gainOf(strong), 1)}</b></div>
+<div><span class="muted small">wynik działalności / sezon – bez</span><b class="${opA >= 0 ? 'ok' : 'bad'}">${fmtPln(opA)}</b></div>
+<div><span class="muted small">wynik działalności / sezon – z</span><b class="${opB >= 0 ? 'ok' : 'bad'}">${fmtPln(opB)}</b></div>
+<div><span class="muted small">dodatkowa inwestycja</span><b>${fmtPln(snowExtraInvest)}</b></div>
+<div><span class="muted small">zwrot naśnieżania (prosty)</span><b>${Number.isFinite(payback) ? `${fmt(payback, 1)} lat` : 'nie zwraca się'}</b></div>
+</div>
+<p class="small muted">Zwrot = dodatkowa inwestycja (instalacja + ratrak ${fmtPln(snowExtraInvest)}) / (wynik z − wynik bez − utrzymanie i ubezpieczenie instalacji ${fmtPln(snowFixedPln)} rocznie) = ${Number.isFinite(payback) ? `${fmt(payback, 1)} lat` : 'brak zwrotu'}. W obu wariantach ten sam popyt, ceny i zasady otwierania.</p>
+<div class="card">${winterChart()}<p class="small muted">Zimy posortowane od najsłabszej (najmniej dni na samym śniegu naturalnym). Naśnieżanie najbardziej wydłuża sezon w słabych zimach – w dobrych i tak jest śnieg.</p></div>
+<h3>Kalibracja: gra a dane z koncepcji</h3>
+<div class="card table-wrap"><table><thead><tr><th>wielkość</th><th>gra (średnio na sezon)</th><th>dane</th><th>gra / dane</th><th>źródło</th></tr></thead><tbody>${calTable}</tbody></table>
+<p class="small muted">Zielone – ten sam rząd wielkości (od 0,3 do 3 razy). Średnio na sezon: śnieg ${fmt(snowM3, 0)} m³, woda ${fmt(waterM3, 0)} m³, energia naśnieżania ${fmt(snowKWh / 1000, 1)} MWh, paliwo ratraków ${fmt(fuelL, 0)} l, ${fmt(guestsB, 0)} gości. Dane z koncepcji dotyczą dużych ośrodków alpejskich (długi sezon, naśnieżanie podstawowe i uzupełniające); nasz ośrodek leży nisko (790–1010 m), więc naśnieża krócej i tylko w mroźne noce.</p></div>
+<h3>Zima po zimie</h3>
+<div class="card table-wrap"><table><thead><tr><th>sezon</th><th>dni bez</th><th>dni z</th><th>różnica</th><th>dni dzięki naśnieżaniu</th><th>goście bez</th><th>goście z</th><th>śnieg [m³]</th><th>wynik bez</th><th>wynik z</th></tr></thead><tbody>${winterRows}</tbody></table>
+<p class="small muted">„Dni dzięki naśnieżaniu” – dni otwarte, w których na samym śniegu naturalnym ponad połowa tras miałaby zbyt cienką bazę. Wynik = przychody − koszty działalności (z energią naśnieżania, wodą, paliwem, operatorami, serwisem i naprawami ratraków; bez budowy; w piaskownicy bez utrzymania i ubezpieczenia obiektów – te liczone osobno przy zwrocie).</p></div>
+
+<h2>7. Założenia (data/economy.json, data/snowmaking.json)</h2>
 <div class="card small"><ul>
 <li>Popyt: pula regionu ${ep.demand.regionPoolPerDay.toLocaleString('pl-PL')} narciarzy/dzień (sobota styczniowa) × dzień tygodnia × miesiąc × ferie/święta × prognoza; udział ośrodka = A / (A + konkurencja + inne), A = km tras<sup>${ep.demand.offerExponent}</sup> × śnieg<sup>${ep.demand.snowExponent}</sup> × (reputacja/${ep.demand.reputationRef})<sup>${ep.demand.reputationExponent}</sup> × (cena/średnia konkurencji)<sup>−${ep.demand.priceElasticity}</sup>.</li>
 <li>Ferie 2026 (MEN): 19 I – mazowieckie, pomorskie, podlaskie, świętokrzyskie, warmińsko-mazurskie; 2 II – m.in. małopolskie; 16 II – m.in. śląskie. Wagi regionów: śląskie ${ep.ferie.regionWeights['śląskie']}, małopolskie ${ep.ferie.regionWeights['małopolskie']}.</li>
