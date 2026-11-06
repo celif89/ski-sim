@@ -8,7 +8,7 @@
  * Liczba gości to na razie parametr scenariusza (popyt – etap 6).
  */
 import type { GuestParams } from './guestParams';
-import type { GuestNet, NetPiste } from './guestNetwork';
+import type { GuestNet, NetLift, NetPiste } from './guestNetwork';
 import { Rng } from './rng';
 import type { CalendarDate } from './weather';
 
@@ -90,10 +90,12 @@ export interface GuestSnow {
   depthCm: Float32Array;
   /** Muldy z poprzednich dni 0–1 (null – brak). */
   moguls: Float32Array | null;
+  /** Za cienka baza 0–1 (snowRiding.thinField; null – brak danych = baza wystarcza). */
+  thin?: Float32Array | null;
 }
 
 export interface GuestEvent {
-  kind: 'accident';
+  kind: 'accident' | 'damage';
   timeS: number;
   guest: number;
   xM: number;
@@ -131,6 +133,8 @@ export interface GuestDayReport {
   meanRating: number;
   ratings: number[];
   accidents: GuestEvent[];
+  /** Uszkodzenia sprzętu na zbyt cienkiej bazie. */
+  equipmentDamage: number;
   leaveReasons: number[];
   crowdedPistes: { name: string; peakPer100m: number; personHours: number }[];
   busiestLifts: { name: string; maxQueue: number; maxWaitMin: number; rides: number; utilization: number }[];
@@ -159,6 +163,8 @@ export interface GuestCard {
   verticalM: number;
   queueMin: number;
   skiMin: number;
+  /** Uszkodzenia sprzętu (za cienka baza). */
+  damage: number;
   doing: string;
   plan: string;
 }
@@ -225,6 +231,21 @@ function axisIndex(p: NetPiste, s: number): number {
   return lo;
 }
 
+/** Punkt na linii wyciągu w odległości d (po linii) od dolnej stacji: położenie, kierunek, rzut poziomy / po linii. */
+function liftPoint(lift: NetLift, d: number): { x: number; y: number; ux: number; uy: number; horizontalPerSlope: number } {
+  const p = lift.path;
+  let i = 0;
+  while (i < p.length - 2 && p[i + 1].slopeM < d) i++;
+  const a = p[i];
+  const b = p[i + 1];
+  const seg = b.slopeM - a.slopeM || 1;
+  const f = Math.min(1, Math.max(0, (d - a.slopeM) / seg));
+  const dx = b.xM - a.xM;
+  const dy = b.yM - a.yM;
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: a.xM + f * dx, y: a.yM + f * dy, ux: dx / len, uy: dy / len, horizontalPerSlope: Math.min(1, len / seg) };
+}
+
 // ---------------------------------------------------------------- dzień
 
 export class GuestDay {
@@ -273,6 +294,8 @@ export class GuestDay {
   readonly distanceM: Float64Array;
   readonly verticalM: Float64Array;
   readonly accident: Uint8Array;
+  /** Uszkodzenia sprzętu na zbyt cienkiej bazie. */
+  readonly damage: Uint8Array;
   readonly rating: Uint8Array;
 
   // grupy
@@ -296,6 +319,8 @@ export class GuestDay {
   private readonly gWalk: Float32Array;
   private readonly gWalkT0: Float64Array;
   private readonly gWalkHub: Int32Array;
+  /** Przejście: 0 – pieszo, 1 – zjazd wyciągiem w dół (gondola). */
+  private readonly gWalkKind: Uint8Array;
   readonly gArrive: Float64Array;
   readonly gDepart: Float64Array;
   readonly gLeaving: Uint8Array;
@@ -307,10 +332,21 @@ export class GuestDay {
   private readonly gZ: Float32Array;
 
   // wyciągi
+  /** Kolejki w punktach wsiadania (wyciąg + przystanek). */
   private readonly queues: number[][];
   private readonly qHead: Int32Array;
+  /** Jadący na każdym wyciągu (dowolny przystanek → cel). */
   private readonly riders: number[][];
-  private readonly rHead: Int32Array;
+  private readonly rideFrom: Int16Array;
+  private readonly rideTo: Int16Array;
+  /** Cel jazdy grupy (indeks przystanku). */
+  private readonly gDest: Int16Array;
+  /** Punkty wsiadania każdego wyciągu (kolejno od dołu). */
+  private readonly liftBoardings: number[][];
+  /** Zajętość krzesełek na odcinkach między przystankami (tylko wyciągi ze stacją pośrednią). */
+  private readonly chairOcc: (Map<number, Int16Array> | null)[];
+  /** Wyciąg ma z któregoś przystanku otwartą trasę w dół (albo da się zjechać nim w dół – gondola). */
+  readonly liftHasDescent: Uint8Array;
   private readonly liftNextK: Float64Array;
   readonly liftOpen: Uint8Array;
   private readonly liftRunning: Uint8Array;
@@ -328,6 +364,8 @@ export class GuestDay {
   private readonly edgeSnow: Float32Array;
   private readonly edgePowder: Float32Array;
   private readonly edgeBad: Float32Array;
+  /** Udział próbek odcinka ze zbyt cienką bazą (skala ≥ 0,3). */
+  private readonly edgeThin: Float32Array;
   private readonly best: Float64Array;
   private readonly exitDist: Float64Array;
   private readonly foodReach: Uint8Array;
@@ -348,6 +386,8 @@ export class GuestDay {
   readonly events: GuestEvent[] = [];
   /** Ile razy grupa zrezygnowała z kolejki na rzecz innego wyciągu (statystyka, testy). */
   queueSwitches = 0;
+  /** Uszkodzenia sprzętu na zbyt cienkiej bazie (suma dnia). */
+  damageCount = 0;
   private needsAccS = 0;
   private eventsSent = 0;
   private readonly hourly: GuestDayReport['hourly'] = [];
@@ -427,6 +467,8 @@ export class GuestDay {
     this.mstate = new Uint8Array(N);
     this.joinT = new Float64Array(N);
     this.rideT = new Float64Array(N);
+    this.rideFrom = new Int16Array(N);
+    this.rideTo = new Int16Array(N);
     this.skiS = new Float64Array(N);
     this.queueS = new Float64Array(N);
     this.snowAcc = new Float64Array(N);
@@ -442,6 +484,7 @@ export class GuestDay {
     this.distanceM = new Float64Array(N);
     this.verticalM = new Float64Array(N);
     this.accident = new Uint8Array(N);
+    this.damage = new Uint8Array(N);
     this.rating = new Uint8Array(N);
     this.gStart = new Int32Array(G);
     this.gCount = new Int32Array(G);
@@ -456,12 +499,14 @@ export class GuestDay {
     this.gTurn = new Float32Array(G);
     this.gPhi = new Float32Array(G);
     this.gLift = new Int32Array(G).fill(-1);
+    this.gDest = new Int16Array(G);
     this.gQueueT = new Float64Array(G);
     this.gRiders = new Int32Array(G);
     this.gUntil = new Float64Array(G);
     this.gWalk = new Float32Array(G * 4);
     this.gWalkT0 = new Float64Array(G);
     this.gWalkHub = new Int32Array(G).fill(-1);
+    this.gWalkKind = new Uint8Array(G);
     this.gArrive = new Float64Array(G);
     this.gDepart = new Float64Array(G);
     this.gLeaving = new Uint8Array(G);
@@ -502,10 +547,17 @@ export class GuestDay {
 
     // ---- wyciągi
     const L = net.lifts.length;
-    this.queues = net.lifts.map(() => []);
-    this.qHead = new Int32Array(L);
+    this.queues = net.boardings.map(() => []);
+    this.qHead = new Int32Array(net.boardings.length);
     this.riders = net.lifts.map(() => []);
-    this.rHead = new Int32Array(L);
+    this.liftBoardings = net.lifts.map(() => []);
+    net.boardings.forEach((b, i) => this.liftBoardings[b.lift].push(i));
+    this.chairOcc = net.lifts.map((l) => (l.stops.length > 2 ? new Map<number, Int16Array>() : null));
+    this.liftHasDescent = new Uint8Array(L);
+    net.lifts.forEach((l, i) => {
+      const open = l.stops.slice(1).some((st) => net.hubs[net.nodes[st.node].hub].outEdges.some((e) => !net.pistes[net.edges[e].piste].closed));
+      this.liftHasDescent[i] = open || l.downhillRiding ? 1 : 0;
+    });
     this.liftNextK = new Float64Array(L);
     for (let l = 0; l < L; l++) this.liftNextK[l] = Math.floor(this.t / net.lifts[l].intervalS) + 1;
     this.liftOpen = new Uint8Array(L);
@@ -525,6 +577,7 @@ export class GuestDay {
     this.edgeSnow = new Float32Array(E).fill(0.8);
     this.edgePowder = new Float32Array(E);
     this.edgeBad = new Float32Array(E);
+    this.edgeThin = new Float32Array(E);
     this.sk = p.skills.length;
     const H = net.hubs.length;
     this.best = new Float64Array(H * this.sk);
@@ -546,7 +599,7 @@ export class GuestDay {
     let best = -1;
     let bestD = Infinity;
     for (let i = 0; i < hubs.length; i++) {
-      if (!hubs[i].lifts.some((l) => !this.net.lifts[l].closed && this.liftAllowed(l, s) && (!onlyOpen || this.liftOpen[l]))) continue;
+      if (!hubs[i].boardings.some((b) => this.liftHasDescent[this.liftOf(b)] === 1 && !this.net.lifts[this.liftOf(b)].closed && this.liftAllowed(b, s) && (!onlyOpen || this.liftOpen[this.liftOf(b)]))) continue;
       const d = Math.hypot(hubs[i].xM - hubs[h].xM, hubs[i].yM - hubs[h].yM);
       if (d < bestD && (i === h || d <= this.p.operation.maxWalkM)) {
         bestD = d;
@@ -574,7 +627,7 @@ export class GuestDay {
     const S = this.sk;
     const c = this.p.choice;
     for (let s = 0; s < S; s++) {
-      const stopOk = hubs.map((h) => h.exit || h.lifts.length > 0);
+      const stopOk = hubs.map((h) => h.exit || h.boardings.length > 0);
       for (let iter = 0; iter < H + 2; iter++) {
         const done = new Uint8Array(H);
         const visiting = new Uint8Array(H);
@@ -604,7 +657,11 @@ export class GuestDay {
         for (let h = 0; h < H; h++) best(h);
         let changed = false;
         for (let h = 0; h < H; h++) {
-          const ok = hubs[h].exit || hubs[h].lifts.some((l) => !lifts[l].closed && this.best[nodes[lifts[l].top].hub * S + s] > -Infinity);
+          const ok = hubs[h].exit || hubs[h].boardings.some((b) => {
+            const bd = this.net.boardings[b];
+            const lift = lifts[bd.lift];
+            return !lift.closed && lift.stops.some((st, d) => d > bd.stop && this.best[nodes[st.node].hub * S + s] > -Infinity);
+          });
           if (ok !== stopOk[h]) {
             stopOk[h] = ok;
             changed = true;
@@ -615,10 +672,12 @@ export class GuestDay {
     }
   }
 
-  /** Czy gość o umiejętności s może wjechać tym wyciągiem (jest zjazd w jego zasięgu). */
-  liftAllowed(l: number, s: number): boolean {
-    const top = this.net.nodes[this.net.lifts[l].top].hub;
-    return this.best[top * this.sk + s] > -Infinity;
+  /** Czy gość o umiejętności s może wsiąść w punkcie b (z któregoś wyższego przystanku jest zjazd w jego zasięgu). */
+  liftAllowed(b: number, s: number): boolean {
+    const bd = this.net.boardings[b];
+    const lift = this.net.lifts[bd.lift];
+    for (let d = bd.stop + 1; d < lift.stops.length; d++) if (this.best[this.net.nodes[lift.stops[d].node].hub * this.sk + s] > -Infinity) return true;
+    return false;
   }
 
   // ------------------------------------------------------------ wejście
@@ -639,9 +698,12 @@ export class GuestDay {
       let sum = 0;
       let powder = 0;
       let bad = 0;
+      let thin = 0;
       for (let i = 0; i < pp.distM.length; i++) {
         if (pp.distM[i] < edge.fromM || pp.distM[i] > edge.toM) continue;
-        const q = s.quality[this.cellAt(pp.xM[i], pp.yM[i])] ?? 0;
+        const ck = this.cellAt(pp.xM[i], pp.yM[i]);
+        const q = s.quality[ck] ?? 0;
+        if (s.thin && s.thin[ck] >= 0.3) thin++;
         sum += scores[q];
         if (q === Q_POWDER) powder++;
         if (q === Q_ICY || q === Q_SLUSH || q === Q_THIN || q === Q_NONE) bad++;
@@ -650,6 +712,7 @@ export class GuestDay {
       this.edgeSnow[e] = n ? sum / n : 0.8;
       this.edgePowder[e] = n ? powder / n : 0;
       this.edgeBad[e] = n ? bad / n : 0;
+      this.edgeThin[e] = n ? thin / n : 0;
     }
   }
 
@@ -742,7 +805,7 @@ export class GuestDay {
       let wait = 0;
       let nl = 0;
       for (let l = 0; l < this.net.lifts.length; l++) if (this.liftOpen[l]) {
-        wait += this.waitEstimateS(l);
+        wait += this.waitEstimateS(this.liftBoardings[l][0]);
         nl++;
       }
       this.hourly.push({ hour: Math.round(this.nextHourT / 3600), onHill: c.onHill, inQueue: c.inQueue, meanWaitMin: nl ? wait / nl / 60 : 0 });
@@ -752,85 +815,151 @@ export class GuestDay {
 
   // ------------------------------------------------------------ wyciągi
 
-  /** Przewidywany czas czekania w kolejce [s]. */
-  waitEstimateS(l: number): number {
-    const lift = this.net.lifts[l];
-    const len = this.queues[l].length - this.qHead[l];
+  /** Wyciąg punktu wsiadania b. */
+  private liftOf(b: number): number {
+    return this.net.boardings[b].lift;
+  }
+
+  /** Przewidywany czas czekania w kolejce w punkcie wsiadania b [s]. */
+  waitEstimateS(b: number): number {
+    const lift = this.net.lifts[this.liftOf(b)];
+    const len = this.queues[b].length - this.qHead[b];
     return Math.ceil(len / lift.seats) * lift.intervalS;
   }
 
+  /** Długość kolejki do wyciągu l (wszystkie przystanki) [os.]. */
   queueLength(l: number): number {
-    return this.queues[l].length - this.qHead[l];
+    let n = 0;
+    for (const b of this.liftBoardings[l]) n += this.queues[b].length - this.qHead[b];
+    return n;
   }
 
-  /** Wyciąg może pracować: nie zamknięty przez gracza i wiatr poniżej progu typu. */
+  /** Wyciąg może pracować: nie zamknięty przez gracza, wiatr poniżej progu typu, jest otwarta trasa w dół (albo zjazd gondolą). */
   private liftWindOk(l: number): boolean {
     const lift = this.net.lifts[l];
-    return !lift.closed && this.windAt(lift.topElevM) <= lift.windLimitMs + this.p.operation.windHoldMarginMs;
+    return !lift.closed && this.liftHasDescent[l] === 1 && this.windAt(lift.topElevM) <= lift.windLimitMs + this.p.operation.windHoldMarginMs;
   }
 
-  /** Wyciąg przyjmuje nowych gości do kolejki (godziny pracy, wiatr). */
+  /** Wyciąg przyjmuje nowych gości do kolejki (godziny pracy, wiatr, otwarte trasy). */
   private liftIsOpen(l: number, t: number): boolean {
     return t >= this.openS && t < this.closeS && this.liftWindOk(l);
+  }
+
+  /** Czy wyciąg stoi, bo z żadnego przystanku nie ma otwartej trasy w dół (i nie da się zjechać wyciągiem). */
+  liftWithoutDescent(l: number): boolean {
+    return this.liftHasDescent[l] === 0;
+  }
+
+  /** Wsiadanie z kolejki punktu b na krzesełko k (odjazd z dolnej stacji w chwili k·odstęp) w chwili t. */
+  private boardChair(l: number, b: number, k: number, t: number, seatsFree: Int16Array | null): void {
+    const lift = this.net.lifts[l];
+    const q = this.queues[b];
+    const from = this.net.boardings[b].stop;
+    const nSeg = lift.stops.length - 1;
+    let used = 0;
+    while (this.qHead[b] < q.length) {
+      const i = q[this.qHead[b]];
+      const g = this.grp[i];
+      const to = this.gDest[g];
+      // Wolne miejsce na całej drodze do celu (na stacjach pośrednich jadą już ludzie z dołu).
+      let ok = used < lift.seats;
+      if (ok && seatsFree) for (let m = from; m < to && ok; m++) if (seatsFree[m] >= lift.seats) ok = false;
+      if (!ok) break;
+      this.qHead[b]++;
+      used++;
+      if (seatsFree) for (let m = from; m < to; m++) seatsFree[m]++;
+      this.mstate[i] = M_RIDE;
+      this.rideT[i] = t;
+      this.rideFrom[i] = from;
+      this.rideTo[i] = to;
+      const waited = t - this.joinT[i];
+      this.queueS[i] += waited;
+      this.liftWaitSum[l] += waited;
+      if (waited > this.liftMaxWaitS[l]) this.liftMaxWaitS[l] = waited;
+      this.liftBoarded[l]++;
+      this.liftBoardLog[l].push(t);
+      this.riders[l].push(i);
+      if (this.gState[g] === G_QUEUE) this.gState[g] = G_LIFT;
+    }
+    void nSeg;
+    if (this.qHead[b] > 256 && this.qHead[b] * 2 > q.length) {
+      q.splice(0, this.qHead[b]);
+      this.qHead[b] = 0;
+    }
+    void k;
   }
 
   private updateLifts(t0: number, t1: number): void {
     const lifts = this.net.lifts;
     for (let l = 0; l < lifts.length; l++) {
       const lift = lifts[l];
-      const q = this.queues[l];
+      const bs = this.liftBoardings[l];
+      const waiting = bs.some((b) => this.qHead[b] < this.queues[b].length);
       const windOk = this.liftWindOk(l);
       // Po zamknięciu (16:00) kolejka nie przyjmuje nowych, ale stojący wjeżdżają na górę.
-      const open = windOk && t1 >= this.openS && (t1 < this.closeS || this.qHead[l] < q.length);
-      if (this.liftRunning[l] && !windOk) this.flushQueue(l, t1);
+      const open = windOk && t1 >= this.openS && (t1 < this.closeS || waiting);
+      if (this.liftRunning[l] && !windOk) for (const b of bs) this.flushQueue(b, t1);
       this.liftRunning[l] = open ? 1 : 0;
       this.liftOpen[l] = this.liftIsOpen(l, t1) ? 1 : 0;
-      // Odjazdy krzesełek w stałym rytmie (co intervalS) – przepustowość nie do przekroczenia.
+      const multi = lift.stops.length > 2;
+      const occ = this.chairOcc[l];
+      // Odjazdy krzesełek z dolnej stacji w stałym rytmie (co intervalS) – przepustowość nie do przekroczenia.
       while (this.liftNextK[l] * lift.intervalS <= t1) {
-        const depT = this.liftNextK[l] * lift.intervalS;
+        const k = this.liftNextK[l];
+        const depT = k * lift.intervalS;
         this.liftNextK[l]++;
         if (!open || depT <= t0 - lift.intervalS) continue;
-        let seats = lift.seats;
-        while (seats > 0 && this.qHead[l] < q.length) {
-          const i = q[this.qHead[l]++];
-          seats--;
-          const g = this.grp[i];
-          this.mstate[i] = M_RIDE;
-          this.rideT[i] = depT;
-          const waited = depT - this.joinT[i];
-          this.queueS[i] += waited;
-          this.liftWaitSum[l] += waited;
-          if (waited > this.liftMaxWaitS[l]) this.liftMaxWaitS[l] = waited;
-          this.liftBoarded[l]++;
-          this.liftBoardLog[l].push(depT);
-          this.riders[l].push(i);
-          if (this.gState[g] === G_QUEUE) this.gState[g] = G_LIFT;
+        let seatsFree: Int16Array | null = null;
+        if (multi && occ) {
+          seatsFree = new Int16Array(lift.stops.length - 1);
+          occ.set(k, seatsFree);
         }
-        if (this.qHead[l] > 256 && this.qHead[l] * 2 > q.length) {
-          q.splice(0, this.qHead[l]);
-          this.qHead[l] = 0;
-        }
+        this.boardChair(l, bs[0], k, depT, seatsFree);
       }
-      // Przyjazdy na górę.
+      // Stacje pośrednie: krzesełka przejeżdżają w chwili k·odstęp + droga/prędkość – wsiadanie na wolne miejsca.
+      if (multi && occ && open) {
+        for (let j = 1; j < bs.length; j++) {
+          const b = bs[j];
+          const st = this.net.boardings[b].stop;
+          const offS = lift.stops[st].slopeM / lift.speedMs;
+          let k = Math.floor((t0 - offS) / lift.intervalS) + 1;
+          for (; k * lift.intervalS + offS <= t1; k++) {
+            if (this.qHead[b] >= this.queues[b].length) break;
+            let seatsFree = occ.get(k);
+            if (!seatsFree) {
+              seatsFree = new Int16Array(lift.stops.length - 1);
+              occ.set(k, seatsFree);
+            }
+            this.boardChair(l, b, k, k * lift.intervalS + offS, seatsFree);
+          }
+        }
+        // Zapominamy krzesełka, które już dojechały na górę.
+        const doneK = Math.floor((t1 - lift.rideS) / lift.intervalS);
+        for (const key of occ.keys()) if (key < doneK) occ.delete(key);
+      }
+      // Przyjazdy na przystanek docelowy.
       const r = this.riders[l];
-      while (this.rHead[l] < r.length && this.rideT[r[this.rHead[l]]] + lift.rideS <= t1) {
-        const i = r[this.rHead[l]++];
+      let w = 0;
+      for (let x = 0; x < r.length; x++) {
+        const i = r[x];
+        const arrive = this.rideT[i] + (lift.stops[this.rideTo[i]].slopeM - lift.stops[this.rideFrom[i]].slopeM) / lift.speedMs;
+        if (arrive > t1) {
+          r[w++] = i;
+          continue;
+        }
         this.mstate[i] = M_TOP;
         this.liftRides[i]++;
         const g = this.grp[i];
         if (--this.gRiders[g] === 0) {
-          for (let k = this.gStart[g]; k < this.gStart[g] + this.gCount[g]; k++) this.mstate[k] = M_NONE;
-          const top = this.net.nodes[lift.top].hub;
-          this.gHub[g] = top;
+          for (let m = this.gStart[g]; m < this.gStart[g] + this.gCount[g]; m++) this.mstate[m] = M_NONE;
+          const dest = this.net.nodes[lift.stops[this.gDest[g]].node].hub;
+          this.gHub[g] = dest;
           this.gLift[g] = -1;
-          this.decide(g, top);
+          this.decide(g, dest);
         }
       }
-      if (this.rHead[l] > 256 && this.rHead[l] * 2 > r.length) {
-        r.splice(0, this.rHead[l]);
-        this.rHead[l] = 0;
-      }
-      const ql = q.length - this.qHead[l];
+      r.length = w;
+      const ql = this.queueLength(l);
       if (ql > this.liftMaxQueue[l]) this.liftMaxQueue[l] = ql;
       const log = this.liftBoardLog[l];
       let cut = 0;
@@ -843,25 +972,28 @@ export class GuestDay {
    * Wyciąg stanął (wiatr, zamknięcie przez gracza) – kolejka się rozchodzi. Grupy, których część
    * już jedzie, dosiadają się do ostatnich krzesełek przed zatrzymaniem (grupa się nie rozdziela).
    */
-  private flushQueue(l: number, t: number): void {
-    const q = this.queues[l];
+  private flushQueue(b: number, t: number): void {
+    const l = this.liftOf(b);
+    const q = this.queues[b];
     const groups = new Set<number>();
-    for (let k = this.qHead[l]; k < q.length; k++) groups.add(this.grp[q[k]]);
+    for (let k = this.qHead[b]; k < q.length; k++) groups.add(this.grp[q[k]]);
     for (const g of groups) {
       if (this.gState[g] === G_QUEUE) {
         this.leaveQueue(g);
-        this.gAvoidLift[g] = l;
+        this.gAvoidLift[g] = b;
         this.decide(g, this.gHub[g]);
         continue;
       }
       const from = this.gStart[g];
       const to = from + this.gCount[g];
-      let w = this.qHead[l];
-      for (let k = this.qHead[l]; k < q.length; k++) {
+      let w = this.qHead[b];
+      for (let k = this.qHead[b]; k < q.length; k++) {
         const i = q[k];
         if (i >= from && i < to) {
           this.mstate[i] = M_RIDE;
           this.rideT[i] = t;
+          this.rideFrom[i] = this.net.boardings[b].stop;
+          this.rideTo[i] = this.gDest[g];
           this.queueS[i] += t - this.joinT[i];
           this.riders[l].push(i);
         } else q[w++] = i;
@@ -870,26 +1002,27 @@ export class GuestDay {
     }
   }
 
-  private joinQueue(g: number, l: number): void {
-    const q = this.queues[l];
+  private joinQueue(g: number, b: number, dest: number): void {
+    const q = this.queues[b];
     for (let i = this.gStart[g]; i < this.gStart[g] + this.gCount[g]; i++) {
       q.push(i);
       this.joinT[i] = this.t;
       this.mstate[i] = M_QUEUE;
     }
     this.gState[g] = G_QUEUE;
-    this.gLift[g] = l;
+    this.gLift[g] = b;
+    this.gDest[g] = dest;
     this.gQueueT[g] = this.t;
     this.gRiders[g] = this.gCount[g];
   }
 
   private leaveQueue(g: number): void {
-    const l = this.gLift[g];
-    const q = this.queues[l];
+    const b = this.gLift[g];
+    const q = this.queues[b];
     const from = this.gStart[g];
     const to = from + this.gCount[g];
-    let w = this.qHead[l];
-    for (let k = this.qHead[l]; k < q.length; k++) {
+    let w = this.qHead[b];
+    for (let k = this.qHead[b]; k < q.length; k++) {
       const i = q[k];
       if (i >= from && i < to) {
         this.queueS[i] += this.t - this.joinT[i];
@@ -901,15 +1034,20 @@ export class GuestDay {
     this.gState[g] = G_REST; // stan przejściowy – zaraz decyzja
   }
 
+  /** Punkt wsiadania otwarty i z celem w zasięgu grupy. */
+  private boardingUsable(b: number, s: number): boolean {
+    return this.liftOpen[this.liftOf(b)] === 1 && this.liftAllowed(b, s);
+  }
+
   /** Cierpliwość: zbyt długie czekanie – grupa idzie do innego wyciągu (jeśli jest). */
   private checkQueue(g: number, t: number): void {
     let patience = Infinity;
     for (let i = this.gStart[g]; i < this.gStart[g] + this.gCount[g]; i++) patience = Math.min(patience, this.patienceS[i]);
     if (t - this.gQueueT[g] <= patience) return;
-    const l = this.gLift[g];
+    const b = this.gLift[g];
     const h = this.gHub[g];
     // Inny otwarty wyciąg w tym miejscu z krótszą kolejką?
-    const other = this.net.hubs[h].lifts.some((o) => o !== l && this.liftOpen[o] && this.liftAllowed(o, this.gSkill[g]) && this.waitEstimateS(o) < this.waitEstimateS(l) * 0.6);
+    const other = this.net.hubs[h].boardings.some((o) => o !== b && this.boardingUsable(o, this.gSkill[g]) && this.waitEstimateS(o) < this.waitEstimateS(b) * 0.6);
     if (!other) {
       // Brak innego wyciągu tutaj: czeka dalej, ale do czasu – potem inne miejsce albo do domu.
       if (t - this.gQueueT[g] <= patience * this.p.traits.giveUpFactor) return;
@@ -918,7 +1056,7 @@ export class GuestDay {
       let walk = -1;
       let walkD = Infinity;
       this.net.hubs.forEach((o, i) => {
-        if (i === h || !o.lifts.some((x) => this.liftOpen[x] && this.liftAllowed(x, this.gSkill[g]) && this.waitEstimateS(x) < this.waitEstimateS(l) * 0.5)) return;
+        if (i === h || !o.boardings.some((x) => this.boardingUsable(x, this.gSkill[g]) && this.waitEstimateS(x) < this.waitEstimateS(b) * 0.5)) return;
         const d = Math.hypot(o.xM - hub.xM, o.yM - hub.yM);
         if (d <= this.p.operation.maxWalkM && d < walkD) {
           walkD = d;
@@ -934,7 +1072,7 @@ export class GuestDay {
       return;
     }
     this.leaveQueue(g);
-    this.gAvoidLift[g] = l;
+    this.gAvoidLift[g] = b;
     this.queueSwitches++;
     this.decide(g, h);
   }
@@ -963,6 +1101,29 @@ export class GuestDay {
     this.gWalkT0[g] = this.t;
     this.gUntil[g] = this.t + Math.hypot(x1 - x0, y1 - y0) / Math.max(0.1, this.p.operation.walkSpeedMs);
     this.gWalkHub[g] = toHub;
+    this.gWalkKind[g] = 0;
+  }
+
+  /** Zjazd wyciągiem w dół (gondola) z przystanku tutaj do dolnej stacji; false – nie ma takiej możliwości. */
+  private rideDown(g: number, h: number): boolean {
+    for (const dh of this.net.hubs[h].downhill) {
+      const lift = this.net.lifts[dh.lift];
+      if (!this.liftOpen[dh.lift] && !(this.t >= this.closeS && this.liftHasDescent[dh.lift])) continue;
+      const from = lift.stops[dh.stop];
+      const to = lift.stops[0];
+      this.gState[g] = G_WALK;
+      const w = this.gWalk;
+      w[g * 4] = from.xM;
+      w[g * 4 + 1] = from.yM;
+      w[g * 4 + 2] = to.xM;
+      w[g * 4 + 3] = to.yM;
+      this.gWalkT0[g] = this.t;
+      this.gUntil[g] = this.t + (from.slopeM - to.slopeM) / lift.speedMs;
+      this.gWalkHub[g] = this.net.nodes[to.node].hub;
+      this.gWalkKind[g] = 1;
+      return true;
+    }
+    return false;
   }
 
   private goHome(g: number, reason: number): void {
@@ -1024,14 +1185,20 @@ export class GuestDay {
     const leader = this.gStart[g];
     let patience = Infinity;
     for (let i = this.gStart[g]; i < this.gStart[g] + this.gCount[g]; i++) patience = Math.min(patience, this.patienceS[i]);
-    const opts: { kind: 0 | 1; id: number; score: number }[] = [];
-    for (const l of hub.lifts) {
-      if (!this.liftOpen[l] || l === this.gAvoidLift[g] || !this.liftAllowed(l, s)) continue;
-      const top = this.net.nodes[this.net.lifts[l].top].hub;
-      const waitMin = this.waitEstimateS(l) / 60;
-      let score = this.best[top * S + s] - c.queuePenaltyPerMin * waitMin - (waitMin * 60 > patience ? c.overPatiencePenalty : 0);
-      if ((hungry || cold) && (this.net.hubs[top].food || this.foodReach[top * S + s])) score += c.foodBonus;
-      opts.push({ kind: 0, id: l, score });
+    const opts: { kind: 0 | 1; id: number; score: number; dest?: number }[] = [];
+    for (const b of hub.boardings) {
+      const bd = this.net.boardings[b];
+      const lift = this.net.lifts[bd.lift];
+      if (!this.liftOpen[bd.lift] || b === this.gAvoidLift[g]) continue;
+      const waitMin = this.waitEstimateS(b) / 60;
+      // Cel: każdy wyższy przystanek (stacja pośrednia albo górna), z którego jest zjazd na poziom grupy.
+      for (let d = bd.stop + 1; d < lift.stops.length; d++) {
+        const top = this.net.nodes[lift.stops[d].node].hub;
+        if (this.best[top * S + s] === -Infinity) continue;
+        let score = this.best[top * S + s] - c.queuePenaltyPerMin * waitMin - (waitMin * 60 > patience ? c.overPatiencePenalty : 0);
+        if ((hungry || cold) && (this.net.hubs[top].food || this.foodReach[top * S + s])) score += c.foodBonus;
+        opts.push({ kind: 0, id: b, score, dest: d });
+      }
     }
     for (const e of hub.outEdges) {
       if (!this.edgeAllowed(e, s)) continue;
@@ -1045,13 +1212,15 @@ export class GuestDay {
     this.gAvoidLift[g] = -1;
     if (opts.length === 0) {
       // Przed otwarciem albo gdy wyciąg stoi przez wiatr – czekamy na miejscu.
-      const waitable = hub.lifts.some((l) => !this.net.lifts[l].closed && this.liftAllowed(l, s));
+      const waitable = hub.boardings.some((b) => !this.net.lifts[this.liftOf(b)].closed && this.liftHasDescent[this.liftOf(b)] === 1 && this.liftAllowed(b, s));
       if (waitable && this.t < this.closeS) {
         this.gState[g] = G_REST;
         this.gBreakKind[g] = BREAK_REST;
         this.gUntil[g] = this.t < this.openS ? this.openS : this.t + 600;
         return;
       }
+      // Na górze gondoli bez zjazdu na poziom grupy – zjazd gondolą w dół.
+      if (this.rideDown(g, h)) return;
       // Nic tu dla grupy – podejście do innego wyciągu na jej poziom (jeśli blisko).
       const walk = this.t < this.closeS ? this.walkTarget(h, s, true) : -1;
       if (walk >= 0 && walk !== h) {
@@ -1065,11 +1234,11 @@ export class GuestDay {
       return;
     }
     const choice = this.softmax(opts);
-    if (choice.kind === 0) this.joinQueue(g, choice.id);
+    if (choice.kind === 0) this.joinQueue(g, choice.id, choice.dest ?? this.net.lifts[this.liftOf(choice.id)].stops.length - 1);
     else this.startEdge(g, choice.id);
   }
 
-  private softmax(opts: { kind: 0 | 1; id: number; score: number }[]): { kind: 0 | 1; id: number; score: number } {
+  private softmax<T extends { score: number }>(opts: T[]): T {
     const T = Math.max(1e-3, this.p.choice.temperature);
     let max = -Infinity;
     for (const o of opts) max = Math.max(max, o.score);
@@ -1097,7 +1266,8 @@ export class GuestDay {
       lenR * classMatch(edge.classIndex, this.p.skills[s], c) * (1 + c.longPreferenceWeight * (this.prefLong[leader] - 0.5)) +
       c.powderWeight * this.prefPowder[leader] * this.edgePowder[e] -
       c.quietWeight * this.prefQuiet[leader] * crowd -
-      c.badSnowWeight * this.edgeBad[e]
+      c.badSnowWeight * this.edgeBad[e] -
+      this.p.thinBase.avoidWeight * this.edgeThin[e]
     );
   }
 
@@ -1127,7 +1297,8 @@ export class GuestDay {
       this.startEdge(g, bestE);
       return;
     }
-    // Brak zjazdu do bazy: wyciągiem w dół lub pieszo (poza mapą gości – znika).
+    // Brak zjazdu do bazy: wyciągiem w dół (gondola) lub pieszo (poza mapą gości – znika).
+    if (this.rideDown(g, h)) return;
     let ex = -1;
     let exD = Infinity;
     this.net.hubs.forEach((o, i) => {
@@ -1169,7 +1340,7 @@ export class GuestDay {
 
   // ------------------------------------------------------------ ruch po trasie
 
-  private speedTarget(g: number, p: NetPiste, idx: number, x: number, y: number): { v: number; snowScore: number; icy: boolean } {
+  private speedTarget(g: number, p: NetPiste, idx: number, x: number, y: number): { v: number; snowScore: number; icy: boolean; thin: number } {
     const sk = this.p.skills[this.gSkill[g]];
     const m = this.p.movement;
     const slope = p.slopePercent[idx];
@@ -1181,9 +1352,11 @@ export class GuestDay {
     }
     let snowScore = 0.8;
     let icy = false;
+    let thin = 0;
     const sn = this.snow;
     if (sn) {
       const c = this.cellAt(x, y);
+      thin = sn.thin ? sn.thin[c] : 0;
       const q = sn.quality[c];
       const sa = this.p.satisfaction;
       snowScore = sa.snowScoreByQuality[q];
@@ -1201,7 +1374,13 @@ export class GuestDay {
         snowScore -= sa.mogulPenaltyBeginner * mog * (skill === 0 ? 1 : skill === 1 ? 0.5 : 0);
       }
     }
-    return { v: Math.max(m.minSpeedMs, v), snowScore: clamp01(snowScore), icy };
+    if (thin > 0) {
+      // Za cienka baza: przetarcia i kamienie – wolniej, gorsza ocena śniegu.
+      const tb = this.p.thinBase;
+      v *= 1 - (1 - tb.speedFactor) * thin;
+      snowScore += (tb.snowScore - snowScore) * thin;
+    }
+    return { v: Math.max(m.minSpeedMs, v), snowScore: clamp01(snowScore), icy, thin };
   }
 
   /** Muldy w komórce: z poprzednich dni + rosnące od dzisiejszych przejazdów (na stromych odcinkach). */
@@ -1238,7 +1417,7 @@ export class GuestDay {
     const m = this.p.movement;
     const s = this.gS[g];
     const pt = this.pistePoint(p, s, this.gLane[g] + this.slalom(g, s));
-    let { v: target, snowScore, icy } = this.speedTarget(g, p, pt.idx, pt.x, pt.y);
+    let { v: target, snowScore, icy, thin } = this.speedTarget(g, p, pt.idx, pt.x, pt.y);
     // Unikanie: najbliżsi przed nami na tym samym pasie – zwalniamy i odbijamy w bok.
     const lane = this.gLane[g];
     const half = Math.max(0, pt.w / 2 - m.lateralMarginM - m.turnAmplitudeM);
@@ -1302,10 +1481,16 @@ export class GuestDay {
         (1 + acc.crowdFactor * crowdLevel) *
         (icy ? acc.icyFactor : 1) *
         (1 + acc.fatigueFactor * this.fatigue[i]) *
-        (tooHard ? acc.tooHardFactor : 1);
+        (tooHard ? acc.tooHardFactor : 1) *
+        (1 + this.p.thinBase.accidentFactor * thin);
+      // Uszkodzenie sprzętu na kamieniach (za cienka baza).
+      if (thin > 0 && this.rng.next() < this.p.thinBase.damagePerKm * thin * (ds / 1000)) {
+        if (this.damage[i] < 255) this.damage[i]++;
+        this.damageCount++;
+      }
       if (this.rng.next() < risk) {
         this.accident[i] = 1;
-        const causes = [icy ? 'lód' : '', crowdLevel > 0.5 ? 'tłok' : '', this.fatigue[i] > 0.6 ? 'zmęczenie' : '', tooHard ? 'trasa za trudna' : ''].filter(Boolean);
+        const causes = [icy ? 'lód' : '', thin > 0.3 ? 'za mało śniegu (kamienie)' : '', crowdLevel > 0.5 ? 'tłok' : '', this.fatigue[i] > 0.6 ? 'zmęczenie' : '', tooHard ? 'trasa za trudna' : ''].filter(Boolean);
         this.events.push({ kind: 'accident', timeS: this.t, guest: i, xM: pt.x, yM: pt.y, place: `trasa ${p.name}`, cause: causes.join(', ') || 'upadek' });
         this.goHome(g, R_ACCIDENT);
         return;
@@ -1318,7 +1503,7 @@ export class GuestDay {
       for (let i = this.gStart[g]; i < this.gStart[g] + this.gCount[g]; i++) {
         this.matchAcc[i] += match * edge.lengthM;
         this.matchLen[i] += edge.lengthM;
-        if (this.net.hubs[this.net.nodes[edge.to].hub].lifts.length > 0 || this.net.hubs[this.net.nodes[edge.to].hub].exit) this.runs[i]++;
+        if (this.net.hubs[this.net.nodes[edge.to].hub].boardings.length > 0 || this.net.hubs[this.net.nodes[edge.to].hub].exit) this.runs[i]++;
       }
       this.decide(g, this.net.nodes[edge.to].hub);
     }
@@ -1341,7 +1526,7 @@ export class GuestDay {
   private groupElevation(g: number): number {
     const st = this.gState[g];
     if (st === G_PISTE) return this.gZ[g];
-    if (st === G_LIFT && this.gLift[g] >= 0) return this.net.lifts[this.gLift[g]].topElevM;
+    if (st === G_LIFT && this.gLift[g] >= 0) return this.net.lifts[this.liftOf(this.gLift[g])].topElevM;
     const h = this.gHub[g];
     if (h < 0) return this.cond?.bottomElevM ?? 0;
     const hub = this.net.hubs[h];
@@ -1362,7 +1547,7 @@ export class GuestDay {
       const inside = st === G_BREAK;
       const ta = apparentTempC(this.tempAt(z), this.windAt(z));
       const wsc = this.weatherScore(z);
-      const onAerial = st === G_LIFT && this.gLift[g] >= 0 && this.net.lifts[this.gLift[g]].aerial;
+      const onAerial = st === G_LIFT && this.gLift[g] >= 0 && this.net.lifts[this.liftOf(this.gLift[g])].aerial;
       for (let i = this.gStart[g]; i < this.gStart[g] + this.gCount[g]; i++) {
         this.hunger[i] = Math.min(1, this.hunger[i] + (n.hungerPerH * dt) / 3600);
         if (inside || st === G_REST) this.fatigue[i] = Math.max(0, this.fatigue[i] - (n.restRecoveryPerH * dt) / 3600);
@@ -1421,7 +1606,7 @@ export class GuestDay {
 
   satisfaction(i: number): number {
     const p = this.p.satisfaction;
-    return satisfactionScore(
+    const base = satisfactionScore(
       {
         skiS: this.skiS[i],
         queueS: this.queueS[i] + (this.mstate[i] === M_QUEUE ? this.t - this.joinT[i] : 0),
@@ -1433,6 +1618,7 @@ export class GuestDay {
       },
       p,
     );
+    return Math.max(0, base - this.p.thinBase.damagePenalty * Math.min(2, this.damage[i]));
   }
 
   // ------------------------------------------------------------ wyjście do widoku
@@ -1504,25 +1690,26 @@ export class GuestDay {
         for (let k = 0; k < this.gCount[g]; k++) {
           const i = this.gStart[g] + k;
           const back = k * 1.5;
-          put(i, w[g * 4] + f * dx - (dx / len) * back, w[g * 4 + 1] + f * dy - (dy / len) * back, (dx / dur), (dy / dur), Math.atan2(dy, dx), DRAW_WALK, (this.t * 0.8 + k) % 1);
+          const kind = this.gWalkKind[g] === 1 ? DRAW_SEATED : DRAW_WALK;
+          put(i, w[g * 4] + f * dx - (dx / len) * back, w[g * 4 + 1] + f * dy - (dy / len) * back, dx / dur, dy / dur, Math.atan2(dy, dx), kind, (this.t * 0.8 + k) % 1);
         }
       } else if (st === G_QUEUE || st === G_LIFT) {
-        const l = this.gLift[g];
-        if (l < 0) continue;
-        const lift = this.net.lifts[l];
-        const dx = lift.topX - lift.bottomX;
-        const dy = lift.topY - lift.bottomY;
-        const len = Math.hypot(dx, dy) || 1;
-        const ux = dx / len;
-        const uy = dy / len;
+        const bq = this.gLift[g];
+        if (bq < 0) continue;
+        const lift = this.net.lifts[this.liftOf(bq)];
         for (let k = 0; k < this.gCount[g]; k++) {
           const i = this.gStart[g] + k;
           const ms = this.mstate[i];
           if (ms === M_RIDE) {
-            const f = Math.min(1, (this.t - this.rideT[i]) / lift.rideS);
-            put(i, lift.bottomX + f * dx, lift.bottomY + f * dy, dx / lift.rideS, dy / lift.rideS, Math.atan2(dy, dx), lift.aerial ? DRAW_SEATED : this.board[i] ? DRAW_BOARD : DRAW_STAND, 0);
+            const d = Math.min(lift.stops[this.rideTo[i]].slopeM, lift.stops[this.rideFrom[i]].slopeM + (this.t - this.rideT[i]) * lift.speedMs);
+            const q = liftPoint(lift, d);
+            const vx = q.ux * q.horizontalPerSlope * lift.speedMs;
+            const vy = q.uy * q.horizontalPerSlope * lift.speedMs;
+            put(i, q.x, q.y, vx, vy, Math.atan2(q.uy, q.ux), lift.aerial ? DRAW_SEATED : this.board[i] ? DRAW_BOARD : DRAW_STAND, 0);
           } else if (ms === M_TOP) {
-            put(i, lift.topX + ux * 6 - uy * (k - this.gCount[g] / 2) * 1.5, lift.topY + uy * 6 + ux * (k - this.gCount[g] / 2) * 1.5, 0, 0, Math.atan2(dy, dx), DRAW_STAND, 0);
+            const dst = lift.stops[this.gDest[g]];
+            const q = liftPoint(lift, dst.slopeM);
+            put(i, dst.xM + q.ux * 6 - q.uy * (k - this.gCount[g] / 2) * 1.5, dst.yM + q.uy * 6 + q.ux * (k - this.gCount[g] / 2) * 1.5, 0, 0, Math.atan2(q.uy, q.ux), DRAW_STAND, 0);
           }
         }
       } else if (st === G_REST) {
@@ -1530,22 +1717,24 @@ export class GuestDay {
         for (let k = 0; k < this.gCount[g]; k++) put(this.gStart[g] + k, hub.xM + 8 + k * 1.4, hub.yM + 6, 0, 0, 0, DRAW_STAND, 0);
       }
     }
-    // Kolejki: rzędy za dolną stacją (kolejność przybycia).
-    for (let l = 0; l < this.net.lifts.length; l++) {
-      const lift = this.net.lifts[l];
-      const dx = lift.topX - lift.bottomX;
-      const dy = lift.topY - lift.bottomY;
-      const len = Math.hypot(dx, dy) || 1;
-      const ux = dx / len;
-      const uy = dy / len;
-      const q = this.queues[l];
+    // Kolejki: rzędy za stacją wsiadania (kolejność przybycia).
+    for (let bq = 0; bq < this.net.boardings.length; bq++) {
+      const bd = this.net.boardings[bq];
+      const lift = this.net.lifts[bd.lift];
+      const st = lift.stops[bd.stop];
+      const dir = liftPoint(lift, st.slopeM + 1);
+      const ux = dir.ux;
+      const uy = dir.uy;
+      const q = this.queues[bq];
       const row = Math.max(1, m.queueRowSize);
-      for (let k = this.qHead[l]; k < q.length; k++) {
-        const pos = k - this.qHead[l];
+      // Na stacji pośredniej kolejka z boku linii (żeby nie stała pod liną).
+      const side = bd.stop > 0 ? 8 : 0;
+      for (let k = this.qHead[bq]; k < q.length; k++) {
+        const pos = k - this.qHead[bq];
         const r = Math.floor(pos / row);
         const c = (pos % row) - (row - 1) / 2;
         const back = 4 + r * m.queueSpacingM;
-        put(q[k], lift.bottomX - ux * back - uy * c * m.queueSpacingM, lift.bottomY - uy * back + ux * c * m.queueSpacingM, 0, 0, Math.atan2(dy, dx), DRAW_STAND, 0);
+        put(q[k], st.xM - ux * back - uy * (c * m.queueSpacingM + side), st.yM - uy * back + ux * (c * m.queueSpacingM + side), 0, 0, Math.atan2(uy, ux), DRAW_STAND, 0);
       }
     }
     return n;
@@ -1557,11 +1746,12 @@ export class GuestDay {
       const lift = this.net.lifts[l];
       const o = l * LIFT_STRIDE;
       out[o] = this.queueLength(l);
-      out[o + 1] = this.waitEstimateS(l) / 60;
+      out[o + 1] = this.waitEstimateS(this.liftBoardings[l][0]) / 60;
       const windowS = Math.min(UTIL_WINDOW_S, Math.max(1, this.t - this.openS));
       out[o + 2] = this.liftOpen[l] ? Math.min(1, this.liftBoardLog[l].length / ((lift.capacityPerHour * windowS) / 3600)) : 0;
-      out[o + 3] = this.liftOpen[l] ? 0 : 1;
-      out[o + 4] = this.riders[l].length - this.rHead[l];
+      // 0 – pracuje, 1 – stoi (godziny, wiatr, zamknięty), 2 – stoi: brak otwartej trasy w dół.
+      out[o + 3] = this.liftOpen[l] ? 0 : this.liftHasDescent[l] ? 1 : 2;
+      out[o + 4] = this.riders[l].length;
       out[o + 5] = this.liftBoarded[l];
     }
   }
@@ -1628,7 +1818,8 @@ export class GuestDay {
       meanQueueMin: qN ? qSum / qN / 60 : 0,
       meanRating: rN ? rSum / rN : 0,
       ratings,
-      accidents: [...this.events],
+      accidents: this.events.filter((e) => e.kind === 'accident'),
+      equipmentDamage: this.damageCount,
       leaveReasons,
       crowdedPistes,
       busiestLifts,
@@ -1651,14 +1842,17 @@ export class GuestDay {
     else if (st === G_GONE) doing = `wyjechał o ${fmtH(this.gGoneT[g])} – ${LEAVE_REASONS[this.gReason[g]]}`;
     else if (st === G_WALK) doing = `idzie pieszo${this.gWalkHub[g] >= 0 ? ` do: ${hubName(this.gWalkHub[g])}` : ' na parking'}`;
     else if (st === G_QUEUE) {
-      const l = this.gLift[g];
-      const q = this.queues[l];
-      const pos = q.indexOf(i, this.qHead[l]) - this.qHead[l];
-      doing = `czeka w kolejce do wyciągu ${this.net.lifts[l].name} (przed nim ${Math.max(0, pos)} os., ok. ${Math.round((Math.ceil((pos + 1) / this.net.lifts[l].seats) * this.net.lifts[l].intervalS) / 60)} min)`;
+      const b = this.gLift[g];
+      const lift = this.net.lifts[this.liftOf(b)];
+      const q = this.queues[b];
+      const pos = q.indexOf(i, this.qHead[b]) - this.qHead[b];
+      const where = this.net.boardings[b].stop > 0 ? ' (stacja pośrednia)' : '';
+      doing = `czeka w kolejce do wyciągu ${lift.name}${where} (przed nim ${Math.max(0, pos)} os., ok. ${Math.round((Math.ceil((pos + 1) / lift.seats) * lift.intervalS) / 60)} min)`;
     } else if (st === G_LIFT) {
-      const l = this.gLift[g];
+      const lift = this.net.lifts[this.liftOf(this.gLift[g])];
       const ms = this.mstate[i];
-      doing = ms === M_RIDE ? `jedzie wyciągiem ${this.net.lifts[l].name} na górę` : ms === M_TOP ? 'czeka na górze na resztę grupy' : `czeka w kolejce do wyciągu ${this.net.lifts[l].name}`;
+      const dest = this.gDest[g] < lift.stops.length - 1 ? 'do stacji pośredniej' : 'na górę';
+      doing = ms === M_RIDE ? `jedzie wyciągiem ${lift.name} ${dest}` : ms === M_TOP ? 'czeka na przystanku na resztę grupy' : `czeka w kolejce do wyciągu ${lift.name}`;
     } else if (st === G_PISTE) {
       const edge = this.net.edges[this.gEdge[g]];
       doing = `zjeżdża trasą ${this.net.pistes[edge.piste].name} (${Math.round(this.gV[g] * 3.6)} km/h) do: ${hubName(this.net.nodes[edge.to].hub)}`;
@@ -1693,6 +1887,7 @@ export class GuestDay {
       verticalM: this.verticalM[i],
       queueMin: (this.queueS[i] + (this.mstate[i] === M_QUEUE ? this.t - this.joinT[i] : 0)) / 60,
       skiMin: this.skiS[i] / 60,
+      damage: this.damage[i],
       doing,
       plan,
     };

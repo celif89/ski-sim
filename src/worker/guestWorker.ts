@@ -146,7 +146,7 @@ function handle(r: GuestRequest): void {
       day?.setConditions(r.cond);
       return;
     case 'snow':
-      snow = { quality: r.quality, depthCm: r.depthCm, moguls: r.moguls };
+      snow = { quality: r.quality, depthCm: r.depthCm, moguls: r.moguls, thin: r.thin };
       day?.setSnow(snow);
       return;
     case 'card':

@@ -12,7 +12,7 @@ export type GuestRequest =
   | { type: 'day'; date: CalendarDate; guests: number; timeS: number }
   | { type: 'advance'; timeS: number; budgetMs: number }
   | { type: 'conditions'; cond: GuestConditions }
-  | { type: 'snow'; quality: Uint8Array; depthCm: Float32Array; moguls: Float32Array | null }
+  | { type: 'snow'; quality: Uint8Array; depthCm: Float32Array; moguls: Float32Array | null; thin: Float32Array | null }
   | { type: 'card'; requestId: number; id: number }
   | { type: 'report'; requestId: number }
   | { type: 'traffic'; requestId: number }

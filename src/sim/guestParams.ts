@@ -109,6 +109,7 @@ export interface GuestParams {
   };
   accidents: { basePerKm: number; crowdFactor: number; icyFactor: number; fatigueFactor: number; tooHardFactor: number; iconHours: number };
   snowImpact: SnowImpactParams;
+  thinBase: { speedFactor: number; snowScore: number; accidentFactor: number; damagePerKm: number; damagePenalty: number; avoidWeight: number };
 }
 
 type Sec = Record<string, unknown>;
@@ -135,6 +136,7 @@ export function parseGuestParams(raw: unknown): GuestParams {
   const sa = readSection(raw, 'satisfaction', FILE);
   const ac = readSection(raw, 'accidents', FILE);
   const si = readSection(raw, 'snowImpact', FILE);
+  const tb = readSection(raw, 'thinBase', FILE);
   const skills = list(raw, 'skills').map((s, i): SkillLevel => {
     if (typeof s.id !== 'string' || typeof s.name !== 'string') throw new Error(`${FILE}: umiejętność ${i} bez id/nazwy`);
     return {
@@ -177,6 +179,7 @@ export function parseGuestParams(raw: unknown): GuestParams {
       snowScoreByQuality: [q('snowScoreNone'), q('snowScorePowder'), q('snowScoreWindPacked'), q('snowScoreSettled'), q('snowScoreFirn'), q('snowScoreSlush'), q('snowScoreIcy'), q('snowScoreThin')],
     },
     accidents: readAll(ac, ['basePerKm', 'crowdFactor', 'icyFactor', 'fatigueFactor', 'tooHardFactor', 'iconHours'] as const, { min: 0 }),
+    thinBase: readAll(tb, ['speedFactor', 'snowScore', 'accidentFactor', 'damagePerKm', 'damagePenalty', 'avoidWeight'] as const, { min: 0 }),
     snowImpact: readAll(si, ['packedDensityKgM3', 'passesToPack', 'scrapeMmPerPass', 'scrapeRefSlopePercent', 'scrapeMinSlopePercent', 'mogulMinSlopePercent', 'passesToMoguls', 'mogulFillMm', 'mogulMeltDecayPerDay'] as const, { min: 0 }),
   };
 }
