@@ -36,7 +36,7 @@ zostaje poprzednia, sprawna wersja.
 | Cała mapa na ekranie | klawisz `0` lub `Home` |
 | Obrót mapy o 180° | róża kierunków w prawym dolnym rogu (strzałka **N**). Domyślnie widok od Korbielowa: szczyt u góry, północ na dole |
 | Upływ czasu gry | prawy górny róg: pauza, **1:1** (czas rzeczywisty – do oglądania narciarzy z bliska), ×1 (dzień sezonu w ok. 10 minut, noc szybciej), ×5, ×20; spacja – pauza / ×1 |
-| Nakładki danych | przycisk **„Nakładki”** na dolnym pasku (tam też mapa topograficzna, sieć tras, prawdziwy ośrodek) albo klawisze `1`–`8` |
+| Nakładki danych | przycisk **„Nakładki”** na dolnym pasku (tam też mapa topograficzna, sieć tras, prawdziwy ośrodek) albo klawisze `1`–`9`, `G`, `K` |
 | Nakładka nachylenia | „Nakładki” → „Nachylenie” lub klawisz `1` |
 | Nakładka ekspozycji | przycisk „Ekspozycja” lub klawisz `2` |
 | Sama mapa | przycisk „Bez nakładki” lub klawisz `3` |
@@ -50,6 +50,7 @@ zostaje poprzednia, sprawna wersja.
 | Pogoda | plakietka u góry na środku (temperatura, śnieg, wiatr); kliknięcie – szczegóły i prognoza na 7 dni |
 | Goście | panel **„Goście”** po prawej: liczba gości dnia, „↺ Od nowa”, „Raport dnia”, tabela wyciągów; kliknięcie postaci na mapie – karta gościa |
 | Ruch na trasach / kolejki | klawisz `9` (natężenie ruchu) i `K` (czas oczekiwania przy stacjach) albo „Nakładki” |
+| Podłoże terenu | klawisz `G` albo „Nakładki” → „Podłoże”: łąka wyrównana, łąka naturalna, kamienie / skała, przecinka z pniakami, las |
 | Menu deweloperskie | przycisk „Dev” w lewym dolnym rogu lub klawisz `` ` `` – licznik klatek, czas pracy na klatkę |
 | Profil terenu | przycisk „Profil terenu” lub klawisz `P`, potem kliknij punkt A i punkt B; `Esc` zamyka |
 
@@ -66,12 +67,27 @@ są wyszarzone – wycinka liczy się sama pod wyciągami i trasami, naśnieżan
 | Szerokość trasy | suwak w panelu lub klawisze `[` i `]` |
 | Baza (parking, wioska) | „Baza” lub `B`, kliknij miejsce – trasy mogą się tam kończyć |
 | Wybór obiektu | „Wybierz” lub `V`, kliknij wyciąg lub trasę na mapie albo w liście – profil i liczby na dole |
+| Edycja trasy | zaznacz trasę (klik): na osi pojawiają się **kółka** (punkty osi – przeciągnij), **kwadraciki** po bokach (szerokość w tym miejscu – przeciągnij w bok) i **„+”** w połowie odcinków (klik – nowy punkt). Usuń punkt: prawy przycisk na kółku albo najedź i `Delete`. Profil, kolor trasy, wycinka i koszt przeliczają się w trakcie przeciągania |
+| Edycja wyciągu | zaznacz wyciąg: **prostokąty** – stacja dolna i górna (przeciągnij), **„+”** na linii – nowe załamanie (stacja kątowa; na orczyku i talerzyku koła odchylające – tylko mały kąt), **romb** – załamanie (przeciągnij; podwójne kliknięcie – stacja pośrednia z wsiadaniem i wysiadaniem; prawy przycisk – usuń). Podpory przeliczają się same; podpory ustawione ręcznie zostają, jeśli dalej spełniają warunki |
+| Otwarcie / zamknięcie | w profilu zaznaczonej trasy lub wyciągu przycisk „Zamknij / Otwórz”; cały ośrodek – pole **„Ośrodek otwarty”** w panelu „Goście” |
+| Wyrównanie terenu | w profilu trasy przycisk „Wyrównaj teren” (koszt: usunięcie kamieni i pniaków, niwelacja) – podłoże staje się łąką wyrównaną, potrzeba mniej śniegu; dla nowych tras – pole „wyrównaj teren pod nowymi trasami” w panelu budowy |
 | Podpory wyciągu | na wykresie profilu: przeciągnij podporę w bok (położenie) lub w górę/dół (wysokość); podwójne kliknięcie – nowa podpora; prawy przycisk – usuń; przycisk „Rozstaw podpory automatycznie” |
 | Usuń | `Delete` lub przycisk „Usuń” |
 | Cofnij / ponów | `Ctrl+Z` / `Ctrl+Y` (na Macu `Cmd`) lub przyciski |
 | Sieć ośrodka | `N` – strzałki kierunku zjazdu, numery, połączenia, ostrzeżenia o trasach „donikąd” |
 | Prawdziwy ośrodek Pilsko | `R` – wyciągi i trasy z OpenStreetMap (półprzezroczyste, nie do edycji) i tabela: oficjalny kolor trasy a nasza klasyfikacja |
 | Zapis | układ zapisuje się sam w przeglądarce; „Zapisz plik” / „Wczytaj plik” – plik JSON |
+
+**Śnieg a jazda (etap 5b).** Pod kursorem (pasek na dole) i w profilu trasy widać osobno grubość
+całkowitą i **bazę ubitą** (zapas wody w śniegu przeliczony na śnieg ubity 420 kg/m³ – 10 cm puchu to
+ok. 2,4 cm bazy) oraz ile bazy potrzeba na tym podłożu: łąka wyrównana 15 cm, łąka naturalna 25 cm,
+przecinka z pniakami 40 cm, kamienie / skała 70 cm (`data/snow.json`, sekcja `riding`, do kalibracji).
+Gdy na otwartej trasie baza jest za cienka, panel „Goście” ostrzega („za mało śniegu: trasa 6,
+0–780 m – 6 cm bazy, potrzebne 40 cm”), odcinki są zaznaczone czerwonym pasem na mapie i na
+profilu. Na takich odcinkach goście jadą wolniej, częściej mają wypadki i uszkadzają sprzęt, gorzej
+oceniają dzień, a jeśli mogą – wybierają inne trasy. O otwarciu decydujesz Ty: zamknięta trasa ma
+zero przejazdów; wyciąg bez żadnej otwartej trasy w dół stoi (wyjątek: gondolą można zjechać);
+przy zamkniętym ośrodku nie przyjeżdża nikt.
 
 Budowa jest na razie natychmiastowa i bez pieniędzy (to etap 6), ale każdy obiekt ma policzony koszt
 i czas budowy. Wycinka lasu pod wyciągiem i na trasie zmienia pokrycie terenu – model śniegu liczy
@@ -231,6 +247,15 @@ Co sprawdzają testy (katalog `tests/`):
   (masa zachowana), tworzą muldy, a wielodniowy ruch wyciera stromiznę do przetarć; świeży śnieg
   zasypuje muldy; ten sam seed = ten sam dzień (także przy innym podziale czasu); prawdziwy Pilsko
   z OSM – dzień 2000 gości bez błędów,
+- **edycja i śnieg a jazda (etap 5b):** przesunięcie punktu osi zmienia profil i kolor trasy,
+  usunięcie punktu działa, szerokość zmienia obrys i koszt; stacja kątowa w limicie – droższa
+  i poprawna, ponad limit (kanapa 45°, orczyk 8°) – odrzucona; stacja pośrednia jest węzłem sieci
+  i przystankiem dla gości; ręcznie ustawiona podpora zostaje po przesunięciu stacji; podłoże po
+  wycince – pniaki, po wyrównaniu – łąka wyrównana (wyrównanie kamieni droższe niż łąki); 10 cm
+  puchu po ubiciu to mniej niż minimum na każdym podłożu i trasa dostaje ostrzeżenie z odcinkiem;
+  na zbyt cienkiej bazie (ci sami goście, ten sam seed) wypadków ponad 1,5× więcej, są uszkodzenia
+  sprzętu i niższa ocena dnia; zamknięta trasa ma zero przejazdów, a wyciąg bez otwartego zjazdu
+  stoi,
 - **pogoda:** ten sam seed = ta sama zima; 30 zim zgodnych z danymi IMGW (temperatura, opad,
   dni z opadem w tolerancji); śnieg na górze i deszcz na dole, gdy izoterma 0 °C leży pomiędzy;
   minimum temperatury nad ranem, maksimum po południu; błąd prognozy rośnie z każdym dniem,
