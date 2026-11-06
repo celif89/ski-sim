@@ -123,6 +123,11 @@
       "value": 10,
       "unit": "m",
       "source": "początek/koniec trasy w tej odległości od innej trasy łączy się z nią"
+    },
+    "walkRadiusM": {
+      "value": 90,
+      "unit": "m",
+      "source": "goście przechodzą pieszo między stacjami i parkingiem w tej odległości (jak guests.json operation.stationWalkRadiusM) – do sprawdzania dostępności z parkingu"
     }
   },
   "osmComparison": {
@@ -143,6 +148,19 @@
       "advanced": "black",
       "expert": "black",
       "freeride": "black"
+    }
+  },
+  "catwalk": {
+    "_opis": "Nartostrada (etap 6b): łatwa trasa łącznikowa, w sieci tylko w dół jak każda trasa.",
+    "widthM": {
+      "value": 6,
+      "unit": "m",
+      "source": "nartostrady i łączniki 4–8 m (PN-EN/wytyczne FIS dla dróg narciarskich); do kalibracji"
+    },
+    "maxSlopePercent": {
+      "value": 15,
+      "unit": "%",
+      "source": "nartostrada ma być łatwa – nachylenie trasy niebieskiej/zielonej; powyżej – ostrzeżenie; do kalibracji"
     }
   }
 }

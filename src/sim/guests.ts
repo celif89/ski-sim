@@ -376,6 +376,13 @@ export class GuestDay {
   /** Zajętość krzesełek na odcinkach między przystankami (tylko wyciągi ze stacją pośrednią). */
   private readonly chairOcc: (Map<number, Int16Array> | null)[];
   /** Wyciąg ma z któregoś przystanku otwartą trasę w dół (albo da się zjechać nim w dół – gondola). */
+  /** Etap 6b: goście, którzy nie przyjechali, bo parkingi były pełne. */
+  parkingTurnedAway = 0;
+  /** Etap 6b: goście przypisani do miejsc przyjazdu (indeks miejsca – hub). */
+  entryPersons: Float64Array = new Float64Array(0);
+  /** Etap 6b: zjazd wyciągiem w dół – najbliższa wolna chwila i liczba zwiezionych. */
+  private downNextS = new Float64Array(0);
+  readonly downRiders: Int32Array = new Int32Array(0);
   readonly liftHasDescent: Uint8Array;
   private readonly liftNextK: Float64Array;
   readonly liftOpen: Uint8Array;
@@ -584,6 +591,8 @@ export class GuestDay {
     net.boardings.forEach((b, i) => this.liftBoardings[b.lift].push(i));
     this.chairOcc = net.lifts.map((l) => (l.stops.length > 2 ? new Map<number, Int16Array>() : null));
     this.liftHasDescent = new Uint8Array(L);
+    this.downNextS = new Float64Array(L);
+    (this as { downRiders: Int32Array }).downRiders = new Int32Array(L);
     net.lifts.forEach((l, i) => {
       const open = l.stops.slice(1).some((st) => net.hubs[net.nodes[st.node].hub].outEdges.some((e) => !net.pistes[net.edges[e].piste].closed));
       this.liftHasDescent[i] = open || l.downhillRiding ? 1 : 0;
@@ -614,13 +623,43 @@ export class GuestDay {
     this.exitDist = new Float64Array(H * this.sk);
     this.foodReach = new Uint8Array(H * this.sk);
     this.computeRouting();
-    // Parking (miejsce przyjazdu): taki, z którego grupa dojdzie do wyciągu na swój poziom.
+    // Parking (miejsce przyjazdu): taki, z którego grupa dojdzie do wyciągu na swój poziom; etap 6b –
+    // do pojemności parkingu, a spośród wolnych ten z najmniejszą przewidywaną kolejką (przypisani
+    // goście / przepustowość wyciągów w zasięgu). Gdy wszystkie pełne – grupa nie przyjeżdża.
+    const remaining = net.hubs.map((h) => h.capacityPersons);
+    const assigned = new Float64Array(net.hubs.length);
+    const capNear = (h: number, s: number) => {
+      const tgt = this.walkTarget(h, s);
+      if (tgt < 0) return 0;
+      let c = 0;
+      for (const b of net.hubs[tgt].boardings) c += net.lifts[this.liftOf(b)].capacityPerHour;
+      return c;
+    };
     for (let gi = 0; gi < G; gi++) {
       const s = this.gSkill[gi];
+      const size = this.gCount[gi];
       const ok = net.entryHubs.filter((h) => this.walkTarget(h, s) >= 0);
-      const list = ok.length ? ok : net.entryHubs;
-      this.gHub[gi] = list[this.rng.int(0, list.length)];
+      const list = (ok.length ? ok : net.entryHubs).filter((h) => remaining[h] >= size);
+      if (list.length === 0) {
+        this.gArrive[gi] = Infinity; // brak miejsca na parkingu – nie przyjeżdża
+        this.parkingTurnedAway += size;
+        this.gHub[gi] = net.entryHubs[0] ?? 0;
+        continue;
+      }
+      let best = list[0];
+      let bestLoad = Infinity;
+      for (const h of list) {
+        const load = (assigned[h] + size) / Math.max(1, capNear(h, s)) + this.rng.next() * 1e-6;
+        if (load < bestLoad) {
+          bestLoad = load;
+          best = h;
+        }
+      }
+      this.gHub[gi] = best;
+      remaining[best] -= size;
+      assigned[best] += size;
     }
+    this.entryPersons = assigned;
   }
 
   /** Najbliższe miejsce (to samo lub w zasięgu spaceru) z wyciągiem, którym grupa może wjechać; −1 – brak. */
@@ -1139,6 +1178,16 @@ export class GuestDay {
     for (const dh of this.net.hubs[h].downhill) {
       const lift = this.net.lifts[dh.lift];
       if (!this.liftOpen[dh.lift] && !(this.t >= this.closeS && this.liftHasDescent[dh.lift])) continue;
+      // Etap 6b: w dół jedzie najwyżej część miejsc (kanapa) – grupa czeka na wolne krzesełka.
+      const capDown = lift.capacityPerHour * Math.max(0.01, lift.downhillSeatShare);
+      if (this.t < this.downNextS[dh.lift]) {
+        this.gState[g] = G_REST;
+        this.gBreakKind[g] = BREAK_REST;
+        this.gUntil[g] = this.downNextS[dh.lift];
+        return true;
+      }
+      this.downNextS[dh.lift] = Math.max(this.t, this.downNextS[dh.lift]) + (this.gCount[g] * 3600) / capDown;
+      this.downRiders[dh.lift] += this.gCount[g];
       const from = lift.stops[dh.stop];
       const to = lift.stops[0];
       this.gState[g] = G_WALK;

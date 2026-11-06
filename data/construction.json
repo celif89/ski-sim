@@ -54,5 +54,61 @@
       "unit": "dni/ha",
       "source": "prace ziemne przy wyrównaniu terenu; do kalibracji"
     }
+  },
+  "roads": {
+    "_opis": "Drogi dojazdowe do parkingów (etap 6b): rysowane jak trasa; parking jest punktem startowym gości, gdy leży przy drodze publicznej (OSM) albo na końcu zbudowanej drogi z nią połączonej. Wartości orientacyjne – do kalibracji.",
+    "costPlnPerM": {
+      "value": 1500,
+      "unit": "zł/m",
+      "source": "droga gminna asfaltowa 5 m w terenie górskim z odwodnieniem: ok. 1–2 mln zł/km (przetargi gmin podgórskich 2023–2025); do kalibracji"
+    },
+    "widthM": {
+      "value": 5,
+      "unit": "m",
+      "source": "jezdnia dwukierunkowa drogi dojazdowej (klasa D)"
+    },
+    "maxSlopePercent": {
+      "value": 12,
+      "unit": "%",
+      "source": "największe pochylenie podłużne drogi klasy D/L w terenie górskim (rozporządzenie w sprawie warunków technicznych dróg publicznych, Dz.U. 2016 poz. 124: 12 % w terenie górskim); do kalibracji"
+    },
+    "buildMetersPerDay": {
+      "value": 25,
+      "unit": "m/dzień",
+      "source": "budowa drogi z podbudową i nawierzchnią; do kalibracji"
+    },
+    "plowingPlnPerKmPerDay": {
+      "value": 120,
+      "unit": "zł/km dziennie",
+      "source": "zimowe utrzymanie dróg gminnych (odśnieżanie, posypywanie) – stawki gmin podgórskich ok. 100–200 zł/km za dobę gotowości i akcji; do kalibracji"
+    },
+    "plowingFromMonth": {
+      "value": 11,
+      "unit": "miesiąc",
+      "source": "sezon zimowego utrzymania XI–III"
+    },
+    "plowingToMonth": {
+      "value": 3,
+      "unit": "miesiąc",
+      "source": "j.w."
+    },
+    "connectRadiusM": {
+      "value": 40,
+      "unit": "m",
+      "source": "parking lub koniec drogi w tej odległości od drogi publicznej albo innej drogi łączy się z nią"
+    },
+    "publicRoadKinds": {
+      "value": [
+        "primary",
+        "secondary",
+        "tertiary",
+        "unclassified",
+        "residential",
+        "living_street",
+        "service"
+      ],
+      "unit": "rodzaje OSM highway",
+      "source": "drogi publiczne dla samochodów z OpenStreetMap (osm-context.json); bez dróg leśnych (track) i ścieżek"
+    }
   }
 }

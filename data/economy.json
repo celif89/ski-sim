@@ -910,6 +910,11 @@
           "value": 0,
           "unit": "-",
           "source": "-"
+        },
+        "minDistanceFromParkingM": {
+          "value": 0,
+          "unit": "m",
+          "source": "-"
         }
       },
       {
@@ -960,6 +965,11 @@
           "value": 600,
           "unit": "gości/dzień",
           "source": "120 miejsc × ok. 5 zmian; do kalibracji"
+        },
+        "minDistanceFromParkingM": {
+          "value": 0,
+          "unit": "m",
+          "source": "-"
         }
       },
       {
@@ -1010,6 +1020,11 @@
           "value": 150,
           "unit": "kompletów",
           "source": "do kalibracji"
+        },
+        "minDistanceFromParkingM": {
+          "value": 0,
+          "unit": "m",
+          "source": "-"
         }
       },
       {
@@ -1060,6 +1075,66 @@
           "value": 80,
           "unit": "lekcji",
           "source": "10 instruktorów × 8 h; do kalibracji"
+        },
+        "minDistanceFromParkingM": {
+          "value": 0,
+          "unit": "m",
+          "source": "-"
+        }
+      },
+      {
+        "id": "shuttle",
+        "name": "Transport do schroniska (skuter / ratrak)",
+        "base": false,
+        "costPln": {
+          "value": 350000,
+          "unit": "zł",
+          "source": "skuter z przyczepką pasażerską lub ratrak z kabiną + wiata; do kalibracji"
+        },
+        "cars": {
+          "value": 0,
+          "unit": "aut",
+          "source": "-"
+        },
+        "feePerCarPln": {
+          "value": 0,
+          "unit": "zł",
+          "source": "-"
+        },
+        "buildDays": {
+          "value": 14,
+          "unit": "dni",
+          "source": "zakup i przygotowanie; do kalibracji"
+        },
+        "staffPerDay": {
+          "value": 2,
+          "unit": "osób",
+          "source": "kierowca i obsługa; do kalibracji"
+        },
+        "revenuePerGuestPln": {
+          "value": 90,
+          "unit": "zł",
+          "source": "bilet w obie strony ok. 40 zł + posiłek w schronisku ok. 50 zł (tylko goście gastronomii – nie narciarze); do kalibracji"
+        },
+        "costShare": {
+          "value": 0.35,
+          "unit": "-",
+          "source": "paliwo, towar w schronisku; do kalibracji"
+        },
+        "useShare": {
+          "value": 0.03,
+          "unit": "-",
+          "source": "pieszych gości schroniska na 1 narciarza w ośrodku; do kalibracji"
+        },
+        "capacityPerDay": {
+          "value": 80,
+          "unit": "osób/dzień",
+          "source": "mała pojemność: kilka kursów po 8–10 osób; do kalibracji"
+        },
+        "minDistanceFromParkingM": {
+          "value": 300,
+          "unit": "m",
+          "source": "działa tylko do gastronomii (schroniska) położonej z dala od parkingu – na górze"
         }
       }
     ]

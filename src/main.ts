@@ -21,7 +21,8 @@ import liftsJson from '../data/lifts.json';
 import pistesJson from '../data/pistes.json';
 import constructionJson from '../data/construction.json';
 import economyJson from '../data/economy.json';
-import { parseEconomyParams, withSnowmaking } from './sim/economyParams';
+import { parseEconomyParams, withRoads, withSnowmaking } from './sim/economyParams';
+import { parkingCapacityPersons } from './sim/economy';
 import snowmakingJson from '../data/snowmaking.json';
 import winterClassesJson from '../data/winter-classes.json';
 import { careerSeed, parseWinterClasses, winterClass, winterPercentile, winterSkiDays } from './sim/winterClass';
@@ -66,9 +67,10 @@ import { BuildController } from './render/buildController';
 import type { SnowWarning } from './render/buildController';
 import type { MapContextData, MapLabel } from './render/resortLayer';
 import { parseLiftParams } from './sim/lifts';
+import type { PointM } from './sim/lifts';
 import { parsePisteParams } from './sim/pistes';
 import type { OsmResort, ResortAnalysis, ResortLayout } from './sim/resort';
-import { parseConstructionParams } from './sim/resort';
+import { parseConstructionParams, parseRoadParams } from './sim/resort';
 import { parseGroundParams } from './sim/ground';
 import { parseRidingParams, thinField } from './sim/snowRiding';
 import { GROUND_COLORS, SNOW_QUALITY_COLORS } from './render/colors';
@@ -342,7 +344,13 @@ async function start(): Promise<void> {
     const liftParams = parseLiftParams(liftsJson);
     const ridingParams = parseRidingParams(snowJson);
     const snowmakingParams = parseSnowmakingParams(snowmakingJson);
-    const economyParams = withSnowmaking(parseEconomyParams(economyJson), snowmakingParams);
+    const roadParams = parseRoadParams(constructionJson);
+    const economyParams = withRoads(withSnowmaking(parseEconomyParams(economyJson), snowmakingParams), roadParams);
+    // Etap 6b: drogi publiczne z OSM (dojazd do parkingów).
+    const publicRoads: PointM[][] = (((OSM_CONTEXTS[`../data/maps/${simSettings.mapName}/osm-context.json`] as { roads?: { kind: string; points: [number, number][] }[] } | undefined)?.roads) ?? [])
+      .filter((r) => roadParams.publicRoadKinds.includes(r.kind))
+      .map((r) => r.points.map(([e, n]) => grid.puwg92ToLocal(e, n)).filter((q): q is PointM => q !== null))
+      .filter((l) => l.length >= 2);
     // Ostrzeżenia „za mało śniegu” → panel gości (ustawiane niżej, gdy kontroler gości gotowy).
     let onSnowWarnings: (w: SnowWarning[]) => void = () => {};
     const build = new BuildController({
@@ -364,6 +372,8 @@ async function start(): Promise<void> {
         ...snowmakingParams.buildings.map((b) => ({ id: b.id, name: `${b.name}${b.summerOnly ? ' (budowa V–X)' : ''}`, base: false, costPln: b.costPln })),
       ],
       snowmaking: snowmakingParams,
+      roads: roadParams,
+      publicRoads: publicRoads.length ? publicRoads : null,
       forest: landCover?.forest ?? null,
       shrub: landCover?.shrub ?? null,
       osm: (OSM_RESORTS[`../data/maps/${simSettings.mapName}/osm-resort.json`] as OsmResort | undefined) ?? null,
@@ -852,6 +862,8 @@ async function start(): Promise<void> {
           stationWalkRadiusM: guestParams.operation.stationWalkRadiusM,
           foodPoints: hutPoints,
           grid: { cellSizeM: grid.cellSizeM, widthCells: grid.widthCells, heightCells: grid.heightCells },
+          accessibleBases: analysis.accessibleBases,
+          baseCapacityPersons: parkingCapacityPersons(layout, economyParams),
         }),
       );
     onGuestLayout(build.current.layout, build.current.analysis);
@@ -907,6 +919,8 @@ async function start(): Promise<void> {
           stationWalkRadiusM: guestParams.operation.stationWalkRadiusM,
           foodPoints: hutPoints,
           grid: { cellSizeM: grid.cellSizeM, widthCells: grid.widthCells, heightCells: grid.heightCells },
+          accessibleBases: analysis.accessibleBases,
+          baseCapacityPersons: parkingCapacityPersons(layout, economyParams),
         }),
       setDateTime: (date, hour) => timePanel.setDateTime(date, hour),
       setTraffic: (date, passes) => sim.setTraffic(date, passes),

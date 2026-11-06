@@ -31,11 +31,11 @@ import type { DayWeather, WeatherBook } from './weatherBook';
 
 export type GameMode = 'career' | 'sandbox';
 
-export const REVENUE_KEYS = ['passes', 'parking', 'gastronomy', 'rental', 'school'] as const;
+export const REVENUE_KEYS = ['passes', 'parking', 'gastronomy', 'rental', 'school', 'shuttle'] as const;
 export const COST_KEYS = [
   'energy', 'liftStaff', 'cashiers', 'patrol', 'seasonal', 'buildingsStaff', 'goods',
   'snowEnergy', 'water', 'groomFuel', 'groomStaff', 'groomService', 'leasing', 'repairs',
-  'permanent', 'admin', 'insurance', 'maintenance', 'inspections', 'interest',
+  'permanent', 'admin', 'roads', 'insurance', 'maintenance', 'inspections', 'interest',
 ] as const;
 /** Inwestycje i finansowanie (nie są kosztem dnia, ale zmieniają saldo). */
 export const CAPITAL_KEYS = ['construction', 'equipment', 'refunds', 'loanIn', 'loanPrincipal'] as const;
@@ -66,6 +66,8 @@ export const FLOW_NAMES: Record<keyof Flows, string> = {
   repairs: 'naprawy ratraków',
   permanent: 'stała załoga',
   admin: 'administracja, marketing, sprzedaż',
+  roads: 'odśnieżanie dróg dojazdowych',
+  shuttle: 'transport do schroniska',
   insurance: 'ubezpieczenie',
   maintenance: 'utrzymanie',
   inspections: 'przeglądy wyciągów',
@@ -285,7 +287,7 @@ function log(state: GameState, text: string): void {
 
 export interface ObjectCost {
   id: string;
-  kind: 'lift' | 'piste' | 'building' | 'pipeline' | 'gun';
+  kind: 'lift' | 'piste' | 'building' | 'pipeline' | 'gun' | 'road';
   summerOnly?: boolean;
   name: string;
   costPln: number;
@@ -312,6 +314,10 @@ export function objectCosts(layout: ResortLayout, analysis: ResortAnalysis, ep: 
     const t = buildingTypeById(ep, b.typeId);
     const infra = ep.snowmaking?.buildings.find((x) => x.id === b.typeId) ?? null;
     out.push({ id: b.id, kind: 'building', name: b.name, costPln: t?.costPln ?? infra?.costPln ?? 0, buildDays: Math.max(1, Math.round(t?.buildDays ?? infra?.buildDays ?? 1)), signature: sig(b), ...(infra?.summerOnly ? { summerOnly: true } : {}) });
+  }
+  for (const r of layout.roads ?? []) {
+    const a = analysis.roads?.get(r.id);
+    if (a) out.push({ id: r.id, kind: 'road', name: r.name, costPln: a.costPln, buildDays: a.buildDays, signature: sig(r) });
   }
   const sp = ep.snowmaking;
   if (sp) {
@@ -457,6 +463,10 @@ export interface BuildingFact {
   id: string;
   type: BuildingType;
   built: boolean;
+  /** Etap 6b: parking z dojazdem (drogą publiczną albo zbudowaną). */
+  accessible: boolean;
+  xM: number;
+  yM: number;
 }
 
 export interface ResortFacts {
@@ -471,6 +481,18 @@ export interface ResortFacts {
   capacityPerHour: number;
   parkingCars: number;
   pointsPerRide: number;
+  /** Etap 6b: długość zbudowanych dróg [km] i czy jest gastronomia z dala od parkingu (schronisko). */
+  roadKm: number;
+}
+
+/** Etap 6b: pojemność parkingów [osób na dzień] – bazy z typem parkingu (auta × osoby na auto). */
+export function parkingCapacityPersons(layout: ResortLayout, ep: EconomyParams): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const b of layout.bases) {
+    const t = buildingTypeById(ep, b.typeId);
+    if (t?.base && t.cars > 0) m.set(b.id, t.cars * ep.demand.personsPerCar);
+  }
+  return m;
 }
 
 /** Fakty dla ekonomii z układu, jego analizy, sieci gości (układ bez budów) i stanu budów. */
@@ -499,7 +521,7 @@ export function resortFacts(layout: ResortLayout, analysis: ResortAnalysis, net:
       rideMin: net && ni >= 0 ? net.lifts[ni].rideS / 60 : 0,
       lengthM,
       built,
-      operating: built && !l.closed && descent && (a?.ok ?? false),
+      operating: built && !l.closed && descent && (a?.ok ?? false) && !(net && ni >= 0 && net.lifts[ni].unreachable),
     };
   });
   const anyLift = lifts.some((l) => l.operating);
@@ -511,7 +533,7 @@ export function resortFacts(layout: ResortLayout, analysis: ResortAnalysis, net:
   const buildings: BuildingFact[] = [];
   for (const b of [...layout.bases, ...(layout.buildings ?? [])]) {
     const t = buildingTypeById(ep, b.typeId);
-    if (t) buildings.push({ id: b.id, type: t, built: !state.construction[b.id] });
+    if (t) buildings.push({ id: b.id, type: t, built: !state.construction[b.id], accessible: !t.base || !analysis.accessibleBases || analysis.accessibleBases.has(b.id), xM: b.xM, yM: b.yM });
   }
   const paidOf = (id: string) => (state.construction[id] ? 0 : (state.paid[id]?.costPln ?? 0));
   const assetLiftsPln = layout.lifts.reduce((a, l) => a + paidOf(l.id), 0);
@@ -530,7 +552,8 @@ export function resortFacts(layout: ResortLayout, analysis: ResortAnalysis, net:
     assetBuildingsPln,
     kmOpen: pistes.filter((p) => p.open).reduce((a, p) => a + p.lengthM, 0) / 1000,
     capacityPerHour: cap,
-    parkingCars: ep.demand.streetParkingCars + buildings.filter((b) => b.built).reduce((a, b) => a + b.type.cars, 0),
+    parkingCars: ep.demand.streetParkingCars + buildings.filter((b) => b.built && b.accessible).reduce((a, b) => a + b.type.cars, 0),
+    roadKm: (layout.roads ?? []).reduce((a, r) => a + (state.construction[r.id] ? 0 : (analysis.roads?.get(r.id)?.lengthM ?? 0)), 0) / 1000,
     pointsPerRide: cap > 0 ? op.reduce((a, l) => a + pts(l) * l.capacityPerHour, 0) / cap : ep.passes.pointsSurfaceRide,
   };
 }
@@ -919,9 +942,21 @@ export function closeDay(
       if (!b.built) continue;
       const t = b.type;
       if (t.base) {
+        if (!b.accessible) continue; // parking bez dojazdu – nikt tam nie przyjedzie
         const here = Math.min(cars, t.cars);
         cars -= here;
         flows.parking += here * t.feePerCarPln;
+        flows.buildingsStaff += t.staffPerDay * staffH * wage;
+        continue;
+      }
+      if (t.id === 'shuttle') {
+        // Transport do schroniska: tylko gdy jest gastronomia z dala od parkingów; goście gastronomii, nie narciarze.
+        const parks = facts.buildings.filter((x) => x.type.base && x.built && x.accessible);
+        const hut = facts.buildings.some((x) => x.built && x.type.id === 'gastronomy' && parks.every((pk) => Math.hypot(pk.xM - x.xM, pk.yM - x.yM) >= t.minDistanceFromParkingM));
+        if (!hut) continue;
+        const users = Math.min(t.capacityPerDay, g * t.useShare);
+        flows.shuttle += users * t.revenuePerGuestPln;
+        flows.goods += users * t.revenuePerGuestPln * t.costShare;
         flows.buildingsStaff += t.staffPerDay * staffH * wage;
         continue;
       }
@@ -933,6 +968,13 @@ export function closeDay(
       flows.goods += rev * t.costShare;
       flows.buildingsStaff += t.staffPerDay * staffH * wage;
     }
+  }
+  // Etap 6b: odśnieżanie dróg dojazdowych zimą (codziennie w sezonie zimowego utrzymania).
+  const rp = ep.roads;
+  if (rp && facts.roadKm > 0) {
+    const m = date.month;
+    const winter = rp.plowingFromMonth > rp.plowingToMonth ? m >= rp.plowingFromMonth || m <= rp.plowingToMonth : m >= rp.plowingFromMonth && m <= rp.plowingToMonth;
+    if (winter) flows.roads += facts.roadKm * rp.plowingPlnPerKmPerDay;
   }
   // Administracja, marketing i sprzedaż – część przychodów dnia (etap 6b, NSAA: G&A ok. 10 % przychodów).
   flows.admin += c.adminShareOfRevenue * REVENUE_KEYS.reduce((a, k) => a + flows[k], 0);

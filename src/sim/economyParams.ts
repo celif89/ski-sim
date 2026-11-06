@@ -3,6 +3,7 @@
  * ferie, koszty, kredyt, reputacja, model zgrubny dnia, konkurencja, budynki.
  * Same wartości – jednostki i źródła są w pliku.
  */
+import type { RoadParams } from './resort';
 import { readNumber, readNumberArray, readSection } from './params';
 import type { SnowmakingParams } from './snowmakingParams';
 
@@ -51,6 +52,8 @@ export interface BuildingType {
   costShare: number;
   useShare: number;
   capacityPerDay: number;
+  /** Etap 6b: działa tylko do gastronomii położonej co najmniej tak daleko od parkingu (transport do schroniska). */
+  minDistanceFromParkingM: number;
 }
 
 export interface EconomyParams {
@@ -162,11 +165,18 @@ export interface EconomyParams {
   buildings: BuildingType[];
   /** Etap 7: parametry naśnieżania i ratraków (data/snowmaking.json) – dołączane przez withSnowmaking. */
   snowmaking?: SnowmakingParams | null;
+  /** Etap 6b: drogi (odśnieżanie zimą) – dołączane przez withRoads. */
+  roads?: RoadParams | null;
 }
 
 /** Ekonomia z parametrami naśnieżania (koszty rurociągów, armatek, infrastruktury). */
 export function withSnowmaking(ep: EconomyParams, sp: SnowmakingParams): EconomyParams {
   return { ...ep, snowmaking: sp };
+}
+
+/** Ekonomia z parametrami dróg (etap 6b: odśnieżanie, data/construction.json – sekcja roads). */
+export function withRoads(ep: EconomyParams, rp: RoadParams): EconomyParams {
+  return { ...ep, roads: rp };
 }
 
 function readAll<K extends string>(sec: Sec, keys: readonly K[], opts: { min?: number; max?: number } = {}): Record<K, number> {
@@ -244,7 +254,7 @@ export function parseEconomyParams(raw: unknown): EconomyParams {
         id: b.id,
         name: b.name,
         base: b.base === true,
-        ...readAll(b, ['costPln', 'cars', 'feePerCarPln', 'buildDays', 'staffPerDay', 'revenuePerGuestPln', 'costShare', 'useShare', 'capacityPerDay'] as const, { min: 0 }),
+        ...readAll(b, ['costPln', 'cars', 'feePerCarPln', 'buildDays', 'staffPerDay', 'revenuePerGuestPln', 'costShare', 'useShare', 'capacityPerDay', 'minDistanceFromParkingM'] as const, { min: 0 }),
       };
     }),
   };

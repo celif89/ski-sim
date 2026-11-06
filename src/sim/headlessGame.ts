@@ -7,7 +7,7 @@ import type { ClimateProfile } from './climate';
 import type { CompetitorSeason } from './competition';
 import { competitorSeason, competitorsOn } from './competition';
 import type { CloseDayResult, DayContext, DayOutcome, GameMode, GameState, ResortFacts } from './economy';
-import { agentOutcome, closeDay, newGameState, objectCosts, operationalLayout, planDay, quickDayOutcome, reconcileConstruction, resortFacts, resortSnow, skiSeasonYear } from './economy';
+import { agentOutcome, closeDay, newGameState, objectCosts, operationalLayout, parkingCapacityPersons, planDay, quickDayOutcome, reconcileConstruction, resortFacts, resortSnow, skiSeasonYear } from './economy';
 import type { EconomyParams } from './economyParams';
 import { Environment } from './environment';
 import type { GroundParams } from './ground';
@@ -16,10 +16,10 @@ import { buildGuestNet } from './guestNetwork';
 import type { GuestParams } from './guestParams';
 import { GuestDay } from './guests';
 import type { HorizonField } from './horizon';
-import type { LiftParams } from './lifts';
+import type { LiftParams, PointM } from './lifts';
 import type { PisteParams } from './pistes';
 import type { RadiationParams } from './radiation';
-import type { ClearingCost, ResortAnalysis, ResortLayout } from './resort';
+import type { ClearingCost, ResortAnalysis, ResortLayout, RoadParams } from './resort';
 import { analyzeResort, applyClearing } from './resort';
 import type { SnowParams } from './snow';
 import type { RidingParams } from './snowRiding';
@@ -61,6 +61,9 @@ export interface HeadlessGameOptions {
   /** Decyzje „gracza” przed każdym dniem (otwarcie sezonu, ceny…). */
   policy?: (g: HeadlessGame) => void;
   mapName?: string;
+  /** Etap 6b: drogi – parametry i drogi publiczne (brak – każdy parking ma dojazd). */
+  roads?: RoadParams | null;
+  publicRoads?: PointM[][] | null;
 }
 
 export class HeadlessGame {
@@ -99,7 +102,7 @@ export class HeadlessGame {
 
   private analyze(): ResortAnalysis {
     const o = this.o;
-    return analyzeResort(this.layout, { grid: o.grid, lifts: o.liftParams, pistes: o.pisteParams, clearing: o.clearing, forest: o.forest, shrub: o.shrub, ground: o.ground });
+    return analyzeResort(this.layout, { grid: o.grid, lifts: o.liftParams, pistes: o.pisteParams, clearing: o.clearing, forest: o.forest, shrub: o.shrub, ground: o.ground, roads: o.roads, publicRoads: o.publicRoads });
   }
 
   /** Trasy zamknięte przez pryzmy / ratrakowanie w dzień (etap 7). */
@@ -112,7 +115,9 @@ export class HeadlessGame {
       layout: op,
       lifts: this.analysis.lifts,
       pistes: this.analysis.pistes,
-      network: analyzeResort(op, { grid: o.grid, lifts: o.liftParams, pistes: o.pisteParams, clearing: o.clearing, forest: o.forest, shrub: o.shrub }).network,
+      network: analyzeResort(op, { grid: o.grid, lifts: o.liftParams, pistes: o.pisteParams, clearing: o.clearing, forest: o.forest, shrub: o.shrub, roads: o.roads, publicRoads: o.publicRoads }).network,
+      accessibleBases: this.analysis.accessibleBases,
+      baseCapacityPersons: parkingCapacityPersons(op, o.economy),
       liftParams: o.liftParams,
       pisteParams: o.pisteParams,
       stationWalkRadiusM: o.guestParams.operation.stationWalkRadiusM,

@@ -44,7 +44,7 @@ export interface MapLabel {
 export interface ResortDrawState {
   layout: ResortLayout;
   analysis: ResortAnalysis;
-  selection: { kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun'; id: string } | null;
+  selection: { kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road'; id: string } | null;
   showNetwork: boolean;
   showReality: boolean;
   realLifts: OsmResort['lifts'] | null;
@@ -64,6 +64,8 @@ export interface ResortDrawState {
   construction?: Map<string, number>;
   buildingTypes?: { id: string; name: string }[] | null;
   /** Etap 7: hydranty (z armatkami), rysowany rurociąg, chmury śniegu pracujących armatek. */
+  /** Etap 6b: rysowana droga (punkty) i kursor. */
+  roadDraft?: { points: { xM: number; yM: number }[]; cursor: { xM: number; yM: number } | null } | null;
   snowNet?: {
     hydrants: { pipelineId: string; index: number; xM: number; yM: number; gunId: string | null }[];
     draftPipe: { xM: number; yM: number }[];
@@ -555,6 +557,25 @@ export class ResortLayer {
       this.label(li++, style.letter, p.xPx, p.yPx, { size: 13, fill: 0xffffff, stroke: style.color });
     }
 
+    // ---- drogi dojazdowe (etap 6b): szara jezdnia z białym poboczem
+    for (const road of st.layout.roads ?? []) {
+      const pts = road.points.map((q) => toS(q.xM, q.yM));
+      const sel = st.selection?.kind === 'road' && st.selection.id === road.id;
+      const w = Math.max(3, Math.min(10, 5 / mpp));
+      g.moveTo(pts[0].xPx, pts[0].yPx);
+      for (const q of pts) g.lineTo(q.xPx, q.yPx);
+      g.stroke({ width: w + 3, color: sel ? SELECT_COLOR : 0xffffff, alpha: 0.95, cap: 'round', join: 'round' });
+      g.moveTo(pts[0].xPx, pts[0].yPx);
+      for (const q of pts) g.lineTo(q.xPx, q.yPx);
+      g.stroke({ width: w, color: 0x6b7280, cap: 'round', join: 'round' });
+    }
+    if (st.roadDraft && st.roadDraft.points.length) {
+      const pts = [...st.roadDraft.points, ...(st.roadDraft.cursor ? [st.roadDraft.cursor] : [])].map((q) => toS(q.xM, q.yM));
+      g.moveTo(pts[0].xPx, pts[0].yPx);
+      for (const q of pts) g.lineTo(q.xPx, q.yPx);
+      g.stroke({ width: 4, color: 0x6b7280, alpha: 0.6 });
+    }
+
     // ---- naśnieżanie (etap 7): rurociągi, hydranty, armatki, chmury śniegu
     if (st.snowNet) {
       for (const pipe of st.layout.pipelines ?? []) {
@@ -659,7 +680,7 @@ export class ResortLayer {
           tag((a.xPx + b.xPx) / 2, (a.yPx + b.yPx) / 2 - 20, prog);
           continue;
         }
-        const pipe = (st.layout.pipelines ?? []).find((x) => x.id === id);
+        const pipe = (st.layout.pipelines ?? []).find((x) => x.id === id) ?? (st.layout.roads ?? []).find((x) => x.id === id);
         if (pipe) {
           const pts = pipe.points.map((q) => toS(q.xM, q.yM));
           dashed(pts);
