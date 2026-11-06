@@ -6,6 +6,7 @@
 import type { LiftParams } from '../sim/lifts';
 import type { PisteParams } from '../sim/pistes';
 import type { RealPisteComparison, ResortAnalysis, ResortLayout } from '../sim/resort';
+import type { ThinSegment } from '../sim/snowRiding';
 
 export type BuildTool = 'select' | 'lift' | 'pisteBrush' | 'pisteAxis' | 'base';
 
@@ -22,6 +23,8 @@ export interface BuildPanelHandlers {
   onToggleNetwork(): void;
   onToggleReality(): void;
   onSelect(kind: 'lift' | 'piste' | 'base', id: string): void;
+  /** Nowe trasy z wyrównaniem terenu (koszt, łąka wyrównana – mniej śniegu potrzeba). */
+  onGradeNew(on: boolean): void;
 }
 
 export interface BuildPanelState {
@@ -38,6 +41,9 @@ export interface BuildPanelState {
   selection: { kind: 'lift' | 'piste' | 'base'; id: string } | null;
   real: RealPisteComparison[] | null;
   message: string;
+  gradeNew: boolean;
+  /** Odcinki tras ze zbyt cienką bazą. */
+  thin: Map<string, ThinSegment[]>;
 }
 
 const fmt0 = (x: number) => Math.round(x).toLocaleString('pl-PL');
@@ -64,6 +70,7 @@ export class BuildPanel {
   private readonly realBtn: HTMLButtonElement;
   private readonly body: HTMLElement;
   private readonly msg: HTMLElement;
+  private readonly grade: HTMLInputElement;
   private collapsed = false;
 
   constructor(parent: HTMLElement, liftParams: LiftParams, private readonly pisteParams: PisteParams, h: BuildPanelHandlers) {
@@ -75,6 +82,7 @@ export class BuildPanel {
         <div class="build-tools"></div>
         <div class="build-row"><label>Typ wyciągu <select class="build-type"></select></label></div>
         <div class="build-row"><label>Szerokość trasy <input type="range" class="build-width"> <span class="build-width-label"></span></label></div>
+        <div class="build-row"><label title="Usunięcie kamieni i pniaków, niwelacja – kosztuje, ale na łące wyrównanej wystarczy mniej śniegu"><input type="checkbox" class="build-grade"> wyrównaj teren pod nowymi trasami</label></div>
         <div class="build-row build-buttons">
           <button type="button" class="b-undo" title="Cofnij (Ctrl+Z)">↶ Cofnij</button>
           <button type="button" class="b-redo" title="Ponów (Ctrl+Y)">↷ Ponów</button>
@@ -134,6 +142,8 @@ export class BuildPanel {
       if (file.files?.[0]) h.onImport(file.files[0]);
       file.value = '';
     });
+    this.grade = this.root.querySelector('.build-grade')!;
+    this.grade.addEventListener('change', () => h.onGradeNew(this.grade.checked));
     this.msg = this.root.querySelector('.build-message')!;
     this.body = this.root.querySelector('.build-body')!;
     this.root.querySelector('.build-toggle')!.addEventListener('click', () => {
@@ -156,6 +166,7 @@ export class BuildPanel {
     this.del.disabled = !s.hasSelection;
     this.netBtn.classList.toggle('active', s.showNetwork);
     this.realBtn.classList.toggle('active', s.showReality);
+    this.grade.checked = s.gradeNew;
     this.msg.textContent = s.message;
     this.msg.classList.toggle('empty', !s.message);
     const sel = (kind: string, id: string) => (s.selection?.kind === kind && s.selection.id === id ? ' selected' : '');
@@ -163,7 +174,7 @@ export class BuildPanel {
       .map((l) => {
         const a = s.analysis.lifts.get(l.id);
         if (!a) return '';
-        return `<tr data-kind="lift" data-id="${l.id}" class="${a.ok ? '' : 'bad'}${sel('lift', l.id)}"><td><b>${l.name}</b></td><td>${a.type.name}</td><td>${fmt0(a.horizontalLengthM)} m</td><td>↑ ${fmt0(a.riseM)} m</td><td>${fmt0(a.capacityPerHour)} os./h</td><td>${money(a.cost.totalPln)}</td></tr>`;
+        return `<tr data-kind="lift" data-id="${l.id}" class="${a.ok ? '' : 'bad'}${sel('lift', l.id)}${l.closed ? ' g-closed' : ''}"><td><b>${l.name}</b>${l.closed ? ' <span class="muted">zamkn.</span>' : ''}${l.bends?.length ? ` <span class="muted">${l.bends.length}×∠</span>` : ''}</td><td>${a.type.name}</td><td>${fmt0(a.horizontalLengthM)} m</td><td>↑ ${fmt0(a.riseM)} m</td><td>${fmt0(a.capacityPerHour)} os./h</td><td>${money(a.cost.totalPln)}</td></tr>`;
       })
       .join('');
     const pistes = s.layout.pistes
@@ -171,7 +182,9 @@ export class BuildPanel {
         const a = s.analysis.pistes.get(p.id);
         if (!a) return '';
         const c = this.pisteParams.classes[a.classIndex];
-        return `<tr data-kind="piste" data-id="${p.id}" class="${a.ok ? '' : 'bad'}${sel('piste', p.id)}"><td><b>${p.name}</b></td><td><span class="piste-class" style="background:${c.color}">${c.name}</span></td><td>${fmt0(a.lengthM)} m</td><td>↓ ${fmt0(a.dropM)} m</td><td>maks. ${fmt0(a.maxSlopePercent)} %</td><td>${money(a.cost.totalPln)}</td></tr>`;
+        const thin = s.thin.get(p.id);
+        const flag = p.closed ? ' <span class="muted">zamkn.</span>' : thin ? ` <span class="g-bad" title="za mało śniegu: ${thin.map((t) => `${fmt0(t.fromM)}–${fmt0(t.toM)} m (${fmt0(t.baseCm)}/${fmt0(t.neededCm)} cm)`).join(', ')}">⚠ śnieg</span>` : '';
+        return `<tr data-kind="piste" data-id="${p.id}" class="${a.ok ? '' : 'bad'}${sel('piste', p.id)}${p.closed ? ' g-closed' : ''}"><td><b>${p.name}</b>${flag}${p.graded ? ' <span class="muted">wyr.</span>' : ''}</td><td><span class="piste-class" style="background:${c.color}">${c.name}</span></td><td>${fmt0(a.lengthM)} m</td><td>↓ ${fmt0(a.dropM)} m</td><td>maks. ${fmt0(a.maxSlopePercent)} %</td><td>${money(a.cost.totalPln)}</td></tr>`;
       })
       .join('');
     const bases = s.layout.bases.map((b) => `<tr data-kind="base" data-id="${b.id}" class="${sel('base', b.id)}"><td><b>P</b></td><td colspan="5">${b.name}</td></tr>`).join('');

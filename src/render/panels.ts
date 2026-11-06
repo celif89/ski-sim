@@ -2,7 +2,8 @@
  * Panele interfejsu (HTML nad mapą): przyciski nakładek i narzędzi oraz legenda aktywnej nakładki.
  */
 import type { SlopeClass } from '../sim';
-import { ASPECT_STOPS_DEG, FLAT_COLOR, SNOW_QUALITY_COLORS, rgbToCss } from './colors';
+import { ASPECT_STOPS_DEG, FLAT_COLOR, GROUND_COLORS, SNOW_QUALITY_COLORS, rgbToCss } from './colors';
+import { GROUND_NAMES } from '../sim/ground';
 import { SNOW_QUALITY_CODES, SNOW_QUALITY_NAMES } from '../sim/snow';
 import type { FieldScale } from './fieldOverlay';
 import { scaleGradientCss } from './fieldOverlay';
@@ -24,6 +25,7 @@ export const OVERLAY_KEYS: { kind: OverlayKind; key: string; label: string; titl
   { kind: 'snowDepth', key: '7', label: 'Śnieg – grubość', title: 'Grubość pokrywy śnieżnej [cm] na koniec wybranego dnia' },
   { kind: 'snowQuality', key: '8', label: 'Śnieg – stan', title: 'Stan śniegu: puch, przewiany, osiadły, firn, breja, zlodzony, przetarty' },
   { kind: 'traffic', key: '9', label: 'Ruch na trasach', title: 'Natężenie ruchu gości: przejazdy na godzinę (ostatnie pół godziny)' },
+  { kind: 'ground', key: 'G', label: 'Podłoże', title: 'Podłoże terenu: łąka wyrównana, łąka naturalna, kamienie / skała, przecinka z pniakami, las – od niego zależy, ile śniegu trzeba do jazdy' },
   { kind: 'liftWait', key: 'K', label: 'Kolejki', title: 'Czas oczekiwania i długość kolejki przy dolnych stacjach' },
 ];
 
@@ -124,6 +126,11 @@ export class Legend {
         .map((q, i) => `<div class="legend-row"><span class="legend-swatch" style="background:${rgbToCss(SNOW_QUALITY_COLORS[i + 1])}"></span>${SNOW_QUALITY_NAMES[q]}</div>`)
         .join('');
       this.element.innerHTML = `<div class="legend-title">Stan śniegu (powierzchnia)</div>${rows}<div class="legend-note">${this.fieldInfo}</div>`;
+      return;
+    }
+    if (kind === 'ground') {
+      const rows = GROUND_NAMES.map((n, i) => `<div class="legend-row"><span class="legend-swatch" style="background:${rgbToCss(GROUND_COLORS[i + 1])}"></span>${n}</div>`).join('');
+      this.element.innerHTML = `<div class="legend-title">Podłoże terenu</div>${rows}<div class="legend-note">${this.fieldInfo}</div>`;
       return;
     }
     if (kind === 'liftWait') {

@@ -57,6 +57,18 @@ export interface NetLift {
   capacityPerHour: number;
   windLimitMs: number;
   topElevM: number;
+  /** Przystanki od dołu: węzeł, odległość po linii od dolnej stacji [m], położenie, wysokość. */
+  stops: { node: number; slopeM: number; xM: number; yM: number; elevM: number }[];
+  /** Wierzchołki linii (dół, załamania, góra) z odległością po linii – do rysowania jadących. */
+  path: { xM: number; yM: number; slopeM: number }[];
+  /** Można zjechać wyciągiem w dół (gondola). */
+  downhillRiding: boolean;
+}
+
+/** Punkt wsiadania: wyciąg i przystanek (dolna lub pośrednia stacja). */
+export interface NetBoarding {
+  lift: number;
+  stop: number;
 }
 
 export interface NetNode {
@@ -71,8 +83,10 @@ export interface NetHub {
   nodes: number[];
   xM: number;
   yM: number;
-  /** Wyciągi z dolną stacją w tym miejscu. */
-  lifts: number[];
+  /** Punkty wsiadania w tym miejscu (indeksy w GuestNet.boardings): dolne i pośrednie stacje. */
+  boardings: number[];
+  /** Wyciągi z górną lub pośrednią stacją tutaj, którymi można zjechać w dół (gondola): [wyciąg, przystanek]. */
+  downhill: { lift: number; stop: number }[];
   /** Odcinki tras wychodzące z tego miejsca. */
   outEdges: number[];
   /** Jest tu jedzenie (baza, schronisko). */
@@ -88,6 +102,7 @@ export interface GuestNet {
   pistes: NetPiste[];
   edges: NetEdge[];
   lifts: NetLift[];
+  boardings: NetBoarding[];
   /** Miejsca przyjazdu (bazy lub najniższa dolna stacja). */
   entryHubs: number[];
   cellSizeM: number;
@@ -133,7 +148,7 @@ export function buildGuestNet(input: GuestNetInput): GuestNet {
     if (h === undefined) {
       h = hubs.length;
       hubOf.set(root, h);
-      hubs.push({ nodes: [], xM: 0, yM: 0, lifts: [], outEdges: [], food: false, exit: false, name: '' });
+      hubs.push({ nodes: [], xM: 0, yM: 0, boardings: [], downhill: [], outEdges: [], food: false, exit: false, name: '' });
     }
     nodes[i].hub = h;
     hubs[h].nodes.push(i);
@@ -191,6 +206,7 @@ export function buildGuestNet(input: GuestNetInput): GuestNet {
 
   // Wyciągi.
   const lifts: NetLift[] = [];
+  const boardings: NetBoarding[] = [];
   for (const l of layout.lifts) {
     const a = input.lifts.get(l.id);
     const bottom = nodeIndex.get(`${l.id}:dół`);
@@ -220,8 +236,28 @@ export function buildGuestNet(input: GuestNetInput): GuestNet {
       capacityPerHour: type.capacityPerHour,
       windLimitMs: type.windLimitMs,
       topElevM: a.ground.length ? a.ground[a.ground.length - 1].elevationM : 0,
+      stops: [],
+      path: [l.bottom, ...(l.bends ?? []), l.top].map((q, i) => ({ xM: q.xM, yM: q.yM, slopeM: a.pathSlopeM[i] ?? 0 })),
+      downhillRiding: type.downhillRiding,
     });
-    hubs[nodes[bottom].hub].lifts.push(lifts.length - 1);
+    const li = lifts.length - 1;
+    // Przystanki: dolna, pośrednie (węzły „pośrN”), górna.
+    let midNo = 0;
+    for (const st of a.stops) {
+      const id = st.kind === 'bottom' ? `${l.id}:dół` : st.kind === 'top' ? `${l.id}:góra` : `${l.id}:pośr${++midNo}`;
+      const node = nodeIndex.get(id);
+      if (node === undefined) continue;
+      lifts[li].stops.push({ node, slopeM: st.slopeDistanceM, xM: st.xM, yM: st.yM, elevM: st.elevationM });
+    }
+    const stops = lifts[li].stops;
+    stops.forEach((st, si) => {
+      const h = nodes[st.node].hub;
+      if (si < stops.length - 1) {
+        boardings.push({ lift: li, stop: si });
+        hubs[h].boardings.push(boardings.length - 1);
+      }
+      if (si > 0 && type.downhillRiding) hubs[h].downhill.push({ lift: li, stop: si });
+    });
   }
 
   // Bazy: wyjście i jedzenie; bez baz – najniższa dolna stacja.
@@ -264,5 +300,5 @@ export function buildGuestNet(input: GuestNetInput): GuestNet {
     }
     h.name = names[0] ?? (h.nodes.some((i) => nodes[i].kind === 'junction') ? 'skrzyżowanie tras' : 'na trasie');
   }
-  return { nodes, hubs, pistes, edges, lifts, entryHubs, cellSizeM: input.grid.cellSizeM, widthCells: input.grid.widthCells, heightCells: input.grid.heightCells };
+  return { nodes, hubs, pistes, edges, lifts, boardings, entryHubs, cellSizeM: input.grid.cellSizeM, widthCells: input.grid.widthCells, heightCells: input.grid.heightCells };
 }

@@ -263,9 +263,49 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
   - obserwacja: na prawdziwym Pilsku (nasza klasyfikacja tras) początkujący mają w zasięgu
     praktycznie tylko Dinbo – kolejka ~25 min, wielu wyjeżdża „przez kolejki”; co druga grupa ma
     w składzie początkującego (dzieci, grupy szkolne) – do kalibracji udziałów.
+- **Etap 5b – zrobiony** (listopad 2026): edycja geometrii i śnieg decydujący o jeździe.
+  - edycja tras myszą (`buildController.ts`: uchwyty `EditHandle` rysowane w `resortLayer.ts`):
+    punkty osi (przeciąganie, „+” w połowie odcinka, prawy przycisk / Delete), szerokość w punkcie
+    (kwadraciki po bokach); w trakcie przeciągania liczy się tylko ten obiekt (profil, klasa,
+    wycinka, koszt), całość po puszczeniu; uchwyt ma pierwszeństwo przed kliknięciem gościa;
+  - wyciąg jako łamana (`lifts.ts`): `bends` (`LiftBend`, `mid` – stacja pośrednia), `liftPath`,
+    `bendAngleDeg`; limit kąta, koszt, zajęty teren w `data/lifts.json` (`maxBendDeg`: talerzyk 6°,
+    orczyk 8° – koła odchylające, kanapy stałe 45°, wyprzęgane 60°, gondola 90°; `bendCostPln`,
+    `midStationCostPln`, `allowsMidStation`, `bendFootprintM`, `downhillRiding` – gondolą można
+    zjechać; wszystko „do kalibracji”); podpory: stacja kątowa jest podporą o wysokości stacji
+    (strefa stacji bez sprawdzania prześwitu), koła odchylające orczyka – podporą z prześwitem
+    sprawdzanym obok; `retowerLift` – podpory ręczne zostają (rzut na nową linię), jeśli leżą na
+    linii, z dala od stacji i mają dopuszczalną wysokość; przeciąganie stacji dolnej/górnej i załamań;
+  - sieć: stacja pośrednia = węzeł `W:pośrN` (`liftMid`), krawędzie wyciągu między kolejnymi
+    przystankami; goście (`guestNetwork.ts`: `NetLift.stops`, `NetBoarding`) wsiadają na wolne
+    miejsca na przystankach pośrednich i wysiadają na dowolnym; wyciąg bez otwartej trasy w dół
+    z żadnego przystanku nie pracuje (`liftHasDescent`), chyba że `downhillRiding` (gondola –
+    zjazd wyciągiem);
+  - podłoże (`ground.ts`, parametry `data/construction.json`, sekcja `ground`): las (≥ 40 % lasu),
+    kamienisty (kosodrzewina ≥ 40 % – rumowisko, albo nachylenie ≥ 70 %), łąka naturalna; po budowie
+    wycięty las → pniaki, trasa z `graded` → łąka wyrównana; wyrównanie kosztuje (łąka 6, pniaki 20,
+    kamienie 40 zł/m², 4 dni/ha); nakładka G;
+  - śnieg a jazda (`snowRiding.ts`, `data/snow.json` sekcja `riding`): baza ubita = SWE / 420 kg/m³;
+    minimum: łąka wyrównana 15 cm, łąka 25, pniaki 40, kamienie 70 (źródła w pliku: Umweltbundesamt
+    TOU-I-2, Blick 2011, Chestnut Mountain, Snoqualmie); `thinSegments` (ostrzeżenia na otwartych
+    trasach – panel „Goście”, czerwony pas na mapie i profilu), `thinField` (pole 0–1 dla gości);
+    pod kursorem grubość, baza ubita, potrzebna baza, podłoże;
+  - goście na zbyt cienkiej bazie (`data/guests.json`, sekcja `thinBase`): wolniej, wypadki ×(1+4·s),
+    uszkodzenia sprzętu (raport dnia), niższa ocena śniegu, omijanie takich tras w wyborze;
+  - otwarte/zamknięte: trasy i wyciągi (przycisk w profilu), cały ośrodek (`resortOpen` w układzie,
+    pole w panelu „Goście”; zamknięty – dzień bez gości);
+  - przy okazji: panel profilu dostał jasne tło stylu A (wcześniej ciemne półprzezroczyste z ciemnym
+    tekstem), wykres na ciemnym tle;
+  - testy `tests/editing.test.ts` (16).
+  - obserwacja: zima 2026/27 z generatora jest słaba (na początku lutego odwilż, średnio < 1 cm na
+    mapie) – na naturalnym śniegu trasy Pilska przez większość sezonu dostają ostrzeżenia; bez
+    naśnieżania (etap 7) gra będzie wymagać zamykania tras.
 - **Następny: etap 6 – sezon i ekonomia.**
 
 Uwagi techniczne:
+- Edycja (5b): przeciąganie zmienia `this.layout` na miejscu i liczy tylko analizę edytowanego
+  obiektu (`applyEdit`); historia (`LayoutHistory`) dostaje stan sprzed przeciągania przy puszczeniu.
+  Kliknięcie: najpierw uchwyt edycji, potem postać gościa (promień 9 px), potem wybór obiektu.
 - Goście: wątek liczy kroki po 1 s do godziny zegara; zegar czeka, gdy wątek zostaje > 15 min gry
   w tyle; jedna klatka przesuwa zegar najwyżej o 0,25 s realne (przy kilku kl./s gra zwalnia).
   Postacie i nakładka ruchu są w kontenerze `worldOver` nad warstwą ekranu (linie tras).
@@ -318,9 +358,12 @@ Uwagi techniczne:
 - Dopracowanie przewiewania śniegu na podstawie zdjęć Sentinel-2 (mapy pokrywy śnieżnej
   po zamieciach – gdzie śnieg znika z grzbietów i gdzie zalega w zagłębieniach).
 - Generator pogody: wielodniowe epizody silnego opadu (śnieżyce) – za niskie maksima grubości.
-- Budowa: przesuwanie stacji gotowego wyciągu i edycja punktów osi trasy (teraz – usuń i narysuj
-  od nowa); trasy obszarowe z OSM (area=yes) w porównaniu; mapa bazowa przerysowana po wycince
+- Budowa: trasy obszarowe z OSM (area=yes) w porównaniu; mapa bazowa przerysowana po wycince
   (teraz przecinka to osobna warstwa nad mapą).
+- Śnieg a jazda (5b): progi minimalnej bazy i skutki cienkiej bazy do kalibracji (dane ośrodków,
+  ratraków); podłoże tylko z pokrycia i nachylenia (bez mapy kamienistości); podłoże nie wpływa na
+  model śniegu (np. kamienie szybciej przebijają się przy topnieniu); limity kąta i koszty stacji
+  kątowych – z kart producentów; profil panelu zasłania dolną część mapy (przesuń mapę).
 
 - **Docelowa oprawa graficzna o szczegółowości w stylu The Settlers** – ręcznie rysowane lub gotowe
   sprite'y i animacje (narciarze, ratraki, budynki, drzewa), do wymiany w warstwie rysowania

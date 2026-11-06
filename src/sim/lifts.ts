@@ -39,6 +39,16 @@ export interface LiftType {
   buildDaysPer100m: number;
   /** Miejsca na krzesełku/wagoniku/orczyku (0 – ruch ciągły, np. taśma). */
   carrierSeats: number;
+  /** Największy kąt załamania linii (stacja kątowa; powierzchniowe – koła odchylające) [°]. */
+  maxBendDeg: number;
+  /** Koszt stacji kątowej (powierzchniowe – kół odchylających) i stacji pośredniej [zł]. */
+  bendCostPln: number;
+  midStationCostPln: number;
+  allowsMidStation: boolean;
+  /** Średnica terenu zajętego przez stację kątową / pośrednią [m]. */
+  bendFootprintM: number;
+  /** Można zjechać wyciągiem w dół (gondola). */
+  downhillRiding: boolean;
 }
 
 export interface LiftCommonParams {
@@ -103,6 +113,12 @@ export function parseLiftParams(raw: unknown): LiftParams {
       buildDaysBase: n(e, 'buildDaysBase', { min: 0 }),
       buildDaysPer100m: n(e, 'buildDaysPer100m', { min: 0 }),
       carrierSeats: n(e, 'carrierSeats', { min: 0 }),
+      maxBendDeg: n(e, 'maxBendDeg', { min: 0, max: 180 }),
+      bendCostPln: n(e, 'bendCostPln', { min: 0 }),
+      midStationCostPln: n(e, 'midStationCostPln', { min: 0 }),
+      allowsMidStation: n(e, 'allowsMidStation', { min: 0, max: 1 }) === 1,
+      bendFootprintM: n(e, 'bendFootprintM', { min: 0 }),
+      downhillRiding: n(e, 'downhillRiding', { min: 0, max: 1 }) === 1,
     } satisfies LiftType;
   });
   for (const t of types) if (t.towerMaxHeightM < t.towerMinHeightM) throw new Error(`${FILE}: ${t.id} – towerMaxHeightM < towerMinHeightM`);
@@ -139,6 +155,38 @@ export interface LiftDesign {
   manualTowers: boolean;
   /** Wyciąg zamknięty (goście z niego nie korzystają). */
   closed?: boolean;
+  /**
+   * Załamania linii między dolną a górną stacją (od dołu): stacja kątowa (koleje linowe) albo koła
+   * odchylające (powierzchniowe); mid – stacja pośrednia z wsiadaniem i wysiadaniem.
+   */
+  bends?: LiftBend[];
+}
+
+export interface LiftBend extends PointM {
+  mid?: boolean;
+}
+
+/** Punkty linii wyciągu: dolna stacja, załamania, górna stacja. */
+export function liftPath(d: { bottom: PointM; top: PointM; bends?: LiftBend[] }): PointM[] {
+  return [d.bottom, ...(d.bends ?? []), d.top];
+}
+
+/** Kąt załamania w wierzchołku b (odchylenie od prostej) [°]. */
+export function bendAngleDeg(a: PointM, b: PointM, c: PointM): number {
+  const a1 = Math.atan2(b.yM - a.yM, b.xM - a.xM);
+  const a2 = Math.atan2(c.yM - b.yM, c.xM - b.xM);
+  let d = Math.abs(a2 - a1);
+  if (d > Math.PI) d = 2 * Math.PI - d;
+  return (d * 180) / Math.PI;
+}
+
+/** Przystanek wyciągu (dolna, pośrednia, górna stacja): położenie i odległości od dołu. */
+export interface LiftStop extends PointM {
+  kind: 'bottom' | 'mid' | 'top';
+  /** Odległość pozioma i po linii (po skosie) od dolnej stacji [m]. */
+  distanceM: number;
+  slopeDistanceM: number;
+  elevationM: number;
 }
 
 export interface GroundSample {
@@ -162,7 +210,7 @@ export interface Support {
   distanceM: number;
   cableElevationM: number;
   groundElevationM: number;
-  kind: 'station' | 'tower';
+  kind: 'station' | 'tower' | 'bend';
 }
 
 export interface LiftAnalysis {
@@ -174,6 +222,12 @@ export interface LiftAnalysis {
   horizontalLengthM: number;
   /** Długość liny (po skosie). */
   slopeLengthM: number;
+  /** Przystanki: dolna, pośrednie, górna (z odległościami od dołu). */
+  stops: LiftStop[];
+  /** Wierzchołki łamanej (dół, załamania, góra) z odległością po linii od dołu [m]. */
+  pathSlopeM: number[];
+  /** Załamania: odległość od dołu [m], kąt [°], stacja pośrednia. */
+  bendInfo: { distanceM: number; angleDeg: number; mid: boolean }[];
   riseM: number;
   rideTimeS: number;
   capacityPerHour: number;
@@ -184,7 +238,9 @@ export interface LiftAnalysis {
   maxTrackSlopePercent: number | null;
   maxCrossSlopePercent: number | null;
   towerCount: number;
-  cost: { stationsPln: number; linePln: number; towersPln: number; clearingPln: number; totalPln: number };
+  cost: { stationsPln: number; bendsPln: number; linePln: number; towersPln: number; clearingPln: number; totalPln: number };
+  /** Teren zajęty przez stacje kątowe i pośrednie [m²]. */
+  bendAreaM2: number;
   buildDays: number;
   issues: BuildIssue[];
   ok: boolean;
@@ -204,12 +260,67 @@ export function sampleGroundAlong(grid: TerrainGrid, a: PointM, b: PointM, stepM
   return out;
 }
 
+/**
+ * Teren pod łamaną (dolna stacja → załamania → górna stacja), próbkowany co ok. `stepM`; każdy
+ * wierzchołek jest próbką. Zwraca próbki i odległości poziome wierzchołków od dolnej stacji.
+ */
+export function sampleGroundAlongPath(grid: TerrainGrid, pts: PointM[], stepM: number): { ground: GroundSample[]; vertexM: number[] } {
+  const ground: GroundSample[] = [];
+  const vertexM = [0];
+  let base = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const seg = sampleGroundAlong(grid, pts[i], pts[i + 1], stepM);
+    for (let k = i === 0 ? 0 : 1; k < seg.length; k++) ground.push({ ...seg[k], distanceM: base + seg[k].distanceM });
+    base += seg[seg.length - 1].distanceM;
+    vertexM.push(base);
+  }
+  return { ground, vertexM };
+}
+
+/** Punkt łamanej w odległości poziomej d od dolnej stacji. */
+export function pointAlongPath(pts: PointM[], d: number): PointM {
+  let rest = d;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const len = Math.hypot(pts[i + 1].xM - pts[i].xM, pts[i + 1].yM - pts[i].yM);
+    if (rest <= len || i === pts.length - 2) {
+      const t = len > 0 ? Math.min(1, Math.max(0, rest / len)) : 0;
+      return { xM: pts[i].xM + t * (pts[i + 1].xM - pts[i].xM), yM: pts[i].yM + t * (pts[i + 1].yM - pts[i].yM) };
+    }
+    rest -= len;
+  }
+  return pts[pts.length - 1];
+}
+
+/** Rzut punktu na łamaną: odległość od początku i odległość od linii [m]. */
+export function projectOnPath(pts: PointM[], p: PointM): { alongM: number; offM: number } {
+  let base = 0;
+  let best = { alongM: 0, offM: Infinity };
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const dx = b.xM - a.xM;
+    const dy = b.yM - a.yM;
+    const len2 = dx * dx + dy * dy || 1;
+    const t = Math.min(1, Math.max(0, ((p.xM - a.xM) * dx + (p.yM - a.yM) * dy) / len2));
+    const off = Math.hypot(p.xM - a.xM - t * dx, p.yM - a.yM - t * dy);
+    if (off < best.offM) best = { alongM: base + t * Math.sqrt(len2), offM: off };
+    base += Math.sqrt(len2);
+  }
+  return best;
+}
+
 function groundAt(ground: GroundSample[], d: number): number {
   if (d <= 0) return ground[0].elevationM;
   const last = ground[ground.length - 1];
   if (d >= last.distanceM) return last.elevationM;
-  const step = last.distanceM / (ground.length - 1);
-  const i = Math.min(ground.length - 2, Math.floor(d / step));
+  let lo = 0;
+  let hi = ground.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (ground[mid].distanceM <= d) lo = mid;
+    else hi = mid;
+  }
+  const i = lo;
   const t = (d - ground[i].distanceM) / (ground[i + 1].distanceM - ground[i].distanceM || 1);
   return ground[i].elevationM + t * (ground[i + 1].elevationM - ground[i].elevationM);
 }
@@ -229,16 +340,30 @@ export function cableElevationAt(supports: Support[], d: number, sagRatio: numbe
   return supports[supports.length - 1].cableElevationM;
 }
 
-function makeSupports(ground: GroundSample[], type: LiftType, towers: Tower[]): Support[] {
+/** Wysokość liny nad terenem w załamaniu: stacja (koleje linowe) albo podpora z kołami (powierzchniowe). */
+function bendHeightM(type: LiftType): number {
+  return type.kind === 'aerial' ? type.stationHeightM : Math.max(type.towerMinHeightM, type.stationHeightM);
+}
+
+function makeSupports(ground: GroundSample[], type: LiftType, towers: Tower[], bendsM: number[] = []): Support[] {
   const length = ground[ground.length - 1].distanceM;
   const g0 = ground[0].elevationM;
   const g1 = ground[ground.length - 1].elevationM;
   const list: Support[] = [{ distanceM: 0, cableElevationM: g0 + type.stationHeightM, groundElevationM: g0, kind: 'station' }];
-  for (const t of [...towers].sort((x, y) => x.distanceM - y.distanceM)) {
-    if (t.distanceM <= 0 || t.distanceM >= length) continue;
-    const g = groundAt(ground, t.distanceM);
-    list.push({ distanceM: t.distanceM, cableElevationM: g + t.heightM, groundElevationM: g, kind: 'tower' });
+  const items: Support[] = [];
+  for (const d of bendsM) {
+    if (d <= 0 || d >= length) continue;
+    const g = groundAt(ground, d);
+    items.push({ distanceM: d, cableElevationM: g + bendHeightM(type), groundElevationM: g, kind: 'bend' });
   }
+  for (const t of towers) {
+    if (t.distanceM <= 0 || t.distanceM >= length) continue;
+    if (bendsM.some((b) => Math.abs(b - t.distanceM) < 1)) continue;
+    const g = groundAt(ground, t.distanceM);
+    items.push({ distanceM: t.distanceM, cableElevationM: g + t.heightM, groundElevationM: g, kind: 'tower' });
+  }
+  items.sort((a, b) => a.distanceM - b.distanceM);
+  list.push(...items);
   list.push({ distanceM: length, cableElevationM: g1 + type.stationHeightM, groundElevationM: g1, kind: 'station' });
   return list;
 }
@@ -250,13 +375,17 @@ export function hasCable(type: LiftType): boolean {
 
 /** Najgorszy niedobór prześwitu w przęśle [m] (dodatni = za nisko) i jego miejsce. */
 function worstDeficit(ground: GroundSample[], supports: Support[], i: number, type: LiftType, c: LiftCommonParams): { deficitM: number; atM: number } {
+  // Strefa stacji bez sprawdzania prześwitu: stacje końcowe, a na kolejach linowych także stacje kątowe
+  // (na orczyku i talerzyku załamanie to koła odchylające na podporze – prześwit obok sprawdzamy).
+  const nearStation = (d: number) =>
+    supports.some((s) => (s.kind === 'station' || (s.kind === 'bend' && type.kind === 'aerial')) && Math.abs(s.distanceM - d) < c.stationApproachM);
   const a = supports[i];
   const b = supports[i + 1];
   const length = ground[ground.length - 1].distanceM;
   let worst = { deficitM: -Infinity, atM: (a.distanceM + b.distanceM) / 2 };
   for (const g of ground) {
     if (g.distanceM <= a.distanceM || g.distanceM >= b.distanceM) continue;
-    if (g.distanceM < c.stationApproachM || g.distanceM > length - c.stationApproachM) continue;
+    if (g.distanceM < c.stationApproachM || g.distanceM > length - c.stationApproachM || nearStation(g.distanceM)) continue;
     const clearance = cableElevationAt(supports, g.distanceM, c.cableSagRatio) - g.elevationM;
     const deficit = type.minClearanceM - clearance;
     if (deficit > worst.deficitM) worst = { deficitM: deficit, atM: g.distanceM };
@@ -269,13 +398,13 @@ function worstDeficit(ground: GroundSample[], supports: Support[], i: number, ty
  * ≥ minClearanceM. Najpierw podnosimy sąsiednie podpory (do towerMaxHeightM), a gdy to nie wystarcza,
  * dzielimy przęsło nową podporą w miejscu największego niedoboru.
  */
-export function autoPlaceTowers(ground: GroundSample[], type: LiftType, c: LiftCommonParams): Tower[] {
+export function autoPlaceTowers(ground: GroundSample[], type: LiftType, c: LiftCommonParams, bendsM: number[] = [], initial: Tower[] = []): Tower[] {
   if (!hasCable(type)) return [];
   const length = ground[ground.length - 1].distanceM;
-  const towers: Tower[] = [];
+  const towers: Tower[] = initial.map((t) => ({ ...t }));
   const baseHeight = Math.min(type.towerMaxHeightM, Math.max(type.towerMinHeightM, type.minClearanceM + c.towerMarginM));
   for (let iter = 0; iter < 2000; iter++) {
-    const supports = makeSupports(ground, type, towers);
+    const supports = makeSupports(ground, type, towers, bendsM);
     let changed = false;
     for (let i = 0; i < supports.length - 1 && !changed; i++) {
       const a = supports[i];
@@ -392,12 +521,15 @@ export function carrierSpacingM(type: LiftType): number {
   return type.carrierSeats > 0 ? (type.speedMs * 3600 * type.carrierSeats) / type.capacityPerHour : 0;
 }
 
-/** Pełna analiza wyciągu: profil, lina, ostrzeżenia, liczby. */
+/** Pełna analiza wyciągu: profil, lina, ostrzeżenia, liczby. Linia może być łamana (stacje kątowe). */
 export function analyzeLift(design: LiftDesign, ctx: LiftContext): LiftAnalysis {
   const { grid, params } = ctx;
   const c = params.common;
   const type = liftTypeById(params, design.typeId);
-  const ground = sampleGroundAlong(grid, design.bottom, design.top, c.profileStepM);
+  const path = liftPath(design);
+  const bends = design.bends ?? [];
+  const { ground, vertexM } = sampleGroundAlongPath(grid, path, c.profileStepM);
+  const bendsM = vertexM.slice(1, -1);
   const issues: BuildIssue[] = [];
   const length = ground[ground.length - 1].distanceM;
   const outside = ground.find((g) => Number.isNaN(g.elevationM));
@@ -405,11 +537,26 @@ export function analyzeLift(design: LiftDesign, ctx: LiftContext): LiftAnalysis 
   if (outside) issues.push({ severity: 'error', message: `linia wychodzi poza mapę (granica państwa) ${fmt0(outside.distanceM)} m od dolnej stacji`, distanceM: outside.distanceM });
   if (length < c.minLengthM) issues.push({ severity: 'error', message: `za krótki: ${fmt0(length)} m, najmniej ${fmt0(c.minLengthM)} m`, distanceM: null });
   if (length > type.maxLengthM) issues.push({ severity: 'error', message: `za długi na ${type.name.toLowerCase()}: ${fmt0(length)} m, najwięcej ${fmt0(type.maxLengthM)} m`, distanceM: null });
+  // Załamania: kąt w granicach typu, stacja pośrednia tylko na kolejach linowych.
+  const bendInfo: LiftAnalysis['bendInfo'] = [];
+  bends.forEach((b, i) => {
+    const angle = bendAngleDeg(path[i], b, path[i + 2]);
+    bendInfo.push({ distanceM: bendsM[i], angleDeg: angle, mid: b.mid === true });
+    const what = type.kind === 'aerial' ? 'stacji kątowej' : 'kół odchylających';
+    if (angle > type.maxBendDeg + 1e-6) {
+      issues.push({ severity: 'error', message: `załamanie ${fmt0(angle)}° przy ${b.mid ? 'stacji pośredniej' : what} ${i + 1} (${fmt0(bendsM[i])} m od dołu) – dla typu „${type.name}” najwyżej ${fmt0(type.maxBendDeg)}°`, distanceM: bendsM[i] });
+    }
+    if (b.mid && !type.allowsMidStation) issues.push({ severity: 'error', message: `stacja pośrednia z wsiadaniem możliwa tylko na kolejach linowych (kanapy, gondole)`, distanceM: bendsM[i] });
+    const prev = i === 0 ? 0 : bendsM[i - 1];
+    if (bendsM[i] - prev < c.minLengthM) issues.push({ severity: 'error', message: `załamanie ${i + 1} za blisko poprzedniej stacji (${fmt0(bendsM[i] - prev)} m)`, distanceM: bendsM[i] });
+  });
+  if (bends.length && length - bendsM[bendsM.length - 1] < c.minLengthM) issues.push({ severity: 'error', message: `ostatnie załamanie za blisko górnej stacji`, distanceM: bendsM[bendsM.length - 1] });
   for (const other of ctx.otherLifts) {
     if (other.id === design.id) continue;
-    if (segmentsIntersect(design.bottom, design.top, other.bottom, other.top)) {
-      issues.push({ severity: 'error', message: `krzyżuje się z wyciągiem „${other.name}”`, distanceM: null });
-    }
+    const op = liftPath(other);
+    let crosses = false;
+    for (let i = 0; i < path.length - 1 && !crosses; i++) for (let j = 0; j < op.length - 1 && !crosses; j++) if (segmentsIntersect(path[i], path[i + 1], op[j], op[j + 1])) crosses = true;
+    if (crosses) issues.push({ severity: 'error', message: `krzyżuje się z wyciągiem „${other.name}”`, distanceM: null });
   }
   // Teren poza mapą: liczymy, ile się da, na wartościach skończonych.
   const safeGround = valid ? ground : ground.map((g) => ({ ...g, elevationM: Number.isNaN(g.elevationM) ? 0 : g.elevationM }));
@@ -417,16 +564,19 @@ export function analyzeLift(design: LiftDesign, ctx: LiftContext): LiftAnalysis 
   if (valid && riseM < 0) issues.push({ severity: 'error', message: `górna stacja leży ${fmt0(-riseM)} m niżej niż dolna – rysuj od dołu do góry`, distanceM: null });
 
   const towers = hasCable(type) ? design.towers : [];
-  const supports = makeSupports(safeGround, type, towers);
+  const supports = makeSupports(safeGround, type, towers, bendsM);
   const cable = new Float64Array(ground.length);
+  const slopeAt = new Float64Array(ground.length);
   let minClearance = Infinity;
   let minClearanceAt = 0;
   let slopeLength = 0;
+  const nearStation = (d: number) => d < c.stationApproachM || d > length - c.stationApproachM || (type.kind === 'aerial' && bendsM.some((b) => Math.abs(b - d) < c.stationApproachM));
   for (let k = 0; k < ground.length; k++) {
     const d = ground[k].distanceM;
     cable[k] = hasCable(type) ? cableElevationAt(supports, d, c.cableSagRatio) : safeGround[k].elevationM;
     if (k > 0) slopeLength += Math.hypot(d - ground[k - 1].distanceM, cable[k] - cable[k - 1]);
-    if (hasCable(type) && d >= c.stationApproachM && d <= length - c.stationApproachM) {
+    slopeAt[k] = slopeLength;
+    if (hasCable(type) && !nearStation(d)) {
       const cl = cable[k] - safeGround[k].elevationM;
       if (cl < minClearance) {
         minClearance = cl;
@@ -446,6 +596,17 @@ export function analyzeLift(design: LiftDesign, ctx: LiftContext): LiftAnalysis 
     const span = supports[i + 1].distanceM - supports[i].distanceM;
     if (hasCable(type) && span > type.maxSpanM + 0.5) issues.push({ severity: 'warning', message: `przęsło ${fmt0(span)} m dłuższe niż ${fmt0(type.maxSpanM)} m (${fmt0(supports[i].distanceM)}–${fmt0(supports[i + 1].distanceM)} m)`, distanceM: (supports[i].distanceM + supports[i + 1].distanceM) / 2 });
   }
+  // Przystanki (dolna, pośrednie, górna) – odległości po linii do kolejki i czasu przejazdu.
+  const slopeAtDistance = (d: number) => {
+    let k = 0;
+    while (k < ground.length - 1 && ground[k + 1].distanceM <= d + 1e-6) k++;
+    return slopeAt[k];
+  };
+  const stops: LiftStop[] = [{ kind: 'bottom', xM: design.bottom.xM, yM: design.bottom.yM, distanceM: 0, slopeDistanceM: 0, elevationM: safeGround[0].elevationM }];
+  bends.forEach((b, i) => {
+    if (b.mid) stops.push({ kind: 'mid', xM: b.xM, yM: b.yM, distanceM: bendsM[i], slopeDistanceM: slopeAtDistance(bendsM[i]), elevationM: groundAt(safeGround, bendsM[i]) });
+  });
+  stops.push({ kind: 'top', xM: design.top.xM, yM: design.top.yM, distanceM: length, slopeDistanceM: slopeLength, elevationM: safeGround[safeGround.length - 1].elevationM });
 
   // Wyciągi powierzchniowe: nachylenie i przechył toru (średnio na odcinkach slopeWindowM).
   let maxTrack: number | null = null;
@@ -454,11 +615,14 @@ export function analyzeLift(design: LiftDesign, ctx: LiftContext): LiftAnalysis 
     const dist = ground.map((g) => g.distanceM);
     const along: number[] = [];
     const cross: number[] = [];
-    const bearing = Math.atan2(design.top.xM - design.bottom.xM, -(design.top.yM - design.bottom.yM)); // od północy, zgodnie z ruchem wskazówek
     for (let k = 0; k < ground.length; k++) {
       const k1 = Math.min(ground.length - 1, k + 1);
       const k0 = k1 - 1;
       along.push((100 * (ground[k1].elevationM - ground[k0].elevationM)) / (ground[k1].distanceM - ground[k0].distanceM || 1));
+      // Kierunek odcinka łamanej w tym miejscu (od północy, zgodnie z ruchem wskazówek).
+      let seg = 0;
+      while (seg < vertexM.length - 2 && ground[k].distanceM > vertexM[seg + 1]) seg++;
+      const bearing = Math.atan2(path[seg + 1].xM - path[seg].xM, -(path[seg + 1].yM - path[seg].yM));
       const slope = grid.sampleLayer(grid.slopePercent, ground[k].xM, ground[k].yM);
       const aspect = grid.sampleLayer(grid.aspectDeg, ground[k].xM, ground[k].yM);
       cross.push(Number.isNaN(aspect) || Number.isNaN(slope) ? 0 : slope * Math.abs(Math.sin((aspect * Math.PI) / 180 - bearing)));
@@ -480,25 +644,27 @@ export function analyzeLift(design: LiftDesign, ctx: LiftContext): LiftAnalysis 
   const liftKw = (type.capacityPerHour / 3600) * c.passengerMassKg * g * Math.max(0, riseM) / c.driveEfficiency / 1000;
   const powerKw = liftKw + type.baseLoadKw + (type.frictionKwPer100m * length) / 100;
 
-  // Koszt i czas budowy (wycinka – las pierwotny w pasie pod linią).
+  // Koszt i czas budowy (wycinka – las pierwotny w pasie pod linią i na placach stacji kątowych).
   let clearForestM2 = 0;
   let clearShrubM2 = 0;
-  if (ctx.forest && type.corridorWidthM > 0) {
+  if (ctx.forest) {
     const cellM2 = grid.cellSizeM * grid.cellSizeM;
-    for (const k of corridorCells(grid, design.bottom, design.top, type.corridorWidthM)) {
+    for (const k of liftClearingCells(grid, design, type)) {
       clearForestM2 += ctx.forest[k] * cellM2;
       clearShrubM2 += (ctx.shrub?.[k] ?? 0) * cellM2;
     }
   }
   const clearingPln = clearForestM2 * ctx.clearingCost.forestCostPlnPerM2 + clearShrubM2 * ctx.clearingCost.shrubCostPlnPerM2;
+  const bendsPln = bends.reduce((sum, b) => sum + (b.mid ? type.midStationCostPln : type.bendCostPln), 0);
   const cost = {
     stationsPln: type.stationCostPln,
+    bendsPln,
     linePln: type.costPerMeterPln * slopeLength,
     towersPln: type.towerCostPln * towers.length,
     clearingPln,
     totalPln: 0,
   };
-  cost.totalPln = cost.stationsPln + cost.linePln + cost.towersPln + cost.clearingPln;
+  cost.totalPln = cost.stationsPln + cost.bendsPln + cost.linePln + cost.towersPln + cost.clearingPln;
   const buildDays = type.buildDaysBase + (type.buildDaysPer100m * length) / 100 + ((clearForestM2 + clearShrubM2) / 10_000) * ctx.clearingCost.daysPerHectare;
 
   return {
@@ -508,6 +674,9 @@ export function analyzeLift(design: LiftDesign, ctx: LiftContext): LiftAnalysis 
     cableElevationM: cable,
     horizontalLengthM: length,
     slopeLengthM: slopeLength,
+    stops,
+    pathSlopeM: vertexM.map((d) => slopeAtDistance(d)),
+    bendInfo,
     riseM,
     rideTimeS: slopeLength / type.speedMs,
     capacityPerHour: type.capacityPerHour,
@@ -518,16 +687,58 @@ export function analyzeLift(design: LiftDesign, ctx: LiftContext): LiftAnalysis 
     maxCrossSlopePercent: maxCross,
     towerCount: towers.length,
     cost,
+    bendAreaM2: bends.length * Math.PI * (type.bendFootprintM / 2) ** 2,
     buildDays,
     issues,
     ok: !issues.some((i) => i.severity === 'error'),
   };
 }
 
-/** Nowy wyciąg z automatycznie rozstawionymi podporami. */
-export function designLift(grid: TerrainGrid, params: LiftParams, id: string, typeId: string, name: string, bottom: PointM, top: PointM): LiftDesign {
-  const type = liftTypeById(params, typeId);
-  const ground = sampleGroundAlong(grid, bottom, top, params.common.profileStepM);
+/** Komórki wycinki pod wyciągiem: pas wzdłuż każdego odcinka łamanej + place stacji kątowych. */
+export function liftClearingCells(grid: TerrainGrid, design: LiftDesign, type: LiftType): number[] {
+  const out = new Set<number>();
+  const path = liftPath(design);
+  if (type.corridorWidthM > 0) for (let i = 0; i < path.length - 1; i++) for (const k of corridorCells(grid, path[i], path[i + 1], type.corridorWidthM)) out.add(k);
+  if (type.bendFootprintM > 0) for (const b of design.bends ?? []) for (const k of corridorCells(grid, b, { xM: b.xM + 0.01, yM: b.yM }, type.bendFootprintM)) out.add(k);
+  return [...out];
+}
+
+/** Podpory łamanej: profil terenu z odległościami załamań. */
+function liftGround(grid: TerrainGrid, params: LiftParams, design: { bottom: PointM; top: PointM; bends?: LiftBend[] }): { ground: GroundSample[]; bendsM: number[] } {
+  const { ground, vertexM } = sampleGroundAlongPath(grid, liftPath(design), params.common.profileStepM);
   const safe = ground.some((g) => Number.isNaN(g.elevationM)) ? ground.map((g) => ({ ...g, elevationM: Number.isNaN(g.elevationM) ? 0 : g.elevationM })) : ground;
-  return { id, typeId, name, bottom, top, towers: autoPlaceTowers(safe, type, params.common), manualTowers: false };
+  return { ground: safe, bendsM: vertexM.slice(1, -1) };
+}
+
+/** Nowy wyciąg z automatycznie rozstawionymi podporami. */
+export function designLift(grid: TerrainGrid, params: LiftParams, id: string, typeId: string, name: string, bottom: PointM, top: PointM, bends: LiftBend[] = []): LiftDesign {
+  const type = liftTypeById(params, typeId);
+  const { ground, bendsM } = liftGround(grid, params, { bottom, top, bends });
+  return { id, typeId, name, bottom, top, ...(bends.length ? { bends } : {}), towers: autoPlaceTowers(ground, type, params.common, bendsM), manualTowers: false };
+}
+
+/**
+ * Podpory po zmianie geometrii (przesunięta stacja, nowe załamanie): bez ręcznych zmian – od nowa;
+ * ręcznie ustawione podpory zostają w tym samym miejscu w terenie (rzut na nową linię), o ile
+ * leżą na linii, nie za blisko stacji i mają dopuszczalną wysokość – resztę uzupełnia automat.
+ */
+export function retowerLift(grid: TerrainGrid, params: LiftParams, next: LiftDesign, previous: LiftDesign | null): Tower[] {
+  const type = liftTypeById(params, next.typeId);
+  const { ground, bendsM } = liftGround(grid, params, next);
+  if (!next.manualTowers || !previous) return autoPlaceTowers(ground, type, params.common, bendsM);
+  const oldPath = liftPath(previous);
+  const newPath = liftPath(next);
+  const length = ground[ground.length - 1].distanceM;
+  const c = params.common;
+  const stationsM = [0, ...bendsM, length];
+  const kept: Tower[] = [];
+  for (const t of previous.towers) {
+    const p = pointAlongPath(oldPath, t.distanceM);
+    const r = projectOnPath(newPath, p);
+    if (r.offM > c.minSpanM) continue;
+    if (stationsM.some((sM) => Math.abs(sM - r.alongM) < c.minSpanM)) continue;
+    if (t.heightM < type.towerMinHeightM - 0.05 || t.heightM > type.towerMaxHeightM + 0.05) continue;
+    kept.push({ distanceM: Math.round(r.alongM * 10) / 10, heightM: t.heightM });
+  }
+  return autoPlaceTowers(ground, type, c, bendsM, kept);
 }

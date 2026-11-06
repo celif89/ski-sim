@@ -56,8 +56,8 @@ export class GuestClient {
   setConditions(cond: GuestConditions): void {
     this.post({ type: 'conditions', cond });
   }
-  setSnow(quality: Uint8Array, depthCm: Float32Array, moguls: Float32Array | null): void {
-    this.post({ type: 'snow', quality, depthCm, moguls });
+  setSnow(quality: Uint8Array, depthCm: Float32Array, moguls: Float32Array | null, thin: Float32Array | null = null): void {
+    this.post({ type: 'snow', quality, depthCm, moguls, thin });
   }
   async card(id: number): Promise<GuestCard | null> {
     return (await this.ask<{ type: 'card'; requestId: number; card: GuestCard | null }>((requestId) => ({ type: 'card', requestId, id }))).card;

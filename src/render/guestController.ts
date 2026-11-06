@@ -16,7 +16,7 @@ import type { GuestClient } from '../worker/guestClient';
 import type { GuestFrameMessage } from '../worker/guestProtocol';
 import type { Camera } from './camera';
 import { DayReportView, GuestCardView, GuestPanel } from './guestPanels';
-import type { LiftRow } from './guestPanels';
+import type { LiftRow, SnowWarningRow } from './guestPanels';
 import { KIND_BOARD, KIND_SKI } from './movers';
 import type { MoverLayer } from './movers';
 import type { TrackBuffer } from './terrainRenderer';
@@ -45,12 +45,15 @@ export interface GuestControllerOptions {
   /** Przejazdy dnia gotowe – do modelu śniegu. */
   onDayTraffic(date: CalendarDate, passes: Float32Array): void;
   onLoadOsm(): void;
+  /** Gracz otworzył / zamknął ośrodek. */
+  onResortOpen?(open: boolean): void;
 }
 
 export class GuestController {
   private readonly o: GuestControllerOptions;
   private net: GuestNet | null = null;
   private guests: number;
+  private resortOpen = true;
   private day: CalendarDate | null = null;
   private frame: GuestFrameMessage | null = null;
   private inflight = false;
@@ -86,6 +89,10 @@ export class GuestController {
         onRestart: () => this.restart(),
         onReport: () => void this.showReport(),
         onLoadOsm: () => o.onLoadOsm(),
+        onResortOpen: (open) => {
+          this.setResortOpen(open);
+          o.onResortOpen?.(open);
+        },
       },
       this.guests,
     );
@@ -99,6 +106,23 @@ export class GuestController {
 
   get guestsPerDay(): number {
     return this.guests;
+  }
+
+  get isResortOpen(): boolean {
+    return this.resortOpen;
+  }
+
+  /** Ośrodek zamknięty – dzień bez gości (zaczyna się od nowa). */
+  setResortOpen(open: boolean): void {
+    if (open === this.resortOpen) return;
+    this.resortOpen = open;
+    this.panel.setResortOpen(open);
+    this.updateHint();
+    this.restart();
+  }
+
+  setSnowWarnings(rows: SnowWarningRow[]): void {
+    this.panel.setSnowWarnings(rows);
   }
 
   setGuestsPerDay(n: number): void {
@@ -119,14 +143,16 @@ export class GuestController {
     this.o.client.setConditions(c);
   }
 
-  setSnow(quality: Uint8Array, depthCm: Float32Array, moguls: Uint8Array | null): void {
+  /** Śnieg dla gości: stan, grubość, muldy (0–255) i „za cienka baza” 0–1 (null – wystarcza). */
+  setSnow(quality: Uint8Array, depthCm: Float32Array, moguls: Uint8Array | null, thin: Float32Array | null = null): void {
     const m = moguls ? Float32Array.from(moguls, (v) => v / 255) : null;
-    this.o.client.setSnow(quality.slice(), depthCm.slice(), m);
+    this.o.client.setSnow(quality.slice(), depthCm.slice(), m, thin ? thin.slice() : null);
   }
 
   private updateHint(): void {
     const n = this.net;
-    if (!n || n.lifts.length === 0) this.panel.setHint('Goście przyjadą, gdy ośrodek będzie miał wyciąg i trasę. Zbuduj je albo wczytaj prawdziwy ośrodek Pilsko.', true);
+    if (!this.resortOpen) this.panel.setHint('Ośrodek zamknięty – nie przyjeżdżają goście. Otwórz go (pole „Ośrodek otwarty”), gdy jest dość śniegu.', false);
+    else if (!n || n.lifts.length === 0) this.panel.setHint('Goście przyjadą, gdy ośrodek będzie miał wyciąg i trasę. Zbuduj je albo wczytaj prawdziwy ośrodek Pilsko.', true);
     else if (n.edges.length === 0) this.panel.setHint('Brak tras połączonych z wyciągami – goście nie mają jak zjechać.', false);
     else this.panel.setHint('', false);
   }
@@ -158,7 +184,7 @@ export class GuestController {
       this.lastPos.clear();
       this.events = [];
       this.panel.setEvents([]);
-      this.o.client.startDay(date, this.guests, timeS);
+      this.o.client.startDay(date, this.resortOpen ? this.guests : 0, timeS);
       return;
     }
     if (this.inflight) return;
@@ -307,7 +333,7 @@ export class GuestController {
     const m = this.o.movers;
     const cam = this.o.camera;
     let best = -1;
-    let bestD = 14;
+    let bestD = 9; // [px] – mniej niż promień wyboru wyciągu/trasy, by dało się je kliknąć między postaciami
     for (let k = 0; k < m.personCount; k++) {
       const p = m.positionOf(k, renderTimeS);
       const s = cam.worldToScreen(p.xM, p.yM);

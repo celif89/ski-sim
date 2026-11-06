@@ -317,5 +317,33 @@
       "unit": "min",
       "source": "krok całkowania w oknach 6-godzinnych; błąd < 1 %"
     }
+  },
+  "riding": {
+    "_opis": "Śnieg a jazda (etap 5b): baza ubita = zapas wody w śniegu (SWE) przeliczony na śnieg o gęstości ubitej trasy; minimalna baza do bezpiecznej jazdy zależy od podłoża. Wartości startowe – do kalibracji.",
+    "packedDensityKgM3": {
+      "value": 420,
+      "unit": "kg/m³",
+      "source": "gęstość śniegu ubitego na trasie (jak guests.json: snowImpact.packedDensityKgM3); baza równoważna = SWE / ta gęstość"
+    },
+    "minBaseGradedCm": {
+      "value": 15,
+      "unit": "cm bazy ubitej",
+      "source": "łąka wyrównana bez kamieni: zwarta pokrywa ok. 20 cm wystarcza do pierwszego przygotowania trasy (umowa ze szwajcarskiego sporu o przygotowanie trasy, Blick 2011: 40 cm pokrywy albo zwarte 20 cm; Snoqualmie: wyrównany latem stok wymaga mniej); po ubiciu ok. 15 cm; do kalibracji"
+    },
+    "minBaseMeadowCm": {
+      "value": 25,
+      "unit": "cm bazy ubitej",
+      "source": "łąka naturalna: 30 cm pokrywy uznawane za wystarczające (Umweltbundesamt, wskaźnik TOU-I-2), 30–45 cm ubitego śniegu (Chestnut Mountain); po ubiciu ok. 25 cm; do kalibracji"
+    },
+    "minBaseStumpsCm": {
+      "value": 40,
+      "unit": "cm bazy ubitej",
+      "source": "przecinka z pniakami: jak dobre warunki 50 cm (Umweltbundesamt, TOU-I-2) – pniaki przebijają cieńszą pokrywę; do kalibracji"
+    },
+    "minBaseRockyCm": {
+      "value": 70,
+      "unit": "cm bazy ubitej",
+      "source": "teren kamienisty / skała: do 1 m śniegu (Umweltbundesamt, TOU-I-2: kamieniste i skaliste trasy); do kalibracji"
+    }
   }
 }

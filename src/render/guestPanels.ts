@@ -29,6 +29,13 @@ export interface GuestPanelHandlers {
   onRestart(): void;
   onReport(): void;
   onLoadOsm(): void;
+  onResortOpen(open: boolean): void;
+}
+
+/** Ostrzeżenie „za mało śniegu” na trasie (z kontrolera budowy). */
+export interface SnowWarningRow {
+  pisteName: string;
+  segments: { fromM: number; toM: number; baseCm: number; neededCm: number }[];
 }
 
 export class GuestPanel {
@@ -39,6 +46,8 @@ export class GuestPanel {
   private readonly events: HTMLElement;
   private readonly count: HTMLInputElement;
   private readonly osm: HTMLButtonElement;
+  private readonly open: HTMLInputElement;
+  private readonly warnings: HTMLElement;
   private collapsed = false;
   private lastHtml = '';
 
@@ -49,6 +58,9 @@ export class GuestPanel {
       <button type="button" class="build-toggle">Goście ▾</button>
       <div class="build-content">
         <div class="build-row g-row">
+          <label class="g-open-label" title="Ośrodek otwarty – przyjeżdżają goście. Zamknięty (przed sezonem i po sezonie) – nikt nie przyjeżdża, wyciągi stoją."><input type="checkbox" class="g-open"> Ośrodek otwarty</label>
+        </div>
+        <div class="build-row g-row">
           <label title="Ilu gości przyjedzie danego dnia (parametr scenariusza – popyt i ceny w etapie 6)">Gości dziś <input type="number" class="g-count" min="0" max="8000" step="100"></label>
           <button type="button" class="g-restart" title="Zacznij ten dzień od nowa (ten sam seed – ten sam przebieg)">↺ Od nowa</button>
           <button type="button" class="g-report" title="Raport dnia: przejazdy, kolejki, oceny, wypadki, zatłoczone miejsca">Raport dnia</button>
@@ -56,6 +68,7 @@ export class GuestPanel {
         <div class="g-status"></div>
         <div class="g-hint"></div>
         <div class="g-lifts"></div>
+        <div class="g-warnings"></div>
         <div class="g-events"></div>
         <div class="build-row build-buttons"><button type="button" class="g-osm" title="Wyciągi i trasy prawdziwego ośrodka Pilsko z OpenStreetMap jako Twój układ (można cofnąć: Ctrl+Z)">Wczytaj prawdziwy ośrodek Pilsko</button></div>
       </div>`;
@@ -67,6 +80,10 @@ export class GuestPanel {
     this.events = this.root.querySelector('.g-events')!;
     this.count = this.root.querySelector('.g-count')!;
     this.osm = this.root.querySelector('.g-osm')!;
+    this.open = this.root.querySelector('.g-open')!;
+    this.warnings = this.root.querySelector('.g-warnings')!;
+    this.open.checked = true;
+    this.open.addEventListener('change', () => h.onResortOpen(this.open.checked));
     this.count.value = String(initialGuests);
     this.count.addEventListener('change', () => h.onGuestsChange(Math.max(0, Math.round(Number(this.count.value) || 0))));
     this.root.querySelector('.g-restart')!.addEventListener('click', () => h.onRestart());
@@ -122,6 +139,28 @@ export class GuestPanel {
 
   setGuests(n: number): void {
     this.count.value = String(n);
+  }
+
+  setResortOpen(open: boolean): void {
+    this.open.checked = open;
+    this.root.classList.toggle('g-resort-closed', !open);
+  }
+
+  /** Lista „za mało śniegu” na otwartych trasach (odcinki: od–do [m], baza / potrzebna [cm]). */
+  setSnowWarnings(rows: SnowWarningRow[]): void {
+    if (!rows.length) {
+      this.warnings.innerHTML = '';
+      return;
+    }
+    const items = rows.slice(0, 6).map((r) => {
+      const worst = r.segments.reduce((a, b) => (b.baseCm / b.neededCm < a.baseCm / a.neededCm ? b : a));
+      const segs = r.segments
+        .slice(0, 3)
+        .map((g) => `${f0(g.fromM)}–${f0(g.toM)} m`)
+        .join(', ');
+      return `<div class="g-warning">⚠ Za mało śniegu: <b>${r.pisteName}</b>, ${segs}${r.segments.length > 3 ? '…' : ''} – ${f0(worst.baseCm)} cm bazy, potrzebne ${f0(worst.neededCm)} cm</div>`;
+    });
+    this.warnings.innerHTML = `<div class="build-section">Śnieg na otwartych trasach</div>${items.join('')}${rows.length > 6 ? `<div class="muted">…i ${rows.length - 6} innych tras</div>` : ''}<div class="muted">Zamknij trasę w profilu (klik na trasie) albo poczekaj na śnieg. Na zbyt cienkiej bazie: kamienie, więcej wypadków, uszkodzony sprzęt.</div>`;
   }
 }
 

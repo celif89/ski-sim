@@ -184,6 +184,15 @@
     "tooHardFactor": { "value": 3.0, "unit": "×", "source": "na trasie trudniejszej niż ulubiona" },
     "iconHours": { "value": 1.5, "unit": "h", "source": "jak długo ikona wypadku jest wyraźna na mapie" }
   },
+  "thinBase": {
+    "_opis": "Za cienka baza na otwartej trasie (etap 5b): przetarcia i kamienie. Skala „za cienko” 0–1 = (minimum − baza) / minimum, minimum wg podłoża z data/snow.json (riding).",
+    "speedFactor": { "value": 0.6, "unit": "×", "source": "mnożnik prędkości przy bazie zerowej (ostrożna jazda między kamieniami); liniowo od 1 przy minimum; do kalibracji" },
+    "snowScore": { "value": 0.1, "unit": "-", "source": "ocena śniegu przy bazie zerowej (przetarcia, kamienie); do kalibracji" },
+    "accidentFactor": { "value": 4, "unit": "×", "source": "ryzyko wypadku × (1 + to × skala „za cienko”); kamienie i przetarcia; do kalibracji" },
+    "damagePerKm": { "value": 0.1, "unit": "1/km", "source": "prawdopodobieństwo uszkodzenia sprzętu (porysowane ślizgi, wyrwane krawędzie) na km przy bazie zerowej; do kalibracji" },
+    "damagePenalty": { "value": 0.12, "unit": "-", "source": "spadek zadowolenia za każde uszkodzenie sprzętu (najwyżej 2 liczone); do kalibracji" },
+    "avoidWeight": { "value": 2.5, "unit": "-", "source": "kara w wyborze trasy za udział odcinków ze zbyt cienką bazą – goście omijają, jeśli mają wybór; do kalibracji" }
+  },
   "snowImpact": {
     "packedDensityKgM3": { "value": 420, "unit": "kg/m³", "source": "gęstość ubitego narciarzami śniegu na trasie (ok. 350–450); do kalibracji" },
     "passesToPack": { "value": 40, "unit": "przejazdów/komórkę", "source": "po tylu przejazdach przez komórkę 10 m górna warstwa jest w ok. 63 % ubita (1 − e⁻¹); do kalibracji" },

@@ -7,6 +7,7 @@
  */
 import type { BuildIssue, LiftAnalysis, LiftDesign, Tower } from '../sim/lifts';
 import type { PisteAnalysis, PisteParams } from '../sim/pistes';
+import type { ThinSegment } from '../sim/snowRiding';
 import { niceStep, niceTicks } from './niceTicks';
 
 const fmt0 = (x: number) => Math.round(x).toLocaleString('pl-PL');
@@ -29,11 +30,26 @@ export interface ProfileCallbacks {
   /** Punkt profilu pod kursorem (odległość od początku) – do zaznaczenia na mapie; null – poza wykresem. */
   onHover(distanceM: number | null): void;
   onClose(): void;
+  /** Otwarcie / zamknięcie trasy lub wyciągu; wyrównanie terenu trasy. */
+  onToggleClosed(): void;
+  onToggleGraded(): void;
+}
+
+export interface PisteExtras {
+  closed: boolean;
+  graded: boolean;
+  thin: ThinSegment[];
+}
+
+export interface LiftExtras {
+  closed: boolean;
+  /** Brak otwartej trasy w dół z górnej (i pośrednich) stacji. */
+  noDescent: boolean;
 }
 
 type Shown =
   | { kind: 'lift'; design: LiftDesign; analysis: LiftAnalysis; draft: boolean }
-  | { kind: 'piste'; name: string; analysis: PisteAnalysis; draft: boolean };
+  | { kind: 'piste'; name: string; analysis: PisteAnalysis; draft: boolean; thin: ThinSegment[] };
 
 export class BuildProfile {
   private readonly panel: HTMLElement;
@@ -93,7 +109,7 @@ export class BuildProfile {
     this.panel.classList.add('hidden');
   }
 
-  showLift(design: LiftDesign, a: LiftAnalysis, draft: boolean): void {
+  showLift(design: LiftDesign, a: LiftAnalysis, draft: boolean, extra: LiftExtras | null = null): void {
     this.shown = { kind: 'lift', design, analysis: a, draft };
     this.panel.classList.remove('hidden');
     this.panel.classList.toggle('passthrough', draft);
@@ -109,17 +125,29 @@ export class BuildProfile {
       surface ? `<span><b>Nachylenie toru:</b> do ${fmt0(a.maxTrackSlopePercent ?? 0)} % (dop. ${fmt0(t.maxTrackSlopePercent ?? 0)} %), przechył do ${fmt0(a.maxCrossSlopePercent ?? 0)} % (dop. ${fmt0(t.maxCrossSlopePercent ?? 0)} %)</span>` : '',
       a.towerCount ? `<span><b>Podpory:</b> ${a.towerCount}, najmniejszy prześwit ${fmt1(a.minClearanceM)} m (wymagane ${fmt0(t.minClearanceM)} m)</span>` : '',
       `<span><b>Wiatr:</b> stop powyżej ${fmt0(t.windLimitMs)} m/s</span>`,
-      `<span><b>Koszt:</b> ${money(a.cost.totalPln)} (stacje ${money(a.cost.stationsPln)}, linia ${money(a.cost.linePln)}, podpory ${money(a.cost.towersPln)}, wycinka ${money(a.cost.clearingPln)})</span>`,
+      a.bendInfo.length
+        ? `<span><b>Załamania:</b> ${a.bendInfo.map((b) => `${b.mid ? 'stacja pośrednia' : t.kind === 'aerial' ? 'stacja kątowa' : 'koła odchylające'} ${fmt0(b.angleDeg)}°`).join(', ')} (najwyżej ${fmt0(t.maxBendDeg)}°; teren ${fmt0(a.bendAreaM2)} m²)</span>`
+        : '',
+      `<span><b>Koszt:</b> ${money(a.cost.totalPln)} (stacje ${money(a.cost.stationsPln)}${a.cost.bendsPln ? `, załamania ${money(a.cost.bendsPln)}` : ''}, linia ${money(a.cost.linePln)}, podpory ${money(a.cost.towersPln)}, wycinka ${money(a.cost.clearingPln)})</span>`,
       `<span><b>Czas budowy:</b> ${fmt0(a.buildDays)} dni</span>`,
     ].join('');
-    this.actions.innerHTML = !draft && a.towerCount + 1 > 1 && t.towerMaxHeightM > 0 ? '<button type="button" class="auto-towers">Rozstaw podpory automatycznie</button> <span class="muted">Podpory: przeciągnij w bok lub w górę/dół · podwójne kliknięcie – nowa · prawy przycisk – usuń</span>' : '';
+    const towersBtn = !draft && a.towerCount + 1 > 1 && t.towerMaxHeightM > 0 ? '<button type="button" class="auto-towers">Rozstaw podpory automatycznie</button> ' : '';
+    const closeBtn = !draft && extra ? `<button type="button" class="toggle-closed">${extra.closed ? 'Otwórz wyciąg' : 'Zamknij wyciąg'}</button> ` : '';
+    const hint = !draft
+      ? `<div class="muted">Na mapie: przeciągnij stację (żółty prostokąt) lub załamanie (romb) · „+” na linii – nowa stacja kątowa · podwójne kliknięcie rombu – stacja pośrednia z wsiadaniem · prawy przycisk – usuń. Podpory na wykresie: przeciągnij · podwójne kliknięcie – nowa · prawy – usuń.</div>`
+      : '';
+    this.actions.innerHTML = towersBtn + closeBtn + hint;
     this.actions.querySelector('.auto-towers')?.addEventListener('click', () => this.cb.onAutoTowers());
-    this.issues.innerHTML = issuesHtml(a.issues);
+    this.actions.querySelector('.toggle-closed')?.addEventListener('click', () => this.cb.onToggleClosed());
+    const extraIssues: BuildIssue[] = [];
+    if (extra?.closed) extraIssues.push({ severity: 'warning', message: 'wyciąg zamknięty – goście z niego nie korzystają', distanceM: null });
+    else if (extra?.noDescent && !t.downhillRiding) extraIssues.push({ severity: 'warning', message: 'brak otwartej trasy w dół z górnej stacji – wyciąg nie pracuje (otwórz albo zbuduj trasę)', distanceM: null });
+    this.issues.innerHTML = issuesHtml([...a.issues, ...extraIssues]);
     this.draw();
   }
 
-  showPiste(name: string, a: PisteAnalysis, draft: boolean, hint = ''): void {
-    this.shown = { kind: 'piste', name, analysis: a, draft };
+  showPiste(name: string, a: PisteAnalysis, draft: boolean, hint = '', extra: PisteExtras | null = null): void {
+    this.shown = { kind: 'piste', name, analysis: a, draft, thin: extra?.thin ?? [] };
     this.panel.classList.remove('hidden');
     this.panel.classList.toggle('passthrough', draft);
     const cls = this.pisteParams.classes[a.classIndex];
@@ -133,11 +161,22 @@ export class BuildProfile {
       `<span><b>Spadek poprzeczny:</b> do ${fmt0(a.maxCrossSlopePercent)} %</span>`,
       `<span><b>Szerokość:</b> min. ${fmt0(a.minWidthM)} m, średnio ${fmt0(a.meanWidthM)} m</span>`,
       `<span><b>Powierzchnia:</b> ${fmt1(a.areaM2 / 10_000)} ha</span>`,
-      `<span><b>Koszt:</b> ${money(a.cost.totalPln)} (wycinka ${money(a.cost.clearingPln)})</span>`,
+      `<span><b>Koszt:</b> ${money(a.cost.totalPln)} (wycinka ${money(a.cost.clearingPln)}${a.cost.levelingPln ? `, wyrównanie terenu ${money(a.cost.levelingPln)}` : ''})</span>`,
       `<span><b>Czas budowy:</b> ${fmt0(a.buildDays)} dni</span>`,
+      extra ? `<span><b>Stan:</b> ${extra.closed ? 'zamknięta' : 'otwarta'}${extra.graded ? ', teren wyrównany' : ''}</span>` : '',
     ].join('');
-    this.actions.innerHTML = '';
-    this.issues.innerHTML = issuesHtml(a.issues);
+    if (extra && !draft) {
+      this.actions.innerHTML = `<button type="button" class="toggle-closed">${extra.closed ? 'Otwórz trasę' : 'Zamknij trasę'}</button> <button type="button" class="toggle-graded">${extra.graded ? 'Bez wyrównania terenu' : 'Wyrównaj teren'}</button> <span class="muted">Na mapie: przeciągnij punkt osi (kółko) lub szerokość (kwadrat) · „+” – nowy punkt · prawy przycisk / Delete – usuń punkt</span>`;
+      this.actions.querySelector('.toggle-closed')!.addEventListener('click', () => this.cb.onToggleClosed());
+      this.actions.querySelector('.toggle-graded')!.addEventListener('click', () => this.cb.onToggleGraded());
+    } else this.actions.innerHTML = '';
+    const thinIssues: BuildIssue[] = (extra?.thin ?? []).map((t) => ({
+      severity: 'warning',
+      message: `za mało śniegu na odcinku ${fmt0(t.fromM)}–${fmt0(t.toM)} m: ${fmt0(t.baseCm)} cm bazy, potrzebne ${fmt0(t.neededCm)} cm – przetarcia i kamienie (zamknij trasę albo poczekaj na śnieg)`,
+      distanceM: (t.fromM + t.toM) / 2,
+    }));
+    if (extra?.closed) thinIssues.unshift({ severity: 'warning', message: 'trasa zamknięta – goście nią nie jeżdżą', distanceM: null });
+    this.issues.innerHTML = issuesHtml([...a.issues, ...thinIssues]);
     this.draw();
   }
 
@@ -267,8 +306,8 @@ export class BuildProfile {
     // Podpory i stacje.
     a.supports.forEach((sup) => {
       const x = xOf(sup.distanceM);
-      ctx.strokeStyle = sup.kind === 'station' ? '#ffffff' : '#dee2e6';
-      ctx.lineWidth = sup.kind === 'station' ? 4 : 2;
+      ctx.strokeStyle = sup.kind === 'tower' ? '#dee2e6' : sup.kind === 'bend' ? '#facc15' : '#ffffff';
+      ctx.lineWidth = sup.kind === 'tower' ? 2 : 4;
       ctx.beginPath();
       ctx.moveTo(x, yOf(sup.groundElevationM));
       ctx.lineTo(x, yOf(sup.cableElevationM));
@@ -280,6 +319,16 @@ export class BuildProfile {
         ctx.fill();
       }
     });
+    // Opisy stacji: kątowa / pośrednia.
+    ctx.font = '11px Barlow, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    for (const b of a.bendInfo) {
+      const sup = a.supports.find((x) => x.kind === 'bend' && Math.abs(x.distanceM - b.distanceM) < 1);
+      if (!sup) continue;
+      ctx.fillStyle = '#facc15';
+      ctx.fillText(`${b.mid ? 'st. pośrednia' : 'st. kątowa'} ${fmt0(b.angleDeg)}°`, xOf(sup.distanceM), yOf(sup.cableElevationM) - 4);
+    }
     this.drawIssueMarkers(ctx, a.issues, xOf);
   }
 
@@ -325,6 +374,22 @@ export class BuildProfile {
     ctx.textAlign = x1 > geo.widthPx * 0.7 ? 'right' : 'left';
     ctx.textBaseline = 'top';
     ctx.fillText(`najtrudniejsze ${fmt0(this.pisteParams.segmentLengthM)} m: ${fmt0(a.maxSlopePercent)} %`, ctx.textAlign === 'left' ? x0 : x1, PAD.top + 8);
+    // Za mało śniegu: czerwony pas u dołu wykresu z opisem.
+    const shown = this.shown;
+    if (shown && shown.kind === 'piste') {
+      for (const t of shown.thin) {
+        const xa = xOf(t.fromM);
+        const xb = xOf(t.toM);
+        ctx.fillStyle = 'rgba(224, 49, 49, 0.85)';
+        ctx.fillRect(xa, bottom - 8, Math.max(2, xb - xa), 8);
+        ctx.fillStyle = 'rgba(224, 49, 49, 0.12)';
+        ctx.fillRect(xa, PAD.top, Math.max(2, xb - xa), bottom - 8 - PAD.top);
+        ctx.fillStyle = '#e03131';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`${fmt0(t.baseCm)}/${fmt0(t.neededCm)} cm`, (xa + xb) / 2, bottom - 10);
+      }
+    }
     this.drawIssueMarkers(ctx, a.issues, xOf);
   }
 

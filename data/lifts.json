@@ -151,6 +151,36 @@
         "value": 0,
         "unit": "os./krzesełko",
         "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
+      },
+      "maxBendDeg": {
+        "value": 0,
+        "unit": "°",
+        "source": "taśma leży na ziemi – tylko prosto"
+      },
+      "bendCostPln": {
+        "value": 0,
+        "unit": "zł",
+        "source": "koła odchylające na podporze; do kalibracji"
+      },
+      "midStationCostPln": {
+        "value": 0,
+        "unit": "zł",
+        "source": "stacja pośrednia niemożliwa na wyciągu powierzchniowym"
+      },
+      "allowsMidStation": {
+        "value": 0,
+        "unit": "0/1",
+        "source": "stacja pośrednia z wsiadaniem tylko na kolejach linowych (kanapy, gondole)"
+      },
+      "bendFootprintM": {
+        "value": 0,
+        "unit": "m",
+        "source": "średnica terenu zajętego przez stację kątową lub pośrednią (wycinka, plac); do kalibracji"
+      },
+      "downhillRiding": {
+        "value": 0,
+        "unit": "0/1",
+        "source": "zjazd wyciągiem w dół niedozwolony – bez otwartej trasy w dół wyciąg nie pracuje"
       }
     },
     {
@@ -256,6 +286,36 @@
         "value": 1,
         "unit": "os./krzesełko",
         "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
+      },
+      "maxBendDeg": {
+        "value": 6,
+        "unit": "°",
+        "source": "wyciąg powierzchniowy: tylko niewielkie odchylenie liny na kołach odchylających (podpora z kołami), bez stacji kątowej; do kalibracji"
+      },
+      "bendCostPln": {
+        "value": 60000,
+        "unit": "zł",
+        "source": "koła odchylające na podporze; do kalibracji"
+      },
+      "midStationCostPln": {
+        "value": 0,
+        "unit": "zł",
+        "source": "stacja pośrednia niemożliwa na wyciągu powierzchniowym"
+      },
+      "allowsMidStation": {
+        "value": 0,
+        "unit": "0/1",
+        "source": "stacja pośrednia z wsiadaniem tylko na kolejach linowych (kanapy, gondole)"
+      },
+      "bendFootprintM": {
+        "value": 6,
+        "unit": "m",
+        "source": "średnica terenu zajętego przez stację kątową lub pośrednią (wycinka, plac); do kalibracji"
+      },
+      "downhillRiding": {
+        "value": 0,
+        "unit": "0/1",
+        "source": "zjazd wyciągiem w dół niedozwolony – bez otwartej trasy w dół wyciąg nie pracuje"
       }
     },
     {
@@ -361,6 +421,36 @@
         "value": 2,
         "unit": "os./krzesełko",
         "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
+      },
+      "maxBendDeg": {
+        "value": 8,
+        "unit": "°",
+        "source": "wyciąg powierzchniowy: tylko niewielkie odchylenie liny na kołach odchylających (podpora z kołami), bez stacji kątowej; do kalibracji"
+      },
+      "bendCostPln": {
+        "value": 80000,
+        "unit": "zł",
+        "source": "koła odchylające na podporze; do kalibracji"
+      },
+      "midStationCostPln": {
+        "value": 0,
+        "unit": "zł",
+        "source": "stacja pośrednia niemożliwa na wyciągu powierzchniowym"
+      },
+      "allowsMidStation": {
+        "value": 0,
+        "unit": "0/1",
+        "source": "stacja pośrednia z wsiadaniem tylko na kolejach linowych (kanapy, gondole)"
+      },
+      "bendFootprintM": {
+        "value": 6,
+        "unit": "m",
+        "source": "średnica terenu zajętego przez stację kątową lub pośrednią (wycinka, plac); do kalibracji"
+      },
+      "downhillRiding": {
+        "value": 0,
+        "unit": "0/1",
+        "source": "zjazd wyciągiem w dół niedozwolony – bez otwartej trasy w dół wyciąg nie pracuje"
       }
     },
     {
@@ -456,6 +546,36 @@
         "value": 2,
         "unit": "os./krzesełko",
         "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
+      },
+      "maxBendDeg": {
+        "value": 45,
+        "unit": "°",
+        "source": "największe załamanie linii w stacji kątowej (kąt odchylenia od prostej); do kalibracji z kartami producentów"
+      },
+      "bendCostPln": {
+        "value": 1500000,
+        "unit": "zł",
+        "source": "stacja kątowa (koła prowadzące, konstrukcja, fundamenty); rząd wielkości – do kalibracji z ofertami producentów"
+      },
+      "midStationCostPln": {
+        "value": 2500000,
+        "unit": "zł",
+        "source": "stacja pośrednia z wsiadaniem i wysiadaniem (perony, obsługa, dla wyprzęganych – tor wyprzęgający); do kalibracji"
+      },
+      "allowsMidStation": {
+        "value": 1,
+        "unit": "0/1",
+        "source": "stacja pośrednia z wsiadaniem tylko na kolejach linowych (kanapy, gondole)"
+      },
+      "bendFootprintM": {
+        "value": 20,
+        "unit": "m",
+        "source": "średnica terenu zajętego przez stację kątową lub pośrednią (wycinka, plac); do kalibracji"
+      },
+      "downhillRiding": {
+        "value": 0,
+        "unit": "0/1",
+        "source": "zjazd wyciągiem w dół niedozwolony – bez otwartej trasy w dół wyciąg nie pracuje"
       }
     },
     {
@@ -551,6 +671,36 @@
         "value": 4,
         "unit": "os./krzesełko",
         "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
+      },
+      "maxBendDeg": {
+        "value": 45,
+        "unit": "°",
+        "source": "największe załamanie linii w stacji kątowej (kąt odchylenia od prostej); do kalibracji z kartami producentów"
+      },
+      "bendCostPln": {
+        "value": 1800000,
+        "unit": "zł",
+        "source": "stacja kątowa (koła prowadzące, konstrukcja, fundamenty); rząd wielkości – do kalibracji z ofertami producentów"
+      },
+      "midStationCostPln": {
+        "value": 3000000,
+        "unit": "zł",
+        "source": "stacja pośrednia z wsiadaniem i wysiadaniem (perony, obsługa, dla wyprzęganych – tor wyprzęgający); do kalibracji"
+      },
+      "allowsMidStation": {
+        "value": 1,
+        "unit": "0/1",
+        "source": "stacja pośrednia z wsiadaniem tylko na kolejach linowych (kanapy, gondole)"
+      },
+      "bendFootprintM": {
+        "value": 22,
+        "unit": "m",
+        "source": "średnica terenu zajętego przez stację kątową lub pośrednią (wycinka, plac); do kalibracji"
+      },
+      "downhillRiding": {
+        "value": 0,
+        "unit": "0/1",
+        "source": "zjazd wyciągiem w dół niedozwolony – bez otwartej trasy w dół wyciąg nie pracuje"
       }
     },
     {
@@ -646,6 +796,36 @@
         "value": 4,
         "unit": "os./krzesełko",
         "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
+      },
+      "maxBendDeg": {
+        "value": 60,
+        "unit": "°",
+        "source": "największe załamanie linii w stacji kątowej (kąt odchylenia od prostej); do kalibracji z kartami producentów"
+      },
+      "bendCostPln": {
+        "value": 4000000,
+        "unit": "zł",
+        "source": "stacja kątowa (koła prowadzące, konstrukcja, fundamenty); rząd wielkości – do kalibracji z ofertami producentów"
+      },
+      "midStationCostPln": {
+        "value": 7000000,
+        "unit": "zł",
+        "source": "stacja pośrednia z wsiadaniem i wysiadaniem (perony, obsługa, dla wyprzęganych – tor wyprzęgający); do kalibracji"
+      },
+      "allowsMidStation": {
+        "value": 1,
+        "unit": "0/1",
+        "source": "stacja pośrednia z wsiadaniem tylko na kolejach linowych (kanapy, gondole)"
+      },
+      "bendFootprintM": {
+        "value": 30,
+        "unit": "m",
+        "source": "średnica terenu zajętego przez stację kątową lub pośrednią (wycinka, plac); do kalibracji"
+      },
+      "downhillRiding": {
+        "value": 0,
+        "unit": "0/1",
+        "source": "zjazd wyciągiem w dół niedozwolony – bez otwartej trasy w dół wyciąg nie pracuje"
       }
     },
     {
@@ -741,6 +921,36 @@
         "value": 6,
         "unit": "os./krzesełko",
         "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
+      },
+      "maxBendDeg": {
+        "value": 60,
+        "unit": "°",
+        "source": "największe załamanie linii w stacji kątowej (kąt odchylenia od prostej); do kalibracji z kartami producentów"
+      },
+      "bendCostPln": {
+        "value": 4500000,
+        "unit": "zł",
+        "source": "stacja kątowa (koła prowadzące, konstrukcja, fundamenty); rząd wielkości – do kalibracji z ofertami producentów"
+      },
+      "midStationCostPln": {
+        "value": 8000000,
+        "unit": "zł",
+        "source": "stacja pośrednia z wsiadaniem i wysiadaniem (perony, obsługa, dla wyprzęganych – tor wyprzęgający); do kalibracji"
+      },
+      "allowsMidStation": {
+        "value": 1,
+        "unit": "0/1",
+        "source": "stacja pośrednia z wsiadaniem tylko na kolejach linowych (kanapy, gondole)"
+      },
+      "bendFootprintM": {
+        "value": 32,
+        "unit": "m",
+        "source": "średnica terenu zajętego przez stację kątową lub pośrednią (wycinka, plac); do kalibracji"
+      },
+      "downhillRiding": {
+        "value": 0,
+        "unit": "0/1",
+        "source": "zjazd wyciągiem w dół niedozwolony – bez otwartej trasy w dół wyciąg nie pracuje"
       }
     },
     {
@@ -836,6 +1046,36 @@
         "value": 8,
         "unit": "os./krzesełko",
         "source": "liczba miejsc na krzesełku, wagoniku lub orczyku (0 – taśma, ruch ciągły); odstęp krzesełek = prędkość × miejsca / przepustowość"
+      },
+      "maxBendDeg": {
+        "value": 90,
+        "unit": "°",
+        "source": "największe załamanie linii w stacji kątowej (kąt odchylenia od prostej); do kalibracji z kartami producentów"
+      },
+      "bendCostPln": {
+        "value": 6000000,
+        "unit": "zł",
+        "source": "stacja kątowa (koła prowadzące, konstrukcja, fundamenty); rząd wielkości – do kalibracji z ofertami producentów"
+      },
+      "midStationCostPln": {
+        "value": 10000000,
+        "unit": "zł",
+        "source": "stacja pośrednia z wsiadaniem i wysiadaniem (perony, obsługa, dla wyprzęganych – tor wyprzęgający); do kalibracji"
+      },
+      "allowsMidStation": {
+        "value": 1,
+        "unit": "0/1",
+        "source": "stacja pośrednia z wsiadaniem tylko na kolejach linowych (kanapy, gondole)"
+      },
+      "bendFootprintM": {
+        "value": 35,
+        "unit": "m",
+        "source": "średnica terenu zajętego przez stację kątową lub pośrednią (wycinka, plac); do kalibracji"
+      },
+      "downhillRiding": {
+        "value": 1,
+        "unit": "0/1",
+        "source": "gondolą można zjechać w dół (kabiny zamknięte) – wyciąg pracuje nawet bez otwartej trasy w dół"
       }
     }
   ]

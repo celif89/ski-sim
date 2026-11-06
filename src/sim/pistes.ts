@@ -99,8 +99,10 @@ export interface PisteDesign {
   id: string;
   name: string;
   points: AxisPoint[];
-  /** Trasa zamknięta (goście nią nie jeżdżą). */
+  /** Trasa zamknięta (goście nią nie jeżdżą) – decyduje gracz. */
   closed?: boolean;
+  /** Teren wyrównany przy budowie (usunięte kamienie i pniaki, niwelacja) – podłoże „łąka wyrównana”. */
+  graded?: boolean;
 }
 
 export interface AxisSample extends PointM {
@@ -143,7 +145,7 @@ export interface PisteAnalysis {
   areaM2: number;
   classIndex: number;
   profile: PisteProfileSegment[];
-  cost: { gradingPln: number; clearingPln: number; totalPln: number };
+  cost: { gradingPln: number; clearingPln: number; levelingPln: number; totalPln: number };
   buildDays: number;
   issues: BuildIssue[];
   ok: boolean;
@@ -298,6 +300,9 @@ export interface PisteContext {
   forest: Float32Array | null;
   shrub: Float32Array | null;
   clearingCost: { forestCostPlnPerM2: number; shrubCostPlnPerM2: number; daysPerHectare: number };
+  /** Podłoże pierwotne (ground.ts) i koszt wyrównania – do opcji „wyrównaj teren”; może brakować. */
+  baseGround?: Uint8Array | null;
+  leveling?: { costPlnPerM2: number[]; daysPerHectare: number } | null;
 }
 
 const fmt0 = (x: number) => Math.round(x).toLocaleString('pl-PL');
@@ -373,6 +378,13 @@ export function analyzePiste(design: PisteDesign, ctx: PisteContext): PisteAnaly
   const areaM2 = cells.length * cellM2;
   const clearingPln = forestM2 * ctx.clearingCost.forestCostPlnPerM2 + shrubM2 * ctx.clearingCost.shrubCostPlnPerM2;
   const gradingPln = areaM2 * p.gradingCostPlnPerM2;
+  // Wyrównanie terenu (opcja): usunięcie kamieni i pniaków, niwelacja – koszt wg podłoża pierwotnego.
+  let levelingPln = 0;
+  let levelingDays = 0;
+  if (design.graded && ctx.baseGround && ctx.leveling) {
+    for (const k of cells) levelingPln += cellM2 * (ctx.leveling.costPlnPerM2[ctx.baseGround[k]] ?? 0);
+    levelingDays = (areaM2 / 10_000) * ctx.leveling.daysPerHectare;
+  }
   const dropM = top - bottom;
   return {
     axis,
@@ -394,8 +406,8 @@ export function analyzePiste(design: PisteDesign, ctx: PisteContext): PisteAnaly
     areaM2,
     classIndex,
     profile,
-    cost: { gradingPln, clearingPln, totalPln: gradingPln + clearingPln },
-    buildDays: p.buildDaysBase + (areaM2 / 10_000) * p.gradingDaysPerHectare + ((forestM2 + shrubM2) / 10_000) * ctx.clearingCost.daysPerHectare,
+    cost: { gradingPln, clearingPln, levelingPln, totalPln: gradingPln + clearingPln + levelingPln },
+    buildDays: p.buildDaysBase + (areaM2 / 10_000) * p.gradingDaysPerHectare + ((forestM2 + shrubM2) / 10_000) * ctx.clearingCost.daysPerHectare + levelingDays,
     issues,
     ok: !issues.some((i) => i.severity === 'error'),
   };

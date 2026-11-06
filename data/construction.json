@@ -4,7 +4,7 @@
     "forestCostPlnPerM2": {
       "value": 4,
       "unit": "zł/m²",
-      "source": "wycinka lasu z karczowaniem pni, orientacyjnie 30–50 tys. zł/ha; do kalibracji"
+      "source": "wycinka drzew orientacyjnie 30–50 tys. zł/ha; pniaki zostają (usuwa je dopiero wyrównanie terenu); do kalibracji"
     },
     "shrubCostPlnPerM2": {
       "value": 2,
@@ -15,6 +15,44 @@
       "value": 5,
       "unit": "dni/ha",
       "source": "wycinka trwa (ustalenia rozgrywki); do kalibracji"
+    }
+  },
+  "ground": {
+    "_opis": "Podłoże terenu (etap 5b): las, łąka wyrównana, łąka naturalna, kamienisty / skała, przecinka po wycince (pniaki). Decyduje, ile ubitego śniegu trzeba do bezpiecznej jazdy (data/snow.json: riding).",
+    "forestShareMin": {
+      "value": 0.4,
+      "unit": "udział 0–1",
+      "source": "komórka z co najmniej takim udziałem lasu (ESA WorldCover) – las; po wycince – pniaki"
+    },
+    "rockyShrubShareMin": {
+      "value": 0.4,
+      "unit": "udział 0–1",
+      "source": "kosodrzewina na Pilsku rośnie na rumowisku skalnym – po wycince teren kamienisty; do kalibracji"
+    },
+    "rockySlopePercent": {
+      "value": 70,
+      "unit": "%",
+      "source": "powyżej takiego nachylenia przyjmujemy teren skalisty; do kalibracji"
+    },
+    "levelingCostMeadowPlnPerM2": {
+      "value": 6,
+      "unit": "zł/m²",
+      "source": "niwelacja łąki naturalnej (kępy, rowy) z obsianiem; do kalibracji"
+    },
+    "levelingCostStumpsPlnPerM2": {
+      "value": 20,
+      "unit": "zł/m²",
+      "source": "karczowanie pniaków, wyrównanie, obsianie; do kalibracji"
+    },
+    "levelingCostRockyPlnPerM2": {
+      "value": 40,
+      "unit": "zł/m²",
+      "source": "usuwanie i kruszenie kamieni, nawiezienie ziemi; do kalibracji"
+    },
+    "levelingDaysPerHectare": {
+      "value": 4,
+      "unit": "dni/ha",
+      "source": "prace ziemne przy wyrównaniu terenu; do kalibracji"
     }
   }
 }

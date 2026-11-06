@@ -9,7 +9,7 @@
  */
 import { Container, Graphics, Text } from 'pixi.js';
 import type { LiftAnalysis, LiftDesign } from '../sim/lifts';
-import { carrierSpacingM } from '../sim/lifts';
+import { carrierSpacingM, liftPath, pointAlongPath } from '../sim/lifts';
 import type { PisteAnalysis, PisteParams } from '../sim/pistes';
 import type { OsmResort, RealPisteComparison, ResortAnalysis, ResortLayout } from '../sim/resort';
 import type { TerrainGrid } from '../sim/terrainGrid';
@@ -56,6 +56,23 @@ export interface ResortDrawState {
   drawVersion: number;
   /** Czas rzeczywisty [s] – ruch krzesełek. */
   timeS: number;
+  /** Uchwyty edycji zaznaczonej trasy / wyciągu (położenie w metrach). */
+  handles?: EditHandle[];
+  /** Odcinki tras ze zbyt cienką bazą (oś od góry, odległości [m]). */
+  thinMarks?: Map<string, { fromM: number; toM: number }[]>;
+}
+
+export type HandleKind = 'pistePoint' | 'pisteAdd' | 'pisteWidth' | 'liftBottom' | 'liftTop' | 'liftBend' | 'liftAdd';
+
+export interface EditHandle {
+  kind: HandleKind;
+  index: number;
+  side?: 1 | -1;
+  xM: number;
+  yM: number;
+  hover: boolean;
+  /** Załamanie wyciągu – stacja pośrednia. */
+  mid?: boolean;
 }
 
 const hex = (c: string) => parseInt(c.slice(1), 16);
@@ -343,12 +360,43 @@ export class ResortLayer {
         for (const q of pts) g.lineTo(q.xPx, q.yPx);
         g.stroke({ width: Math.max(16, a.meanWidthM * pxPerM), color: SELECT_COLOR, alpha: 0.4, cap: 'round', join: 'round' });
       }
+      const closed = p.closed === true;
       g.moveTo(pts[0].xPx, pts[0].yPx);
       for (const q of pts) g.lineTo(q.xPx, q.yPx);
-      g.stroke({ width: 10, color: 0xffffff, alpha: 0.95, cap: 'round', join: 'round' });
-      g.moveTo(pts[0].xPx, pts[0].yPx);
-      for (const q of pts) g.lineTo(q.xPx, q.yPx);
-      g.stroke({ width: 5, color, cap: 'round', join: 'round' });
+      g.stroke({ width: 10, color: 0xffffff, alpha: closed ? 0.6 : 0.95, cap: 'round', join: 'round' });
+      if (closed) {
+        // Zamknięta – kreskowana, wyblakła.
+        for (let i = 0; i < pts.length - 1; i++) {
+          const a0 = pts[i];
+          const a1 = pts[i + 1];
+          const len = Math.hypot(a1.xPx - a0.xPx, a1.yPx - a0.yPx);
+          for (let d = 0; d < len; d += 12) {
+            const t0 = d / len;
+            const t1 = Math.min(1, (d + 7) / len);
+            g.moveTo(a0.xPx + t0 * (a1.xPx - a0.xPx), a0.yPx + t0 * (a1.yPx - a0.yPx)).lineTo(a0.xPx + t1 * (a1.xPx - a0.xPx), a0.yPx + t1 * (a1.yPx - a0.yPx));
+          }
+        }
+        g.stroke({ width: 4, color, alpha: 0.55, cap: 'butt' });
+      } else {
+        g.moveTo(pts[0].xPx, pts[0].yPx);
+        for (const q of pts) g.lineTo(q.xPx, q.yPx);
+        g.stroke({ width: 5, color, cap: 'round', join: 'round' });
+      }
+      // Za mało śniegu: czerwone kreski na odcinkach ze zbyt cienką bazą.
+      const thin = st.thinMarks?.get(p.id);
+      if (thin && !closed) {
+        const axis = a.axis.filter((x) => !Number.isNaN(x.elevationM));
+        for (const seg of thin) {
+          const part = axis.filter((x) => x.distanceM >= seg.fromM && x.distanceM <= seg.toM).map((x) => toS(x.xM, x.yM));
+          if (part.length < 2) continue;
+          g.moveTo(part[0].xPx, part[0].yPx);
+          for (const q of part) g.lineTo(q.xPx, q.yPx);
+          g.stroke({ width: 13, color: ERROR_COLOR, alpha: 0.85, cap: 'round', join: 'round' });
+          g.moveTo(part[0].xPx, part[0].yPx);
+          for (const q of part) g.lineTo(q.xPx, q.yPx);
+          g.stroke({ width: 4, color, cap: 'round', join: 'round' });
+        }
+      }
       if (st.showNetwork || selected) {
         const stepM = 150;
         for (let d = stepM / 2; d < a.lengthM; d += stepM) {
@@ -372,62 +420,89 @@ export class ResortLayer {
 
     // ---- wyciągi
     const drawLift = (design: LiftDesign, a: LiftAnalysis, opts: { selected: boolean; draft: boolean }) => {
-      const b = toS(design.bottom.xM, design.bottom.yM);
-      const t = toS(design.top.xM, design.top.yM);
-      const dx = t.xPx - b.xPx;
-      const dy = t.yPx - b.yPx;
-      const len = Math.hypot(dx, dy) || 1;
-      const nx = -dy / len;
-      const ny = dx / len;
+      const path = liftPath(design);
+      const sp = path.map((q) => toS(q.xM, q.yM));
+      const b = sp[0];
+      const t = sp[sp.length - 1];
       const bad = !a.ok;
-      if (opts.selected) g.moveTo(b.xPx, b.yPx).lineTo(t.xPx, t.yPx).stroke({ width: 12, color: SELECT_COLOR, alpha: 0.5, cap: 'round' });
-      g.moveTo(b.xPx, b.yPx).lineTo(t.xPx, t.yPx).stroke({ width: 5, color: 0xffffff, alpha: 0.9, cap: 'round' });
-      g.moveTo(b.xPx, b.yPx).lineTo(t.xPx, t.yPx).stroke({ width: 2, color: bad ? ERROR_COLOR : INK });
-      const L = a.horizontalLengthM || 1;
+      const closed = design.closed === true;
+      const line = (width: number, color: number, alpha = 1) => {
+        g.moveTo(sp[0].xPx, sp[0].yPx);
+        for (const q of sp) g.lineTo(q.xPx, q.yPx);
+        g.stroke({ width, color, alpha, cap: 'round', join: 'round' });
+      };
+      if (opts.selected) line(12, SELECT_COLOR, 0.5);
+      line(5, 0xffffff, 0.9);
+      line(2, bad ? ERROR_COLOR : INK, closed ? 0.4 : 1);
+      // Punkt łamanej w odległości poziomej d (ekran) i kierunek prostopadły.
+      const at = (d: number) => {
+        const p = pointAlongPath(path, d);
+        const p2 = pointAlongPath(path, Math.min(a.horizontalLengthM, d + 1));
+        const p1 = pointAlongPath(path, Math.max(0, d - 1));
+        const s0 = toS(p.xM, p.yM);
+        const s1 = toS(p1.xM, p1.yM);
+        const s2 = toS(p2.xM, p2.yM);
+        const dx = s2.xPx - s1.xPx;
+        const dy = s2.yPx - s1.yPx;
+        const len = Math.hypot(dx, dy) || 1;
+        return { x: s0.xPx, y: s0.yPx, nx: -dy / len, ny: dx / len };
+      };
       // Podpory: krótkie poprzeczne kreski.
       for (const s of a.supports) {
         if (s.kind !== 'tower') continue;
-        const f = s.distanceM / L;
-        const x = b.xPx + f * dx;
-        const y = b.yPx + f * dy;
+        const q = at(s.distanceM);
         const half = Math.max(4, Math.min(8, 3 * pxPerM));
-        g.moveTo(x - nx * half, y - ny * half).lineTo(x + nx * half, y + ny * half);
+        g.moveTo(q.x - q.nx * half, q.y - q.ny * half).lineTo(q.x + q.nx * half, q.y + q.ny * half);
       }
       g.stroke({ width: 2.5, color: bad ? ERROR_COLOR : INK, cap: 'round' });
       // Krzesełka jadące po linie (w górę z jednej strony, w dół z drugiej).
       const spacing = carrierSpacingM(a.type);
-      if (!opts.draft && mpp < 5 && spacing > 0 && a.type.towerMaxHeightM > 0) {
+      if (!opts.draft && !closed && mpp < 5 && spacing > 0 && a.type.towerMaxHeightM > 0) {
         const offPx = Math.max(2.5, 2 * pxPerM);
         // Odległość po linie (po skosie) – tak samo liczy wątek gości: krzesełko k odjeżdża w chwili
         // k · odstęp, więc jest w odległości (czas · prędkość) mod odstęp (goście siedzą na krzesełkach).
-        const Ls = a.slopeLengthM || L;
+        const Ls = a.slopeLengthM || a.horizontalLengthM;
+        const ps = a.pathSlopeM;
+        const vm = [0];
+        for (let i = 1; i < path.length; i++) vm.push(vm[i - 1] + Math.hypot(path[i].xM - path[i - 1].xM, path[i].yM - path[i - 1].yM));
+        const horiz = (dSlope: number) => {
+          let i = 0;
+          while (i < ps.length - 2 && ps[i + 1] < dSlope) i++;
+          const f = (dSlope - ps[i]) / (ps[i + 1] - ps[i] || 1);
+          return vm[i] + Math.min(1, Math.max(0, f)) * (vm[i + 1] - vm[i]);
+        };
         const travel = (((st.timeS * a.type.speedMs) % spacing) + spacing) % spacing;
         const cw = Math.max(4, Math.min(10, 2.2 * pxPerM));
         const ch = cw * 0.8;
         for (let d = travel; d < Ls; d += spacing) {
           for (const dir of [1, -1]) {
-            const dd = dir === 1 ? d : Ls - d;
-            const f = dd / Ls;
-            const x = b.xPx + f * dx + nx * offPx * dir;
-            const y = b.yPx + f * dy + ny * offPx * dir;
+            const q = at(horiz(dir === 1 ? d : Ls - d));
+            const x = q.x + q.nx * offPx * dir;
+            const y = q.y + q.ny * offPx * dir;
             g.roundRect(x - cw / 2, y - ch / 2, cw, ch, 1).fill({ color: CHAIR_FILL }).stroke({ width: 0.8, color: CHAIR_STROKE });
           }
         }
       }
-      // Stacje.
+      // Stacje: końcowe i pośrednie – prostokąty; kątowe – romby.
       for (const p of [b, t]) g.roundRect(p.xPx - 11, p.yPx - 6.5, 22, 13, 3).fill({ color: SLATE }).stroke({ width: 2, color: 0xffffff });
+      (design.bends ?? []).forEach((bend, i) => {
+        const p = sp[i + 1];
+        if (bend.mid) g.roundRect(p.xPx - 9, p.yPx - 6, 18, 12, 3).fill({ color: SLATE }).stroke({ width: 2, color: 0xffffff });
+        else g.moveTo(p.xPx, p.yPx - 7).lineTo(p.xPx + 7, p.yPx).lineTo(p.xPx, p.yPx + 7).lineTo(p.xPx - 7, p.yPx).closePath().fill({ color: SLATE }).stroke({ width: 1.5, color: 0xffffff });
+      });
       for (const issue of a.issues) {
         if (issue.severity !== 'error' || issue.distanceM === null) continue;
-        const f = issue.distanceM / L;
-        g.circle(b.xPx + f * dx, b.yPx + f * dy, 7).stroke({ width: 3, color: ERROR_COLOR });
+        const q = at(issue.distanceM);
+        g.circle(q.x, q.y, 7).stroke({ width: 3, color: ERROR_COLOR });
       }
       if (!opts.draft) {
-        const text = `${design.name} · ${shortType(design.typeId)}`;
-        const mx = (b.xPx + t.xPx) / 2 + nx * 26;
-        const my = (b.yPx + t.yPx) / 2 + ny * 26;
+        const text = `${design.name} · ${shortType(design.typeId)}${closed ? ' · zamknięty' : ''}`;
+        const q = at(a.horizontalLengthM / 2);
+        const mx = q.x + q.nx * 26;
+        const my = q.y + q.ny * 26;
         const wPx = 9 + text.length * 6.4;
-        g.roundRect(mx - wPx / 2, my - 11, wPx, 22, 11).fill({ color: INK }).stroke({ width: 1.5, color: 0xffffff });
-        this.label(li++, text, mx, my, { size: 12, fill: 0xffffff, stroke: INK });
+        g.roundRect(mx - wPx / 2, my - 11, wPx, 22, 11).fill({ color: closed ? 0x64748b : INK }).stroke({ width: 1.5, color: 0xffffff });
+        this.label(li++, text, mx, my, { size: 12, fill: 0xffffff, stroke: closed ? 0x64748b : INK });
       }
     };
     for (const l of st.layout.lifts) {
@@ -472,6 +547,23 @@ export class ResortLayer {
       for (const q of pts) g.circle(q.xPx, q.yPx, 3).fill({ color: 0xffffff }).stroke({ width: 1, color: INK });
     }
     if (st.draftLift) drawLift(st.draftLift.design, st.draftLift.analysis, { selected: false, draft: true });
+    // ---- uchwyty edycji (przeciąganie punktów osi, szerokości, stacji)
+    for (const h of st.handles ?? []) {
+      const p = toS(h.xM, h.yM);
+      const r = h.hover ? 8 : 6;
+      if (h.kind === 'pisteAdd' || h.kind === 'liftAdd') {
+        g.circle(p.xPx, p.yPx, h.hover ? 7 : 5).fill({ color: 0xffffff, alpha: 0.85 }).stroke({ width: 1.5, color: 0x1c64d8 });
+        g.moveTo(p.xPx - 3, p.yPx).lineTo(p.xPx + 3, p.yPx).moveTo(p.xPx, p.yPx - 3).lineTo(p.xPx, p.yPx + 3).stroke({ width: 1.5, color: 0x1c64d8 });
+      } else if (h.kind === 'pisteWidth') {
+        g.rect(p.xPx - r / 2, p.yPx - r / 2, r, r).fill({ color: 0x1c64d8 }).stroke({ width: 1.5, color: 0xffffff });
+      } else if (h.kind === 'liftBend') {
+        g.moveTo(p.xPx, p.yPx - r - 2).lineTo(p.xPx + r + 2, p.yPx).lineTo(p.xPx, p.yPx + r + 2).lineTo(p.xPx - r - 2, p.yPx).closePath().fill({ color: h.mid ? 0x2f9e44 : 0xfacc15 }).stroke({ width: 2, color: INK });
+      } else if (h.kind === 'liftBottom' || h.kind === 'liftTop') {
+        g.roundRect(p.xPx - r - 3, p.yPx - r, 2 * r + 6, 2 * r, 3).fill({ color: 0xfacc15 }).stroke({ width: 2, color: INK });
+      } else {
+        g.circle(p.xPx, p.yPx, r).fill({ color: 0xffffff }).stroke({ width: 2.5, color: 0x1c64d8 });
+      }
+    }
     if (st.hoverPoint) {
       const p = toS(st.hoverPoint.xM, st.hoverPoint.yM);
       g.circle(p.xPx, p.yPx, 6).fill({ color: SELECT_COLOR }).stroke({ width: 2, color: 0x000000 });
