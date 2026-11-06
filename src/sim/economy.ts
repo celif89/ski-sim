@@ -200,6 +200,8 @@ export interface SeasonReport {
   balanceEnd: number;
   debtEnd: number;
   competitors: { name: string; openDays: number; guests: number; dayPln: number }[];
+  /** Etap 6b: zima na tle wielolecia (śnieg naturalny w punkcie odniesienia) – uzupełnia widok/raport. */
+  winter?: { days: number; meanDays: number; cls: number; percentile: number; elevationM: number; thresholdCm: number } | null;
 }
 
 export interface GameState {

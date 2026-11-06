@@ -26,7 +26,7 @@ export function createSnowDomain(grid: TerrainGrid, forest: Float32Array, shrub:
     elevationM: grid.elevationM,
     forest,
     shrub,
-    shelter: computeShelter(grid.elevationM, grid.widthCells, grid.heightCells, grid.cellSizeM, p.exposureDistanceM),
+    shelter: computeShelter(grid.elevationM, grid.widthCells, grid.heightCells, grid.cellSizeM, p.exposureDistanceM, Float32Array.from(forest, (f) => f * p.forestCanopyHeightM)),
   };
 }
 

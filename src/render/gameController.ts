@@ -8,7 +8,7 @@ import type { CalendarDate } from '../sim';
 import { PHASE_NAMES, yearPhase } from '../sim/calendar';
 import type { CompetitionInput, CompetitorSeason } from '../sim/competition';
 import { competitorSeason, competitorsOn } from '../sim/competition';
-import type { DayContext, DayOutcome, GameMode, GameState, ResortFacts } from '../sim/economy';
+import type { DayContext, DayOutcome, GameMode, GameState, ResortFacts, SeasonReport } from '../sim/economy';
 import {
   agentOutcome,
   closeDay,
@@ -95,6 +95,14 @@ export interface GameControllerOptions {
   /** Etap 7: po przeliczeniu dnia lub podglądu – panele i mapa (armatki, ratraki). */
   onOps?(): void;
   toast(text: string): void;
+  /** Etap 6b: ziarno pogody kariery (pierwsza zima nie z najsłabszych 20 %). */
+  careerSeed?(): number;
+  /** Etap 6b: przestawienie pogody (wątek obliczeń) na inne ziarno. */
+  setWeatherSeed?(seed: number): Promise<void>;
+  /** Etap 6b: księga pogody dla ziarna. */
+  bookFor?(seed: number): WeatherBook;
+  /** Etap 6b: ocena zimy sezonu na tle wielolecia. */
+  winterRating?(startYear: number, seed: number): SeasonReport['winter'];
   /** Ekonomia skończyła przeliczać dni – mapa może pobrać śnieg. */
   onCaughtUp?(): void;
 }
@@ -160,6 +168,7 @@ export class GameController {
   private todaySnow: { date: CalendarDate; snow: GameSnow | null } | null = null;
 
   constructor(private readonly o: GameControllerOptions) {
+    this.book = o.book;
     this.finance = new FinancePanel(o.panelParent, {
       onPrices: () => this.state && this.prices.show(this.state.prices, this.state.hours, o.ep, this.marketPrice()),
       onReport: () => this.showReport(),
@@ -212,10 +221,22 @@ export class GameController {
     this.start.show({ hasAutosave: has, autosaveLabel: label }, this.o.ep);
   }
 
-  newGame(mode: GameMode): void {
+  /** Księga pogody gry (ziarno stanu gry). */
+  private book: WeatherBook;
+
+  /** Pogoda dla ziarna gry: wątek obliczeń i księga pogody. */
+  private async useSeed(seed: number): Promise<void> {
+    if (this.o.setWeatherSeed) await this.o.setWeatherSeed(seed);
+    if (this.o.bookFor) this.book = this.o.bookFor(seed);
+    this.comp = null;
+  }
+
+  async newGame(mode: GameMode): Promise<void> {
     const o = this.o;
     const date = mode === 'career' ? parseIsoDate(o.ep.career.startDate) : o.sandboxDate;
-    const state = newGameState({ mode, seed: o.seed, date, ep: o.ep });
+    const seed = mode === 'career' && o.careerSeed ? o.careerSeed() : o.seed;
+    await this.useSeed(seed);
+    const state = newGameState({ mode, seed, date, ep: o.ep });
     this.summaries.clear();
     this.traffic.clear();
     this.opsSaved.clear();
@@ -298,6 +319,7 @@ export class GameController {
 
   private applySave(raw: unknown): void {
     const s = parseSave(raw);
+    void this.useSeed(s.state.seed);
     this.summaries.clear();
     this.traffic.clear();
     this.opsSaved.clear();
@@ -394,6 +416,7 @@ export class GameController {
     const s = this.state;
     if (!s) return;
     const r = seasonReport(s, this.o.ep);
+    r.winter = this.o.winterRating?.(r.startYear, s.seed);
     this.report.show(r, this.o.ep, false, { kmOpen: this.facts?.kmOpen ?? 0, dayPln: s.prices.dayPln });
   }
 
@@ -463,7 +486,7 @@ export class GameController {
 
   private competitors(date: CalendarDate) {
     const y = skiSeasonYear(date);
-    if (!this.comp || this.comp.startYear !== y) this.comp = competitorSeason(y, { ...this.o.competition, book: this.o.book, ep: this.o.ep });
+    if (!this.comp || this.comp.startYear !== y) this.comp = competitorSeason(y, { ...this.o.competition, book: this.book, ep: this.o.ep });
     return competitorsOn(this.comp, date);
   }
 
@@ -496,8 +519,8 @@ export class GameController {
       date,
       facts,
       snow: resortSnow(this.analysis!, facts, snow, cellAt, this.o.riding, this.o.gp),
-      weather: this.o.book.day(date),
-      forecast: this.o.book.forecastFor(date),
+      weather: this.book.day(date),
+      forecast: this.book.forecastFor(date),
       competitors: this.competitors(date),
     };
   }
@@ -539,6 +562,7 @@ export class GameController {
       this.refreshNet();
     } else this.refreshNet();
     if (r.seasonReport) {
+      r.seasonReport.winter = this.o.winterRating?.(r.seasonReport.startYear, s.seed);
       this.traffic.clear();
       this.opsSaved.clear();
       this.o.guests.setResortOpen(false);
@@ -561,7 +585,7 @@ export class GameController {
       grid: this.o.grid,
       cellAt: this.cellAt,
       snow,
-      book: this.o.book,
+      book: this.book,
       ep: this.o.ep,
       riding: this.o.riding,
       date,

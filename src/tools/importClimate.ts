@@ -24,6 +24,10 @@ import { readNumber } from '../sim/params';
 import { BASE, Store, dayKey, download, fiveYearGroup, ingestDailyMain, ingestKlimatT, ingestOpad, ingestSynopT, ingestSynopTerm, keyMonth, keyYear, nextDayKey, unzipCsv } from './imgwData';
 import type { DayRecord } from './imgwData';
 
+/** Poniżej tego R² regresja opadu z wysokością jest odrzucana na rzecz literatury. */
+const PRECIP_FIT_MIN_R2 = 0.3;
+/** Przyrost opadu z wysokością na północnych stokach Karpat Zachodnich (Hess 1965: 40–60 mm/100 m). */
+const PRECIP_GRADIENT_LITERATURE_MM_PER_100M = 60;
 const API_STATIONS = 'https://danepubliczne.imgw.pl/api/data/meteo/';
 const SOURCES_FILE = 'data/climate/pilsko-sources.json';
 const OUTPUT_FILE = 'data/climate/pilsko.json';
@@ -430,7 +434,12 @@ async function main(): Promise<void> {
   }
   const precipFit = linearFit(precipPoints.map((p) => p.z), precipPoints.map((p) => p.annual));
   const zPrecip = meta.get(st.precipitation)!.elevationM;
-  const precipGradientPct = (100 * precipFit.slope * 100) / (precipFit.intercept + precipFit.slope * zPrecip);
+  const precipAtRef = precipFit.intercept + precipFit.slope * zPrecip;
+  // Regresja posterunków bywa niewiarygodna (R² 0,09 – rozrzut lokalny większy niż wpływ wysokości).
+  // Wtedy przyrost z literatury: 40–60 mm/100 m (Hess 1965); wybrana górna granica – kalibracja do norm
+  // pokrywy Łajczaka (1996) na Hali Miziowej i Hali Szczawinie (etap 6b; data/calibration/lajczak-1996.json).
+  const precipGradientMmPer100m = precipFit.r2 < PRECIP_FIT_MIN_R2 ? PRECIP_GRADIENT_LITERATURE_MM_PER_100M : precipFit.slope * 100;
+  const precipGradientPct = (100 * precipGradientMmPer100m) / precipAtRef;
 
   // ---------------- 4. Wiatr na wysokości (Kasprowy Wierch)
   const aloft = store.stations.get(st.windAloft)!;
@@ -528,7 +537,10 @@ async function main(): Promise<void> {
       elevationGradientPercentPer100m: {
         value: round(precipGradientPct, 2),
         unit: '%/100 m',
-        source: `regresja rocznych sum opadu z ${precipPoints.length} posterunków w promieniu ${precipRadiusKm} km (${round(precipFit.slope * 100, 1)} mm/100 m, R² = ${round(precipFit.r2, 2)}); literatura dla Karpat: 40–60 mm/100 m (Hess 1965)`,
+        source:
+          precipFit.r2 < PRECIP_FIT_MIN_R2
+            ? `${PRECIP_GRADIENT_LITERATURE_MM_PER_100M} mm/100 m na ${round(precipAtRef, 0)} mm na wysokości odniesienia – górna granica z literatury dla Karpat (40–60 mm/100 m, Hess 1965), wybrana kalibracją do norm pokrywy Łajczaka (1996) na Hali Miziowej; regresja rocznych sum z ${precipPoints.length} posterunków w promieniu ${precipRadiusKm} km dała ${round(precipFit.slope * 100, 1)} mm/100 m przy R² = ${round(precipFit.r2, 2)} (za słabe dopasowanie)`
+            : `regresja rocznych sum opadu z ${precipPoints.length} posterunków w promieniu ${precipRadiusKm} km (${round(precipFit.slope * 100, 1)} mm/100 m, R² = ${round(precipFit.r2, 2)}); literatura dla Karpat: 40–60 mm/100 m (Hess 1965)`,
       },
     },
     humidity: {

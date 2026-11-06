@@ -97,6 +97,8 @@ export interface SnowParams {
   transportableMaxDensity: number;
   exposureDistanceM: number;
   exposureSpeedUpPerTan: number;
+  /** Wysokość drzewostanu jako przeszkody dla wiatru (osłona przecinek i polan) [m]. */
+  forestCanopyHeightM: number;
   depositBaseFraction: number;
   depositShelterCoeff: number;
   depositForestFraction: number;
@@ -175,6 +177,7 @@ export function parseSnowParams(raw: unknown): SnowParams {
     transportableMaxDensity: n(wi, 'transportableMaxDensity', { min: 0 }),
     exposureDistanceM: n(wi, 'exposureDistanceM', { min: 0 }),
     exposureSpeedUpPerTan: n(wi, 'exposureSpeedUpPerTan', { min: 0 }),
+    forestCanopyHeightM: n(wi, 'forestCanopyHeightM', { min: 0 }),
     depositBaseFraction: n(wi, 'depositBaseFraction', { min: 0, max: 1 }),
     depositShelterCoeff: n(wi, 'depositShelterCoeff', { min: 0 }),
     depositForestFraction: n(wi, 'depositForestFraction', { min: 0, max: 1 }),
@@ -846,9 +849,11 @@ export function windSector(windFromDeg: number): number {
 
 /**
  * Wskaźnik osłonięcia od wiatru (Winstral i in. 2002) dla 8 kierunków: tangens największego kąta
- * wzniesienia terenu w stronę, z której wieje wiatr, w zasięgu `distanceM`.
+ * wzniesienia terenu w stronę, z której wieje wiatr, w zasięgu `distanceM`. Winstral liczył go
+ * z modelu powierzchni (z roślinnością) – tu do terenu (NMT, bez drzew) dodajemy wysokość
+ * drzewostanu w komórkach pod wiatr (`obstacleM`), więc przecinka trasy w lesie jest osłonięta.
  */
-export function computeShelter(elevationM: Float32Array, widthCells: number, heightCells: number, cellSizeM: number, distanceM: number): Float32Array {
+export function computeShelter(elevationM: Float32Array, widthCells: number, heightCells: number, cellSizeM: number, distanceM: number, obstacleM: Float32Array | null = null): Float32Array {
   const n = widthCells * heightCells;
   const out = new Float32Array(8 * n);
   const steps = Math.max(1, Math.round(distanceM / cellSizeM));
@@ -871,7 +876,8 @@ export function computeShelter(elevationM: Float32Array, widthCells: number, hei
           const ii = i + ux * m;
           const jj = j + uy * m;
           if (ii < 0 || jj < 0 || ii >= widthCells || jj >= heightCells) break;
-          const z = elevationM[jj * widthCells + ii];
+          const kk = jj * widthCells + ii;
+          const z = elevationM[kk] + (obstacleM ? obstacleM[kk] : 0);
           if (z !== z) break;
           const t = (z - z0) / (m * stepLen);
           if (t > maxTan) maxTan = t;

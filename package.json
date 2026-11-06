@@ -21,7 +21,8 @@
     "winter-report": "tsx src/tools/winterReport.ts",
     "import-osm-resort": "tsx src/tools/importOsmResort.ts",
     "piste-check": "tsx src/tools/pisteCheck.ts",
-    "economy-report": "tsx src/tools/economyReport.ts"
+    "economy-report": "tsx src/tools/economyReport.ts",
+    "snow-diagnosis": "tsx src/tools/snowDiagnosis.ts"
   },
   "engines": {
     "node": ">=22"

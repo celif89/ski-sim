@@ -23,6 +23,8 @@ import constructionJson from '../data/construction.json';
 import economyJson from '../data/economy.json';
 import { parseEconomyParams, withSnowmaking } from './sim/economyParams';
 import snowmakingJson from '../data/snowmaking.json';
+import winterClassesJson from '../data/winter-classes.json';
+import { careerSeed, parseWinterClasses, winterClass, winterPercentile, winterSkiDays } from './sim/winterClass';
 import { parseSnowmakingParams } from './sim/snowmakingParams';
 import { wetBulbC } from './sim/snowmaking';
 import { NightPlanDialog, SnowPanel, SnowPlanDialog } from './render/snowPanels';
@@ -676,7 +678,43 @@ async function start(): Promise<void> {
         })()
       : { ...simSettings.fallbackLocation, timeZone: { standardOffsetHours: 1, euDaylightSaving: true } };
 
-    void (async () => {
+    /** Ziarno pogody w wątku obliczeń (kariera może wybrać inne – pierwsza zima nie z najsłabszych 20 %). */
+    let weatherSeed = simSettings.seed;
+    let horizonDem: HorizonDem | null | undefined;
+    async function horizonField() {
+      if (horizonDem === undefined) {
+        horizonDem = null;
+        if (def?.horizonDem) {
+          timePanel.setStatus('Wczytuję teren okolicy (do cieni)…');
+          const response = await fetch(binaryUrl(simSettings.mapName, def.horizonDem.file));
+          if (!response.ok) throw new Error(`Nie udało się pobrać modelu terenu okolicy (HTTP ${response.status})`);
+          horizonDem = createHorizonDem(def, await response.arrayBuffer());
+        }
+      }
+      return computeHorizonCached(grid, horizonDem, parseHorizonParams(radiationJson), (f) => timePanel.setStatus(`Liczę cienie terenu (raz, potem zapamiętane)… ${f0(f * 100)} %`));
+    }
+    /** Nowe ziarno pogody: słońce i pogoda oraz śnieg w wątku od nowa (horyzont z pamięci przeglądarki). */
+    async function setWeatherSeed(seed: number): Promise<void> {
+      await envInit;
+      if (seed === weatherSeed) return;
+      weatherSeed = seed;
+      environmentReady = false;
+      snowReady = false;
+      timePanel.setStatus('Nowa pogoda kariery – liczę od nowa…');
+      const { field: horizon } = await horizonField();
+      await sim.initEnvironment({ type: 'initEnvironment', horizonDirections: horizon.directions, horizonAngleDeg: horizon.angleDeg, skyViewFactor: horizon.skyViewFactor, climateJson, weatherJson, radiationJson, seed, location });
+      environmentReady = true;
+      const n = grid.cellCount;
+      const cover = build.currentLandCover();
+      await sim.initSnow(cover?.forest ?? landCover?.forest.slice() ?? new Float32Array(n), cover?.shrub ?? landCover?.shrub.slice() ?? new Float32Array(n), snowJson, guestsJson, snowmakingJson);
+      snowReady = true;
+      lastSnow = null;
+      lastState = null;
+      timePanel.setStatus('');
+      requestState({ date: timePanel.date, hour: timePanel.hour });
+      requestSnow(timePanel.date);
+    }
+    const envInit = (async () => {
       try {
         let dem: HorizonDem | null = null;
         if (def?.horizonDem) {
@@ -685,10 +723,8 @@ async function start(): Promise<void> {
           if (!response.ok) throw new Error(`Nie udało się pobrać modelu terenu okolicy (HTTP ${response.status})`);
           dem = createHorizonDem(def, await response.arrayBuffer());
         }
-        const horizonParams = parseHorizonParams(radiationJson);
-        const { field: horizon, fromCache, timeMs } = await computeHorizonCached(grid, dem, horizonParams, (f) =>
-          timePanel.setStatus(`Liczę cienie terenu (raz, potem zapamiętane)… ${f0(f * 100)} %`),
-        );
+        horizonDem = dem;
+        const { field: horizon, fromCache, timeMs } = await horizonField();
         timingsMs[fromCache ? 'horyzont (z pamięci)' : 'horyzont (liczenie)'] = Math.round(timeMs);
         timePanel.setStatus('');
         await sim.initEnvironment({
@@ -699,7 +735,7 @@ async function start(): Promise<void> {
           climateJson,
           weatherJson,
           radiationJson,
-          seed: simSettings.seed,
+          seed: weatherSeed,
           location,
         });
         environmentReady = true;
@@ -807,6 +843,8 @@ async function start(): Promise<void> {
     const elevRange = grid.elevationRangeM();
     const weatherBook = new WeatherBook(climateProfile, weatherParamsMain, simSettings.seed, location, Math.round(elevRange.minM), Math.round(elevRange.maxM));
     const waitMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const winterTable = parseWinterClasses(winterClassesJson);
+    const winterDeps = { profile: climateProfile, weatherParams: weatherParamsMain, snowParams: parseSnowParams(snowJson), radiationParams: parseRadiationParams(radiationJson), riding: ridingParams, location };
     game = new GameController({
       ep: economyParams,
       gp: guestParams,
@@ -853,6 +891,18 @@ async function start(): Promise<void> {
         }),
       setDateTime: (date, hour) => timePanel.setDateTime(date, hour),
       setTraffic: (date, passes) => sim.setTraffic(date, passes),
+      careerSeed: () => {
+        const start = parseIsoDate(economyParams.career.startDate);
+        const r = careerSeed(simSettings.seed, start.month >= 10 ? start.year : start.year, winterTable, winterDeps);
+        console.info(`Ziarno pogody kariery: ${r.seed} (pierwsza zima ${r.days} dni ze śniegiem na ${winterTable.elevationM} m, prób ${r.tries})`);
+        return r.seed;
+      },
+      setWeatherSeed: (seed) => setWeatherSeed(seed),
+      bookFor: (seed) => new WeatherBook(climateProfile, weatherParamsMain, seed, location, Math.round(elevRange.minM), Math.round(elevRange.maxM)),
+      winterRating: (startYear, seed) => {
+        const days = winterSkiDays(seed, startYear, winterTable, winterDeps);
+        return { days, meanDays: winterTable.meanDays, cls: winterClass(days, winterTable), percentile: winterPercentile(days, winterTable), elevationM: winterTable.elevationM, thresholdCm: winterTable.baseThresholdCm };
+      },
       setOperations: (date, ops) => sim.setOperations(date, ops),
       onOps: () => refreshSnowOps(true),
       toast: (text) => buildBar.showToast(text),
