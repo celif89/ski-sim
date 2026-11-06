@@ -123,6 +123,8 @@ export interface EconomyParams {
     seasonalPer1000Guests: number;
     seasonalMin: number;
     permanentStaff: number;
+    permanentStaffPerLift: number;
+    adminShareOfRevenue: number;
     permanentMonthlyPln: number;
     inspectionSurfacePln: number;
     inspectionAerialPln: number;
@@ -222,7 +224,7 @@ export function parseEconomyParams(raw: unknown): EconomyParams {
     ferie: { turns, durationDays: readNumber(fe, 'durationDays', FILE, { integer: true, min: 1 }), regionWeights },
     costs: readAll(co, [
       'energyPlnPerKWh', 'hourlyWagePln', 'employerCostFactor', 'staffExtraHours', 'staffSurfaceLift', 'staffAerialLift', 'staffMidStation', 'guestsPerCashier',
-      'patrolPerKm', 'patrolMin', 'patrolHourlyPln', 'seasonalPer1000Guests', 'seasonalMin', 'permanentStaff', 'permanentMonthlyPln', 'inspectionSurfacePln',
+      'patrolPerKm', 'patrolMin', 'patrolHourlyPln', 'seasonalPer1000Guests', 'seasonalMin', 'permanentStaff', 'permanentStaffPerLift', 'adminShareOfRevenue', 'permanentMonthlyPln', 'inspectionSurfacePln',
       'inspectionAerialPln', 'insuranceRatePerYear', 'maintenanceLiftsRatePerYear', 'maintenancePistesRatePerYear', 'maintenanceBuildingsRatePerYear',
       'winterBuildProgressFactor', 'winterBuildCostFactor', 'rebuildFeeShare', 'rebuildDaysShare', 'cancelRefundShare',
     ] as const, { min: 0 }),

@@ -35,7 +35,7 @@ export const REVENUE_KEYS = ['passes', 'parking', 'gastronomy', 'rental', 'schoo
 export const COST_KEYS = [
   'energy', 'liftStaff', 'cashiers', 'patrol', 'seasonal', 'buildingsStaff', 'goods',
   'snowEnergy', 'water', 'groomFuel', 'groomStaff', 'groomService', 'leasing', 'repairs',
-  'permanent', 'insurance', 'maintenance', 'inspections', 'interest',
+  'permanent', 'admin', 'insurance', 'maintenance', 'inspections', 'interest',
 ] as const;
 /** Inwestycje i finansowanie (nie są kosztem dnia, ale zmieniają saldo). */
 export const CAPITAL_KEYS = ['construction', 'equipment', 'refunds', 'loanIn', 'loanPrincipal'] as const;
@@ -65,6 +65,7 @@ export const FLOW_NAMES: Record<keyof Flows, string> = {
   leasing: 'leasing ratraków',
   repairs: 'naprawy ratraków',
   permanent: 'stała załoga',
+  admin: 'administracja, marketing, sprzedaż',
   insurance: 'ubezpieczenie',
   maintenance: 'utrzymanie',
   inspections: 'przeglądy wyciągów',
@@ -933,11 +934,14 @@ export function closeDay(
       flows.buildingsStaff += t.staffPerDay * staffH * wage;
     }
   }
+  // Administracja, marketing i sprzedaż – część przychodów dnia (etap 6b, NSAA: G&A ok. 10 % przychodów).
+  flows.admin += c.adminShareOfRevenue * REVENUE_KEYS.reduce((a, k) => a + flows[k], 0);
   // Koszty stałe: ubezpieczenie i utrzymanie codziennie (część roczna), stała załoga i raty co miesiąc, przeglądy raz w roku.
   flows.insurance += (facts.assetValuePln * c.insuranceRatePerYear) / 365;
   flows.maintenance += (facts.assetLiftsPln * c.maintenanceLiftsRatePerYear + facts.assetPistesPln * c.maintenancePistesRatePerYear + facts.assetBuildingsPln * c.maintenanceBuildingsRatePerYear) / 365;
   if (date.day === 1) {
-    flows.permanent += c.permanentStaff * c.permanentMonthlyPln;
+    // Stała załoga: kierownictwo + mechanicy i elektrycy na zbudowane wyciągi (etap 6b – zależna od wielkości).
+    flows.permanent += (c.permanentStaff + c.permanentStaffPerLift * facts.lifts.length) * c.permanentMonthlyPln;
     for (const loan of state.loans) {
       const interest = (loan.remainingPln * loan.ratePerYear) / 12;
       const principal = Math.min(loan.remainingPln, Math.max(0, loan.monthlyPaymentPln - interest));

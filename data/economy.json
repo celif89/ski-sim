@@ -554,7 +554,17 @@
     "permanentStaff": {
       "value": 2,
       "unit": "osób",
-      "source": "kierownik ośrodka, technik – cały rok"
+      "source": "kierownik ośrodka, technik – cały rok (niezależnie od wielkości)"
+    },
+    "permanentStaffPerLift": {
+      "value": 1,
+      "unit": "osób na wyciąg",
+      "source": "etap 6b: mechanicy, elektrycy, konserwatorzy przez cały rok (przeglądy UDT, remonty letnie) – ok. 1 osoba na wyciąg; praca to ok. 25 % przychodów ośrodków (NSAA Economic Analysis 2010/11: 24,4 %; 2024/25: 25 % – za SAM Magazine); do kalibracji"
+    },
+    "adminShareOfRevenue": {
+      "value": 0.1,
+      "unit": "część przychodów",
+      "source": "etap 6b: administracja, marketing, sprzedaż, systemy kasowe – NSAA Economic Analysis 2010/11: koszty ogólne i administracyjne 10,3 % przychodów (za SAM Magazine, marzec 2012); do kalibracji"
     },
     "permanentMonthlyPln": {
       "value": 11000,
