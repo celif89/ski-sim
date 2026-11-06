@@ -377,8 +377,15 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
     panel „Naśnieżanie i ratraki” (zbiornik, moc vs limit z wykresem doby, armatki, flota – zakup/leasing,
     noc), „Plan naśnieżania”, „Plan nocy” (z przewidywanym przebiegiem); nakładka `M` „Naśnieżanie teraz”
     (temperatura mokra); raport sezonu z sekcją naśnieżania;
-  - raport ekonomii: ten sam orczyk z naśnieżaniem (25 armatek, zbiornik 50 tys. m³, 1 ratrak) na 30
-    zimach obok wersji bez naśnieżania + tabela kalibracji – WYNIKI_30_ZIM;
+  - raport ekonomii: ten sam orczyk z naśnieżaniem (25 armatek: 13 śmigłowych, 12 lanc; zbiornik 50 tys.
+    m³, pompownia 300 m³/h, 1000 kW, ratrak z wyciągarką i kotwa; 6,3 ha) na 30 zimach obok wersji bez:
+    dni otwarte 38,7 → 117,8 (słaba 1/3 zim +100, mocna +53), goście 5,7 → 16,4 tys./sezon, wynik
+    działalności 0,21 → 0,77 mln zł/sezon; inwestycja 17,1 mln zł + 0,33 mln/rok utrzymania → prosty zwrot
+    ok. 72 lat; kalibracja (gra / dane koncepcji): woda 4272 / 3501 m³/ha (×1,22), energia 17 161 / 24 449
+    kWh/ha (×0,70), energia na wizytę 6,0 / 5,4 kWh (×1,11), koszt m³ z amortyzacją 20 lat 23,3 / 17 zł
+    (×1,37; samo działanie 2,3 zł/m³);
+  - błąd znaleziony w raporcie: bez ratraka z wyciągarką pryzmy na stromych odcinkach (≥ 40 %) zostawały
+    na stałe i zamykały trasę – automat nie naśnieża już takich odcinków (ręcznie – można);
   - testy `tests/snowmaking.test.ts` (12): Twb ponad progiem → 0, zimniej → więcej; energia ρgh/η;
     zbiornik ≥ 0; limit mocy; stromizna bez wyciągarki nieratrakowana; czas pracy ze wzoru; pryzmy
     blokują odcinek; mokry śnieg ubity przed mrozem → lód; wiatr znosi poza trasę; 30 zim z i bez.
@@ -447,6 +454,11 @@ Uwagi techniczne:
 - Generator pogody: wielodniowe epizody silnego opadu (śnieżyce) – za niskie maksima grubości.
 - Budowa: trasy obszarowe z OSM (area=yes) w porównaniu; mapa bazowa przerysowana po wycince
   (teraz przecinka to osobna warstwa nad mapą).
+- Naśnieżanie (7): wartości armatek, pompowni, zbiorników i ratraków z kart producentów; zbiornik
+  50 tys. m³ to za dużo na 6 ha (sezon zużywa ok. 27 tys. m³) – inwestycja w raporcie zawyżona; automat
+  ratrakuje od razu od 17:30 (doświadczony operator czekałby na mróz – mniej lodu); śnieg techniczny
+  w modelu bez osobnego, wolniejszego topnienia poza większą gęstością; brak przestawiania armatek
+  przez automat; podgląd naśnieżania liczy dzień z prognozą równą pogodzie (gracz zna przyszłość dnia).
 - Ekonomia (6): pula popytu, udziały typów grup, wagi regionów, elastyczność cenowa i koszty – do
   kalibracji (frekwencja i finanse prawdziwych ośrodków); konkurencja bez reakcji na nasze ceny;
   ceny bez inflacji w kolejnych latach; brak karnetów sezonowych i wielodniowych; brak oświetlenia
