@@ -33,6 +33,8 @@ export interface ProfileCallbacks {
   /** Otwarcie / zamknięcie trasy lub wyciągu; wyrównanie terenu trasy. */
   onToggleClosed(): void;
   onToggleGraded(): void;
+  /** Etap 6b: zjazd wyciągiem w dół (kanapy). */
+  onToggleDownhill?(): void;
 }
 
 export interface PisteExtras {
@@ -43,6 +45,8 @@ export interface PisteExtras {
 
 export interface LiftExtras {
   closed: boolean;
+  /** Etap 6b: zjazd w dół włączony. */
+  downhill?: boolean;
   /** Brak otwartej trasy w dół z górnej (i pośrednich) stacji. */
   noDescent: boolean;
 }
@@ -133,15 +137,17 @@ export class BuildProfile {
     ].join('');
     const towersBtn = !draft && a.towerCount + 1 > 1 && t.towerMaxHeightM > 0 ? '<button type="button" class="auto-towers">Rozstaw podpory automatycznie</button> ' : '';
     const closeBtn = !draft && extra ? `<button type="button" class="toggle-closed">${extra.closed ? 'Otwórz wyciąg' : 'Zamknij wyciąg'}</button> ` : '';
+    const downBtn = !draft && extra && t.downhillMaxSeatShare > 0 && !t.downhillRiding ? `<button type="button" class="toggle-downhill" title="Goście mogą zjechać wyciągiem w dół (np. gdy dolna trasa jest zamknięta lub za trudna) – najwyżej ${Math.round(t.downhillMaxSeatShare * 100)} % miejsc">${extra.downhill ? 'Wyłącz zjazd w dół' : 'Włącz zjazd w dół'}</button> ` : '';
     const hint = !draft
       ? `<div class="muted">Na mapie: przeciągnij stację (żółty prostokąt) lub załamanie (romb) · „+” na linii – nowa stacja kątowa · podwójne kliknięcie rombu – stacja pośrednia z wsiadaniem · prawy przycisk – usuń. Podpory na wykresie: przeciągnij · podwójne kliknięcie – nowa · prawy – usuń.</div>`
       : '';
-    this.actions.innerHTML = towersBtn + closeBtn + hint;
+    this.actions.innerHTML = towersBtn + closeBtn + downBtn + hint;
+    this.actions.querySelector('.toggle-downhill')?.addEventListener('click', () => this.cb.onToggleDownhill?.());
     this.actions.querySelector('.auto-towers')?.addEventListener('click', () => this.cb.onAutoTowers());
     this.actions.querySelector('.toggle-closed')?.addEventListener('click', () => this.cb.onToggleClosed());
     const extraIssues: BuildIssue[] = [];
     if (extra?.closed) extraIssues.push({ severity: 'warning', message: 'wyciąg zamknięty – goście z niego nie korzystają', distanceM: null });
-    else if (extra?.noDescent && !t.downhillRiding) extraIssues.push({ severity: 'warning', message: 'brak otwartej trasy w dół z górnej stacji – wyciąg nie pracuje (otwórz albo zbuduj trasę)', distanceM: null });
+    else if (extra?.noDescent && !t.downhillRiding && !extra.downhill) extraIssues.push({ severity: 'warning', message: 'brak otwartej trasy w dół z górnej stacji – wyciąg nie pracuje (otwórz albo zbuduj trasę)', distanceM: null });
     this.issues.innerHTML = issuesHtml([...a.issues, ...extraIssues]);
     this.draw();
   }

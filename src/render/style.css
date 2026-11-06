@@ -1722,3 +1722,47 @@ tr.g-closed td {
 .snow-plan-dialog input[type='number'] {
   width: 4.5em;
 }
+
+/* ---------- etap 6b: dymek przy kursorze ---------- */
+.cursor-tip {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  max-width: 320px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #0f172a;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
+  font: 12px/1.35 'Barlow', system-ui, sans-serif;
+}
+.cursor-tip.hidden {
+  display: none;
+}
+.cursor-tip .ct-title {
+  font-weight: 700;
+  font-family: 'Barlow Condensed', 'Barlow', sans-serif;
+  font-size: 13px;
+}
+.cursor-tip .ct-sec {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid #e2e8f0;
+}
+
+/* Etap 6b: źródła wody w panelu naśnieżania */
+.snow-panel .sn-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 2px 0 4px;
+}
+.snow-panel .sn-table th {
+  text-align: left;
+  font-weight: 600;
+  color: #64748b;
+}
+.snow-panel .sn-table td,
+.snow-panel .sn-table th {
+  padding: 1px 4px 1px 0;
+  vertical-align: top;
+}

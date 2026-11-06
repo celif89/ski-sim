@@ -36,7 +36,7 @@ let grid: TerrainGrid | null = null;
 let environment: Environment | null = null;
 let snowWorld: SnowWorld | null = null;
 /** Najnowsze (jeszcze nieobsłużone) pytanie o śnieg i czy trwa liczenie. */
-let pendingSnow: { requestId: number; date: { year: number; month: number; day: number } } | null = null;
+let pendingSnow: { requestId: number; date: { year: number; month: number; day: number }; hour?: number } | null = null;
 let snowRunning = false;
 /** Co ile ms oddawać sterowanie (żeby wątek odpowiadał na inne pytania). */
 const SNOW_YIELD_MS = 40;
@@ -56,7 +56,9 @@ async function runSnowJobs(): Promise<void> {
       let superseded = false;
       const world = snowWorld;
       const version = world.version;
-      for (const progress of world.advanceTo(job.date)) {
+      const t0 = performance.now();
+      const live = job.hour !== undefined;
+      for (const progress of live ? world.advanceLive(job.date, job.hour!) : world.advanceTo(job.date)) {
         const now = performance.now();
         if (now - last > SNOW_YIELD_MS) {
           scope.postMessage({ type: 'snowProgress', ...progress });
@@ -75,8 +77,8 @@ async function runSnowJobs(): Promise<void> {
         scope.postMessage({ type: 'error', requestId: job.requestId, message: SUPERSEDED });
         continue;
       }
-      const snap = snowWorld.snapshot();
-      scope.postMessage({ type: 'snowState', requestId: job.requestId, ...snap }, [
+      const snap = (live ? snowWorld.liveSnapshot() : null) ?? snowWorld.snapshot();
+      scope.postMessage({ type: 'snowState', requestId: job.requestId, ...snap, liveMs: live ? performance.now() - t0 : undefined }, [
         snap.depthCm.buffer,
         snap.sweMm.buffer,
         snap.densityKgM3.buffer,
@@ -193,7 +195,7 @@ async function handle(request: WorkerRequest): Promise<void> {
     case 'snowState': {
       if (!snowWorld) throw new Error('Model śniegu nie jest gotowy');
       if (pendingSnow) scope.postMessage({ type: 'error', requestId: pendingSnow.requestId, message: SUPERSEDED });
-      pendingSnow = { requestId: request.requestId, date: request.date };
+      pendingSnow = { requestId: request.requestId, date: request.date, hour: request.hour };
       void runSnowJobs();
       return;
     }

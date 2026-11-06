@@ -107,8 +107,8 @@ export class SimClient {
   }
 
   /** Stan śniegu na koniec dnia. Starsze, niedokończone pytania zostają zastąpione nowszymi. */
-  async snowState(date: CalendarDate): Promise<SnowStateMessage> {
-    const m = await this.send({ type: 'snowState', requestId: this.nextId++, date });
+  async snowState(date: CalendarDate, hour?: number): Promise<SnowStateMessage> {
+    const m = await this.send({ type: 'snowState', requestId: this.nextId++, date, hour });
     if (m.type !== 'snowState') throw new Error('Nieoczekiwana odpowiedź wątku');
     return m;
   }

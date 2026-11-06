@@ -1,0 +1,171 @@
+{
+  "_opis": "Woda do naśnieżania (etap 6b): potoki (z OpenStreetMap i z modelu terenu), przepływy, limity poboru, wodociąg, studnie głębinowe, rowy zbierające spływ do zbiornika. Kwoty w zł netto. Budynki (ujęcie, wodociąg, studnie, rowy) i ich koszty są w data/snowmaking.json (lista buildings), rura zasilająca – pipe.supplyCostPlnPerM.",
+  "streams": {
+    "accumulationThresholdM2": {
+      "value": 250000,
+      "unit": "m²",
+      "source": "potok stały w Beskidach zaczyna się przy zlewni ok. 0,2–0,5 km² (gęstość sieci rzecznej ok. 2 km/km²); próg wyznaczania cieków z modelu terenu tam, gdzie nie ma ich w OSM – do kalibracji z mapą OSM"
+    },
+    "osmDedupRadiusM": {
+      "value": 40,
+      "unit": "m",
+      "source": "ciek z modelu terenu bliżej linii z OSM niż tyle nie jest rysowany drugi raz (OSM ma pierwszeństwo)"
+    },
+    "intakeMaxDistanceM": {
+      "value": 25,
+      "unit": "m",
+      "source": "ujęcie (jaz z osadnikiem) musi stać na cieku – najwyżej tyle od linii potoku"
+    },
+    "flowSearchRadiusM": {
+      "value": 30,
+      "unit": "m",
+      "source": "przepływ w punkcie linii z OSM: największa zlewnia z modelu terenu w tym promieniu (linia OSM i dno doliny w siatce 10 m nie pokrywają się dokładnie)"
+    },
+    "runoffCoefficient": {
+      "value": 0.53,
+      "unit": "-",
+      "source": "współczynnik odpływu (odpływ roczny / opad roczny); dobrany tak, by przy średniej wysokości zlewni ok. 700 m odpływ jednostkowy wynosił ok. 20 l/(s·km²) – średni przepływ IMGW Koszarawa w Pewli Małej 4,56 m³/s (2011–2020, data/calibration/imgw-hydro.json) / zlewnia ok. 230 km² (cała Koszarawa 250 km², Punzet 1971); do kalibracji"
+    },
+    "monthlyFactor": {
+      "value": [
+        0.727,
+        1.095,
+        1.358,
+        1.362,
+        1.296,
+        1.0,
+        1.009,
+        0.589,
+        0.874,
+        1.082,
+        0.743,
+        0.875
+      ],
+      "unit": "× średni roczny (I…XII)",
+      "source": "rytm roczny przepływu – średnia z wodowskazów IMGW Ujsoły (Woda Ujsolska) i Pewel Mała (Koszarawa), lata hydrologiczne 2011–2020 (npm run import-hydro → data/calibration/imgw-hydro.json): najmniej w sierpniu i styczniu, najwięcej przy roztopach III–V"
+    },
+    "lowFlowFactor": {
+      "value": 0.218,
+      "unit": "× średni roczny",
+      "source": "najniższy przepływ w modelu: 10. percentyl przepływów dobowych / średni (IMGW Ujsoły 0,23, Pewel Mała 0,20; data/calibration/imgw-hydro.json)"
+    },
+    "highFlowFactor": {
+      "value": 3,
+      "unit": "× średni roczny",
+      "source": "górne ograniczenie przepływu w modelu dobowym (wezbrania – i tak nie da się ich pobrać ponad limit ujęcia); do kalibracji"
+    },
+    "precipWindowDays": {
+      "value": 30,
+      "unit": "dni",
+      "source": "okres, z którego oceniamy, czy jest sucho (opad wobec normy miesięcznej z profilu klimatu)"
+    },
+    "dryFactorMin": {
+      "value": 0.4,
+      "unit": "×",
+      "source": "przy suchym miesiącu przepływ spada najwyżej do tej części rytmu miesięcznego; do kalibracji"
+    },
+    "dryFactorMax": {
+      "value": 1.6,
+      "unit": "×",
+      "source": "przy mokrym miesiącu przepływ rośnie najwyżej tyle razy; do kalibracji"
+    },
+    "ecologicalFlowShare": {
+      "value": 0.3,
+      "unit": "× średni roczny",
+      "source": "przepływ nienaruszalny (musi zostać w korycie poniżej ujęcia) – w potokach górskich zwykle w pobliżu SNQ ≈ 0,2–0,35 średniego (metoda Kostrzewy, region górski); pobierać można tylko nadwyżkę ponad niego; do kalibracji"
+    },
+    "maxWithdrawalShare": {
+      "value": 0.5,
+      "unit": "× bieżący przepływ",
+      "source": "pozwolenie wodnoprawne na naśnieżanie zwykle nie zezwala na pobór ponad połowę przepływu; do kalibracji"
+    },
+    "streamFeePlnPerM3": {
+      "value": 0.08,
+      "unit": "zł/m³",
+      "source": "opłata zmienna za pobór wód powierzchniowych (usługi wodne, rząd wielkości 0,05–0,1 zł/m³); do kalibracji"
+    }
+  },
+  "supply": {
+    "directRadiusM": {
+      "value": 60,
+      "unit": "m",
+      "source": "źródło (ujęcie, studnia, wodociąg, rowy) bliżej zbiornika niż tyle zasila go bez osobnej rury"
+    },
+    "connectRadiusM": {
+      "value": 40,
+      "unit": "m",
+      "source": "koniec rury zasilającej musi być tak blisko źródła albo zbiornika"
+    }
+  },
+  "mains": {
+    "pricePlnPerM3": {
+      "value": 8.07,
+      "unit": "zł/m³ netto",
+      "source": "MPWiK Żywiec – taryfa od 18 VII 2026 (decyzja Wód Polskich KR.RZT.70.68.2026), grupa „pozostali odbiorcy”: 8,07 zł/m³ netto (8,72 brutto); https://mpwik-zywiec.pl/zywiec/taryfy-woda-od-18-lipca-2026r. W gminie Jeleśnia MPWiK Żywiec prowadzi tylko kanalizację – cena dla wodociągu w Korbielowie przyjęta jak w Żywcu; do sprawdzenia"
+    },
+    "fixedPlnPerMonth": {
+      "value": 19.48,
+      "unit": "zł/miesiąc",
+      "source": "opłata abonamentowa MPWiK Żywiec (taryfa od 18 VII 2026, odczyt wodomierza głównego, 15,49–19,48 zł/mies.)"
+    },
+    "villageRadiusM": {
+      "value": 300,
+      "unit": "m",
+      "source": "przyłącze wodociągowe tylko w zasięgu zabudowy wsi: w tym promieniu…"
+    },
+    "villageMinBuildings": {
+      "value": 15,
+      "unit": "budynków",
+      "source": "…musi stać co najmniej tyle budynków (z OSM) – sieć wodociągowa jest tylko we wsi; do kalibracji"
+    }
+  },
+  "wells": {
+    "medianYieldM3h": {
+      "value": 2.5,
+      "unit": "m³/h",
+      "source": "mediana wydajności studni o głębokości 100 m w fliszu karpackim – utwory fliszowe to słabe warstwy wodonośne, typowo 1–10 m³/h, często poniżej 1 (Mapa hydrogeologiczna Polski 1:50 000, PIG); do kalibracji"
+    },
+    "yieldSigma": {
+      "value": 1.0,
+      "unit": "- (rozkład logarytmiczno-normalny)",
+      "source": "rozrzut wydajności między otworami (σ logarytmu); do kalibracji"
+    },
+    "depthExponent": {
+      "value": 0.5,
+      "unit": "-",
+      "source": "wydajność rośnie z głębokością jak (głębokość / 100 m)^wykładnik – więcej spękań przewierconych; do kalibracji"
+    },
+    "dryProbability": {
+      "value": 0.15,
+      "unit": "-",
+      "source": "szansa, że otwór będzie prawie suchy (we fliszu częste); do kalibracji"
+    },
+    "dryYieldM3h": {
+      "value": 0.2,
+      "unit": "m³/h",
+      "source": "wydajność otworu „prawie suchego”"
+    },
+    "dynamicLevelShare": {
+      "value": 0.4,
+      "unit": "× głębokość",
+      "source": "zwierciadło wody przy pompowaniu (głębokość, z której pompa podnosi wodę) jako część głębokości otworu; do kalibracji"
+    },
+    "groundwaterFeePlnPerM3": {
+      "value": 0.15,
+      "unit": "zł/m³",
+      "source": "opłata zmienna za pobór wód podziemnych (usługi wodne, rząd wielkości 0,1–0,2 zł/m³); do kalibracji"
+    }
+  },
+  "catchment": {
+    "runoffCoefficient": {
+      "value": 0.5,
+      "unit": "-",
+      "source": "jaka część wody z topnienia i deszczu na zlewni dopływa rowami do zbiornika (spływ powierzchniowy i płytki podpowierzchniowy, na zmarzniętym gruncie więcej); do kalibracji"
+    },
+    "searchRadiusM": {
+      "value": 40,
+      "unit": "m",
+      "source": "zlewnia zbiornika: największa zlewnia z modelu terenu w tym promieniu od zbiornika"
+    }
+  }
+}

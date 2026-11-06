@@ -21,8 +21,12 @@ import liftsJson from '../data/lifts.json';
 import pistesJson from '../data/pistes.json';
 import constructionJson from '../data/construction.json';
 import economyJson from '../data/economy.json';
-import { parseEconomyParams, withSnowmaking } from './sim/economyParams';
+import { parseEconomyParams, withRoads, withSnowmaking } from './sim/economyParams';
+import { parkingCapacityPersons } from './sim/economy';
 import snowmakingJson from '../data/snowmaking.json';
+import winterClassesJson from '../data/winter-classes.json';
+import waterJson from '../data/water.json';
+import { careerSeed, parseWinterClasses, winterClass, winterPercentile, winterSkiDays } from './sim/winterClass';
 import { parseSnowmakingParams } from './sim/snowmakingParams';
 import { wetBulbC } from './sim/snowmaking';
 import { NightPlanDialog, SnowPanel, SnowPlanDialog } from './render/snowPanels';
@@ -30,6 +34,8 @@ import type { PlanPiste } from './render/snowPanels';
 import { OpsView, plumesAt } from './render/opsView';
 import { WeatherBook } from './sim/weatherBook';
 import { parseClimateProfile } from './sim/climate';
+import { annualPrecipitationMm, buildStreamNet, flowFactor, normalPrecipMm, parseWaterParams, streamAt as findStream } from './sim/water';
+import type { WaterContext } from './sim/operations';
 import { parseWeatherParams } from './sim/weather';
 import { parseRadiationParams } from './sim/radiation';
 import { parseSnowParams } from './sim/snow';
@@ -64,9 +70,10 @@ import { BuildController } from './render/buildController';
 import type { SnowWarning } from './render/buildController';
 import type { MapContextData, MapLabel } from './render/resortLayer';
 import { parseLiftParams } from './sim/lifts';
+import type { PointM } from './sim/lifts';
 import { parsePisteParams } from './sim/pistes';
 import type { OsmResort, ResortAnalysis, ResortLayout } from './sim/resort';
-import { parseConstructionParams } from './sim/resort';
+import { parseConstructionParams, parseRoadParams } from './sim/resort';
 import { parseGroundParams } from './sim/ground';
 import { parseRidingParams, thinField } from './sim/snowRiding';
 import { GROUND_COLORS, SNOW_QUALITY_COLORS } from './render/colors';
@@ -74,7 +81,9 @@ import type { SnowReadoutData } from './render/hud';
 import { Camera } from './render/camera';
 import { FieldOverlay, fieldScale } from './render/fieldOverlay';
 import type { FieldKind } from './render/fieldOverlay';
-import { Hud } from './render/hud';
+import { Hud, describePoint } from './render/hud';
+import { CursorTip } from './render/cursorTip';
+import type { TipContent } from './render/cursorTip';
 import { MapInput } from './render/input';
 import { parseMapStyle } from './render/mapStyle';
 import { TopBar, type GameSpeed, type SnowAtPoints } from './render/topBar';
@@ -96,6 +105,7 @@ const MAP_JSONS = import.meta.glob('../data/maps/*/map.json', { eager: true, imp
 const MAP_BINARY_URLS = import.meta.glob('../data/maps/*/*.{f32,u8}', { eager: true, query: '?url', import: 'default' });
 const CLIMATE_JSONS = import.meta.glob('../data/climate/*.json', { eager: true, import: 'default' });
 const OSM_RESORTS = import.meta.glob('../data/maps/*/osm-resort.json', { eager: true, import: 'default' });
+const OSM_WATERS = import.meta.glob('../data/maps/*/osm-water.json', { eager: true, import: 'default' });
 const OSM_CONTEXTS = import.meta.glob('../data/maps/*/osm-context.json', { eager: true, import: 'default' });
 const MAP_LABELS = import.meta.glob('../data/maps/*/labels.json', { eager: true, import: 'default' });
 
@@ -246,7 +256,7 @@ async function start(): Promise<void> {
       });
     }
     const guestsRef: { current: GuestController | null } = { current: null };
-    let lastSnow: (SnowReadoutData & { date: CalendarDate; moguls?: Uint8Array }) | null = null;
+    let lastSnow: (SnowReadoutData & { date: CalendarDate; moguls?: Uint8Array; hour?: number }) | null = null;
     const fmtDate = (d: CalendarDate) => `${d.day}.${String(d.month).padStart(2, '0')}.${d.year}`;
     const sameDate = (a: CalendarDate, b: CalendarDate) => a.year === b.year && a.month === b.month && a.day === b.day;
 
@@ -268,13 +278,19 @@ async function start(): Promise<void> {
       onZoom: (f) => camera.zoomAt(camera.viewportWidthPx / 2, camera.viewportHeightPx / 2, f),
     });
     mapNav.setRotated(camera.rotated);
+    const cursorTip = new CursorTip(document.body);
     const toolbar = new Toolbar(buildBar.layersPop, {
+      onTip: () => {
+        cursorTip.setEnabled(!cursorTip.enabled);
+        toolbar.setTipActive(cursorTip.enabled);
+      },
       onOverlay: (kind) => setOverlay(kind),
       onProfileTool: () => {
         if (!profile.active) build.setTool('select');
         profile.toggle();
       },
     });
+    toolbar.setTipActive(cursorTip.enabled);
     let topoOn = false;
     const layerExtras = document.createElement('div');
     layerExtras.className = 'a-layers-extra';
@@ -299,6 +315,8 @@ async function start(): Promise<void> {
 
     // Gra (etap 6) – tworzona niżej, gdy gotowe są budowa i goście.
     let game: GameController | null = null;
+    /** Etap 6b (woda): potok pod kursorem – ustawiane, gdy warstwa cieków jest gotowa. */
+    let streamAt: ((xM: number, yM: number) => { title: string; lines: string[] } | null) | null = null;
     const timePanel = new TimePanel(
       topBar.details,
       { date: parseIsoDate(simSettings.startDate), hour: simSettings.startHour },
@@ -330,7 +348,13 @@ async function start(): Promise<void> {
     const liftParams = parseLiftParams(liftsJson);
     const ridingParams = parseRidingParams(snowJson);
     const snowmakingParams = parseSnowmakingParams(snowmakingJson);
-    const economyParams = withSnowmaking(parseEconomyParams(economyJson), snowmakingParams);
+    const roadParams = parseRoadParams(constructionJson);
+    const economyParams = withRoads(withSnowmaking(parseEconomyParams(economyJson), snowmakingParams), roadParams);
+    // Etap 6b: drogi publiczne z OSM (dojazd do parkingów).
+    const publicRoads: PointM[][] = (((OSM_CONTEXTS[`../data/maps/${simSettings.mapName}/osm-context.json`] as { roads?: { kind: string; points: [number, number][] }[] } | undefined)?.roads) ?? [])
+      .filter((r) => roadParams.publicRoadKinds.includes(r.kind))
+      .map((r) => r.points.map(([e, n]) => grid.puwg92ToLocal(e, n)).filter((q): q is PointM => q !== null))
+      .filter((l) => l.length >= 2);
     // Ostrzeżenia „za mało śniegu” → panel gości (ustawiane niżej, gdy kontroler gości gotowy).
     let onSnowWarnings: (w: SnowWarning[]) => void = () => {};
     const build = new BuildController({
@@ -352,6 +376,8 @@ async function start(): Promise<void> {
         ...snowmakingParams.buildings.map((b) => ({ id: b.id, name: `${b.name}${b.summerOnly ? ' (budowa V–X)' : ''}`, base: false, costPln: b.costPln })),
       ],
       snowmaking: snowmakingParams,
+      roads: roadParams,
+      publicRoads: publicRoads.length ? publicRoads : null,
       forest: landCover?.forest ?? null,
       shrub: landCover?.shrub ?? null,
       osm: (OSM_RESORTS[`../data/maps/${simSettings.mapName}/osm-resort.json`] as OsmResort | undefined) ?? null,
@@ -419,7 +445,7 @@ async function start(): Promise<void> {
           legend.setFieldInfo(null, 'liczę śnieg…');
           return;
         }
-        const info = `koniec dnia ${fmtDate(lastSnow.date)}; śnieg naturalny + techniczny (naśnieżanie i ratraki z zamkniętych dni gry)`;
+        const info = `${lastSnow.hour !== undefined ? `${fmtDate(lastSnow.date)}, godz. ${lastSnow.hour}:00 (na żywo, kroki godzinowe)` : `koniec dnia ${fmtDate(lastSnow.date)}`}; śnieg naturalny + techniczny (naśnieżanie i ratraki z zamkniętych dni gry)`;
         if (overlay === 'snowDepth') {
           const scale = fieldScale('snowDepth', style);
           field.update(lastSnow.depthCm, scale, 0.5);
@@ -553,7 +579,14 @@ async function start(): Promise<void> {
     let snowRequestedDate: CalendarDate | null = null;
     let snowInflight = 0;
     let latestSnowRequest = 0;
+    /** Etap 6b: godzina śniegu na żywo (kroki godzinowe w ciągu dnia); przy przewijaniu sezonu – stan na koniec dnia. */
+    function liveSnowHour(): number | undefined {
+      return timePanel.seasonPlaying ? undefined : Math.floor(timePanel.hour);
+    }
+    const snowIs = (s: { date: CalendarDate; hour?: number } | null, date: CalendarDate, hour: number | undefined) => !!s && sameDate(s.date, date) && s.hour === hour;
+    let snowRequestedHour: number | undefined;
     function requestSnow(date: CalendarDate): void {
+      const hour = liveSnowHour();
       // Ekonomia przelicza dni (pyta wątek o śnieg dzień po dniu) – mapa dostanie śnieg po zakończeniu.
       if (game?.busy) {
         snowRequestedDate = date;
@@ -563,16 +596,18 @@ async function start(): Promise<void> {
         snowRequestedDate = date;
         return;
       }
-      if (lastSnow && sameDate(lastSnow.date, date)) return;
-      if (snowRequestedDate && sameDate(snowRequestedDate, date) && snowInflight > 0) return;
+      if (snowIs(lastSnow, date, hour)) return;
+      if (snowRequestedDate && sameDate(snowRequestedDate, date) && snowRequestedHour === hour && snowInflight > 0) return;
       snowRequestedDate = date;
+      snowRequestedHour = hour;
       const id = ++latestSnowRequest;
       snowInflight++;
       sim
-        .snowState(date)
+        .snowState(date, hour)
         .then((m) => {
           if (id !== latestSnowRequest) return;
-          lastSnow = { date: m.date, depthCm: m.depthCm, sweMm: m.sweMm, densityKgM3: m.densityKgM3, quality: m.quality, moguls: m.moguls };
+          if (m.liveMs !== undefined && m.liveMs > 0) timingsMs['śnieg na żywo (ostatnie pytanie)'] = Math.round(m.liveMs);
+          lastSnow = { date: m.date, hour: m.hour, depthCm: m.depthCm, sweMm: m.sweMm, densityKgM3: m.densityKgM3, quality: m.quality, moguls: m.moguls };
           build.setSnow(m.sweMm);
           sendGuestSnow();
           terrain.setSnow(m.depthCm, m.quality, m.moguls);
@@ -594,7 +629,7 @@ async function start(): Promise<void> {
           if (e instanceof Error && e.message === '__superseded__') {
             // Zastąpione nowszym pytaniem (np. ekonomii) – jeśli mapa nadal nie ma śniegu na ten dzień, pytamy ponownie.
             setTimeout(() => {
-              if (id === latestSnowRequest && !(lastSnow && sameDate(lastSnow.date, date))) requestSnow(date);
+              if (id === latestSnowRequest && !snowIs(lastSnow, date, liveSnowHour())) requestSnow(date);
             }, 300);
             return;
           }
@@ -676,7 +711,43 @@ async function start(): Promise<void> {
         })()
       : { ...simSettings.fallbackLocation, timeZone: { standardOffsetHours: 1, euDaylightSaving: true } };
 
-    void (async () => {
+    /** Ziarno pogody w wątku obliczeń (kariera może wybrać inne – pierwsza zima nie z najsłabszych 20 %). */
+    let weatherSeed = simSettings.seed;
+    let horizonDem: HorizonDem | null | undefined;
+    async function horizonField() {
+      if (horizonDem === undefined) {
+        horizonDem = null;
+        if (def?.horizonDem) {
+          timePanel.setStatus('Wczytuję teren okolicy (do cieni)…');
+          const response = await fetch(binaryUrl(simSettings.mapName, def.horizonDem.file));
+          if (!response.ok) throw new Error(`Nie udało się pobrać modelu terenu okolicy (HTTP ${response.status})`);
+          horizonDem = createHorizonDem(def, await response.arrayBuffer());
+        }
+      }
+      return computeHorizonCached(grid, horizonDem, parseHorizonParams(radiationJson), (f) => timePanel.setStatus(`Liczę cienie terenu (raz, potem zapamiętane)… ${f0(f * 100)} %`));
+    }
+    /** Nowe ziarno pogody: słońce i pogoda oraz śnieg w wątku od nowa (horyzont z pamięci przeglądarki). */
+    async function setWeatherSeed(seed: number): Promise<void> {
+      await envInit;
+      if (seed === weatherSeed) return;
+      weatherSeed = seed;
+      environmentReady = false;
+      snowReady = false;
+      timePanel.setStatus('Nowa pogoda kariery – liczę od nowa…');
+      const { field: horizon } = await horizonField();
+      await sim.initEnvironment({ type: 'initEnvironment', horizonDirections: horizon.directions, horizonAngleDeg: horizon.angleDeg, skyViewFactor: horizon.skyViewFactor, climateJson, weatherJson, radiationJson, seed, location });
+      environmentReady = true;
+      const n = grid.cellCount;
+      const cover = build.currentLandCover();
+      await sim.initSnow(cover?.forest ?? landCover?.forest.slice() ?? new Float32Array(n), cover?.shrub ?? landCover?.shrub.slice() ?? new Float32Array(n), snowJson, guestsJson, snowmakingJson);
+      snowReady = true;
+      lastSnow = null;
+      lastState = null;
+      timePanel.setStatus('');
+      requestState({ date: timePanel.date, hour: timePanel.hour });
+      requestSnow(timePanel.date);
+    }
+    const envInit = (async () => {
       try {
         let dem: HorizonDem | null = null;
         if (def?.horizonDem) {
@@ -685,10 +756,8 @@ async function start(): Promise<void> {
           if (!response.ok) throw new Error(`Nie udało się pobrać modelu terenu okolicy (HTTP ${response.status})`);
           dem = createHorizonDem(def, await response.arrayBuffer());
         }
-        const horizonParams = parseHorizonParams(radiationJson);
-        const { field: horizon, fromCache, timeMs } = await computeHorizonCached(grid, dem, horizonParams, (f) =>
-          timePanel.setStatus(`Liczę cienie terenu (raz, potem zapamiętane)… ${f0(f * 100)} %`),
-        );
+        horizonDem = dem;
+        const { field: horizon, fromCache, timeMs } = await horizonField();
         timingsMs[fromCache ? 'horyzont (z pamięci)' : 'horyzont (liczenie)'] = Math.round(timeMs);
         timePanel.setStatus('');
         await sim.initEnvironment({
@@ -699,7 +768,7 @@ async function start(): Promise<void> {
           climateJson,
           weatherJson,
           radiationJson,
-          seed: simSettings.seed,
+          seed: weatherSeed,
           location,
         });
         environmentReady = true;
@@ -797,6 +866,8 @@ async function start(): Promise<void> {
           stationWalkRadiusM: guestParams.operation.stationWalkRadiusM,
           foodPoints: hutPoints,
           grid: { cellSizeM: grid.cellSizeM, widthCells: grid.widthCells, heightCells: grid.heightCells },
+          accessibleBases: analysis.accessibleBases,
+          baseCapacityPersons: parkingCapacityPersons(layout, economyParams),
         }),
       );
     onGuestLayout(build.current.layout, build.current.analysis);
@@ -804,10 +875,44 @@ async function start(): Promise<void> {
     // ---------------------------------------------------------------- gra: ekonomia i sezon (etap 6)
     const climateProfile = parseClimateProfile(climateJson);
     const weatherParamsMain = parseWeatherParams(weatherJson);
+    // Etap 6b: woda – potoki z OSM uzupełnione z modelu terenu, przepływy, zasięg wodociągu (zabudowa wsi).
+    const waterParams = parseWaterParams(waterJson);
+    const osmWater = ((OSM_WATERS[`../data/maps/${simSettings.mapName}/osm-water.json`] as { streams?: { name: string; points: [number, number][] }[] } | undefined)?.streams ?? []).map((st) => ({
+      name: st.name,
+      points: st.points.map(([e, n]) => (grid.georef ? grid.puwg92ToLocal(e, n) : null)).filter((q): q is PointM => q !== null),
+    }));
+    const tWater = performance.now();
+    const streamNet = buildStreamNet({ grid, osm: osmWater, annualPrecipMm: (zz) => annualPrecipitationMm(climateProfile, zz), params: waterParams });
+    console.info(`Sieć cieków: ${streamNet.lines.length} linii, ${(performance.now() - tWater).toFixed(0)} ms`);
+    const villageBuildings: PointM[] = (((OSM_CONTEXTS[`../data/maps/${simSettings.mapName}/osm-context.json`] as MapContextData | undefined)?.buildings) ?? [])
+      .map((b) => b.points.map(([e, n]) => (grid.georef ? grid.puwg92ToLocal(e, n) : null)).filter((q): q is PointM => q !== null))
+      .filter((pts) => pts.length > 0)
+      .map((pts) => ({ xM: pts.reduce((a, q) => a + q.xM, 0) / pts.length, yM: pts.reduce((a, q) => a + q.yM, 0) / pts.length }));
+    const waterCtx: WaterContext = { net: streamNet, wp: waterParams, villageBuildings, elevationM: grid.elevationM };
+    build.setStreams(streamNet.lines);
+    build.setWater(waterCtx);
+    streamAt = (xM, yM) => {
+      const hit = findStream(streamNet, xM, yM, 15, waterParams);
+      if (!hit) return null;
+      const q = hit.meanFlowM3s;
+      const d = game?.state?.date ?? null;
+      const lines = [`średni przepływ ${f0(q * 1000)} l/s (${f0(q * 3600)} m³/h)`, `zlewnia ${(hit.cell >= 0 ? streamNet.accM2[hit.cell] / 1e6 : 0).toLocaleString('pl-PL', { maximumFractionDigits: 2 })} km²`];
+      if (d) {
+        const f = flowFactor(d.month, weatherBook.precipitationBefore(d, waterParams.streams.precipWindowDays), normalPrecipMm(climateProfile, d.month, waterParams.streams.precipWindowDays), waterParams);
+        const mean = q * 3600;
+        const avail = Math.max(0, Math.min(waterParams.streams.maxWithdrawalShare * mean * f, mean * f - waterParams.streams.ecologicalFlowShare * mean));
+        lines.push(`dziś ok. ${f0(mean * f)} m³/h, wolno pobrać ${f0(avail)} m³/h`);
+      }
+      lines.push(hit.line.osm ? 'z mapy OpenStreetMap' : 'wyznaczony z modelu terenu');
+      return { title: hit.line.name, lines };
+    };
     const elevRange = grid.elevationRangeM();
     const weatherBook = new WeatherBook(climateProfile, weatherParamsMain, simSettings.seed, location, Math.round(elevRange.minM), Math.round(elevRange.maxM));
     const waitMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const winterTable = parseWinterClasses(winterClassesJson);
+    const winterDeps = { profile: climateProfile, weatherParams: weatherParamsMain, snowParams: parseSnowParams(snowJson), radiationParams: parseRadiationParams(radiationJson), riding: ridingParams, location };
     game = new GameController({
+      water: waterCtx,
       ep: economyParams,
       gp: guestParams,
       lp: liftParams,
@@ -850,9 +955,23 @@ async function start(): Promise<void> {
           stationWalkRadiusM: guestParams.operation.stationWalkRadiusM,
           foodPoints: hutPoints,
           grid: { cellSizeM: grid.cellSizeM, widthCells: grid.widthCells, heightCells: grid.heightCells },
+          accessibleBases: analysis.accessibleBases,
+          baseCapacityPersons: parkingCapacityPersons(layout, economyParams),
         }),
       setDateTime: (date, hour) => timePanel.setDateTime(date, hour),
       setTraffic: (date, passes) => sim.setTraffic(date, passes),
+      careerSeed: () => {
+        const start = parseIsoDate(economyParams.career.startDate);
+        const r = careerSeed(simSettings.seed, start.month >= 10 ? start.year : start.year, winterTable, winterDeps);
+        console.info(`Ziarno pogody kariery: ${r.seed} (pierwsza zima ${r.days} dni ze śniegiem na ${winterTable.elevationM} m, prób ${r.tries})`);
+        return r.seed;
+      },
+      setWeatherSeed: (seed) => setWeatherSeed(seed),
+      bookFor: (seed) => new WeatherBook(climateProfile, weatherParamsMain, seed, location, Math.round(elevRange.minM), Math.round(elevRange.maxM)),
+      winterRating: (startYear, seed) => {
+        const days = winterSkiDays(seed, startYear, winterTable, winterDeps);
+        return { days, meanDays: winterTable.meanDays, cls: winterClass(days, winterTable), percentile: winterPercentile(days, winterTable), elevationM: winterTable.elevationM, thresholdCm: winterTable.baseThresholdCm };
+      },
       setOperations: (date, ops) => sim.setOperations(date, ops),
       onOps: () => refreshSnowOps(true),
       toast: (text) => buildBar.showToast(text),
@@ -912,6 +1031,7 @@ async function start(): Promise<void> {
         nightPlanDialog.show(st, planPistes(), snowmakingParams, () => game?.preview ?? null, pisteName);
       },
       onGroomer: (typeId, leased) => game?.acquireGroomer(typeId, leased),
+      onMains: (on) => game?.setMainsOn(on),
     });
     snowPanel.setVisible(false);
     function refreshSnowOps(force: boolean): void {
@@ -944,6 +1064,25 @@ async function start(): Promise<void> {
       else if (mode !== 'widok') void game.showStart();
     }
     const devMenu = new DevMenu(document.body);
+
+    /** Etap 6b: treść dymku przy kursorze. */
+    function tipContent(c: { xPx: number; yPx: number }): TipContent | null {
+      const w = camera.screenToWorld(c.xPx, c.yPx);
+      const d = describePoint(grid, w.xM, w.yM, style.flatSlopePercent, lastSnow ? { ...lastSnow, ground: build.groundMap, riding: ridingParams } : null);
+      if (!d.elevation) return null;
+      const lines = [d.elevation, d.slope, d.aspect, d.snow];
+      const cell = grid.cellAt(w.xM, w.yM);
+      if (cell && lastState) {
+        const t = lastState.temperatureC[grid.index(cell.i, cell.j)];
+        if (Number.isFinite(t)) lines.push(`powietrze ${t.toLocaleString('pl-PL', { maximumFractionDigits: 1 })} °C (na tej wysokości, ${String(Math.floor(timePanel.hour)).padStart(2, '0')}:00)`);
+      }
+      const sections: { title: string; lines: string[] }[] = [];
+      const obj = build.describeAt(c.xPx, c.yPx);
+      if (obj) sections.push(obj);
+      const stream = streamAt?.(w.xM, w.yM);
+      if (stream) sections.push(stream);
+      return { lines, sections };
+    }
 
     // ---------------------------------------------------------------- sterowanie
     input.onClick = (x, y) => {
@@ -978,6 +1117,12 @@ async function start(): Promise<void> {
       }
       if (code === 'KeyM') {
         setOverlay(overlay === 'wetBulb' ? 'none' : 'wetBulb');
+        return true;
+      }
+      if (code === 'KeyI') {
+        cursorTip.setEnabled(!cursorTip.enabled);
+        toolbar.setTipActive(cursorTip.enabled);
+        buildBar.showToast(cursorTip.enabled ? 'Dymek przy kursorze włączony.' : 'Dymek przy kursorze wyłączony.');
         return true;
       }
       if (code === 'KeyG') {
@@ -1021,6 +1166,7 @@ async function start(): Promise<void> {
       profile.update(input.cursor);
       opsFrame();
       refreshSnowOps(false);
+      cursorTip.update(input.cursor, performance.now(), () => tipContent(input.cursor!));
       build.update(input.cursor, guestCtl.gameTimeS ?? nowS);
       hud.update(camera, grid, input.cursor, lastSnow ? { ...lastSnow, ground: build.groundMap, riding: ridingParams } : null);
       const wx = lastState?.top.now;

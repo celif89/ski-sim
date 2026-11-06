@@ -32,7 +32,11 @@ export interface SnowPanelHandlers {
   onSnowPlan(): void;
   onNightPlan(): void;
   onGroomer(typeId: string, leased: boolean): void;
+  /** Etap 6b: zakup wody z wodociągu. */
+  onMains?(on: boolean): void;
 }
+
+const KIND_NAMES: Record<string, string> = { intake: 'potok', catchment: 'zlewnia (rowy)', well: 'studnia', mains: 'wodociąg' };
 
 /** Wykres mocy w ciągu doby: słupki (armatki, pompy, reszta) i linia limitu przyłącza. */
 function powerChart(sum: OpsSummary, hour: number): string {
@@ -86,6 +90,8 @@ export class SnowPanel {
     this.body.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-groomer]');
       if (b) h.onGroomer(b.dataset.groomer!, b.dataset.leased === '1');
+      const m = (e.target as HTMLElement).closest<HTMLElement>('[data-mains]');
+      if (m) h.onMains?.(m.dataset.mains === '1');
     });
     this.root.querySelector('.build-toggle')!.addEventListener('click', () => {
       this.collapsed = !this.collapsed;
@@ -118,8 +124,30 @@ export class SnowPanel {
       parts.push(`<div class="build-section">Zbiornik</div>
         ${cap > 0
           ? `<div class="sn-bar" title="${f0(res)} z ${f0(cap)} m³"><span style="width:${(fill * 100).toFixed(1)}%"></span></div>
-             <div class="small">${f0(res)} / ${f0(cap)} m³ (${f0(fill * 100)} %) · dopływ dziś ${pv ? f0(pv.inflowM3) : '–'} m³ (ujęcie ${f0(inf.intakeM3h)} m³/h latem) · zużycie dziś ${pv ? f0(pv.waterM3) : '–'} m³</div>`
+             <div class="small">${f0(res)} / ${f0(cap)} m³ (${f0(fill * 100)} %) · dopływ dziś ${pv ? f0(pv.inflowM3) : '–'} m³ · zużycie dziś ${pv ? f0(pv.waterM3) : '–'} m³</div>`
           : '<div class="muted small">brak zbiornika</div>'}`);
+      // Etap 6b: źródła wody osobno – dziś i od 1 V.
+      if (inf.sources.length) {
+        const today = new Map((pv?.sources ?? []).map((x) => [x.id, x]));
+        const rows = inf.sources
+          .map((src) => {
+            const t = today.get(src.id);
+            const bad = src.problem ? ` class="g-bad"` : '';
+            return `<tr><td><b>${src.name}</b><div class="muted">${KIND_NAMES[src.kind]}</div></td><td${bad}>${t ? t.note : (src.problem ?? '')}</td><td>${t ? `${f0(t.m3)} m³` : '–'}</td><td>${t ? fmtPln(t.costPln) : '–'}</td></tr>`;
+          })
+          .join('');
+        const season = ops?.waterSeason;
+        const seasonRows = season
+          ? Object.entries(season.byKind)
+              .map(([k, b]) => `<tr><td>${KIND_NAMES[k] ?? k}</td><td>${f0(b.m3)} m³</td><td>${fmtPln(b.costPln)}</td><td>${b.m3 > 0 ? `${f1(b.costPln / b.m3)} zł/m³` : '–'}</td></tr>`)
+              .join('')
+          : '';
+        const hasMains = inf.sources.some((x) => x.kind === 'mains');
+        parts.push(`<div class="build-section">Źródła wody</div>
+          <table class="sn-table small"><tr><th>źródło</th><th>dziś</th><th>do zbiornika</th><th>koszt</th></tr>${rows}</table>
+          ${hasMains ? `<div class="small">Wodociąg: ${ops?.mainsOn ? '<b>kupujesz wodę</b>' : 'zakup wyłączony'} <button type="button" data-mains="${ops?.mainsOn ? '0' : '1'}">${ops?.mainsOn ? 'Wyłącz zakup' : 'Włącz zakup'}</button></div>` : ''}
+          ${seasonRows ? `<div class="small muted">Od 1 maja:</div><table class="sn-table small"><tr><th>źródło</th><th>ilość</th><th>koszt</th><th>za m³</th></tr>${seasonRows}</table>` : ''}`);
+      }
       // Energia
       const now = pv?.hourly[Math.min(23, Math.max(0, Math.floor(v.hour)))];
       parts.push(`<div class="build-section">Energia</div>

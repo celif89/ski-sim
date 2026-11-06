@@ -384,9 +384,9 @@
       "source": "odchylenie standardowe liczby dni z opadem z roku na rok – j.w."
     },
     "elevationGradientPercentPer100m": {
-      "value": 3.08,
+      "value": 5.12,
       "unit": "%/100 m",
-      "source": "regresja rocznych sum opadu z 14 posterunków w promieniu 30 km (36.1 mm/100 m, R² = 0.09); literatura dla Karpat: 40–60 mm/100 m (Hess 1965)"
+      "source": "60 mm/100 m na 1172 mm na wysokości odniesienia – górna granica z literatury dla Karpat (40–60 mm/100 m, Hess 1965), wybrana kalibracją do norm pokrywy Łajczaka (1996) na Hali Miziowej; regresja rocznych sum z 14 posterunków w promieniu 30 km dała 36.1 mm/100 m przy R² = 0.09 (za słabe dopasowanie)"
     }
   },
   "humidity": {

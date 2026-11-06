@@ -61,8 +61,12 @@ export interface NetLift {
   stops: { node: number; slopeM: number; xM: number; yM: number; elevM: number }[];
   /** Wierzchołki linii (dół, załamania, góra) z odległością po linii – do rysowania jadących. */
   path: { xM: number; yM: number; slopeM: number }[];
-  /** Można zjechać wyciągiem w dół (gondola). */
+  /** Można zjechać wyciągiem w dół (gondola albo opcja przy kanapie – etap 6b). */
   downhillRiding: boolean;
+  /** Część miejsc dla jadących w dół (1 – gondola; kanapa – limit z lifts.json). */
+  downhillSeatShare: number;
+  /** Etap 6b: z żadnego parkingu nie da się dojść do stacji – wyciąg nie pracuje. */
+  unreachable: boolean;
 }
 
 /** Punkt wsiadania: wyciąg i przystanek (dolna lub pośrednia stacja). */
@@ -94,6 +98,8 @@ export interface NetHub {
   /** Stąd goście przyjeżdżają i tu kończą dzień (baza – parking; bez baz – najniższa dolna stacja). */
   exit: boolean;
   name: string;
+  /** Etap 6b: pojemność parkingu w tym miejscu [osób na dzień] (Infinity – bez limitu). */
+  capacityPersons: number;
 }
 
 export interface GuestNet {
@@ -121,6 +127,9 @@ export interface GuestNetInput {
   /** Punkty z jedzeniem poza bazami (np. schronisko) – węzeł bliżej niż stationWalkRadiusM dostaje jedzenie. */
   foodPoints: (PointM & { name: string })[];
   grid: { cellSizeM: number; widthCells: number; heightCells: number };
+  /** Etap 6b: bazy z dojazdem (brak – wszystkie) i pojemność parkingów [osób] (brak – bez limitu). */
+  accessibleBases?: Set<string> | null;
+  baseCapacityPersons?: Map<string, number> | null;
 }
 
 /** Buduje sieć dla gości z układu ośrodka i jego analizy (etap 4). */
@@ -148,7 +157,7 @@ export function buildGuestNet(input: GuestNetInput): GuestNet {
     if (h === undefined) {
       h = hubs.length;
       hubOf.set(root, h);
-      hubs.push({ nodes: [], xM: 0, yM: 0, boardings: [], downhill: [], outEdges: [], food: false, exit: false, name: '' });
+      hubs.push({ nodes: [], xM: 0, yM: 0, boardings: [], downhill: [], outEdges: [], food: false, exit: false, name: '', capacityPersons: Infinity });
     }
     nodes[i].hub = h;
     hubs[h].nodes.push(i);
@@ -238,7 +247,9 @@ export function buildGuestNet(input: GuestNetInput): GuestNet {
       topElevM: a.ground.length ? a.ground[a.ground.length - 1].elevationM : 0,
       stops: [],
       path: [l.bottom, ...(l.bends ?? []), l.top].map((q, i) => ({ xM: q.xM, yM: q.yM, slopeM: a.pathSlopeM[i] ?? 0 })),
-      downhillRiding: type.downhillRiding,
+      downhillRiding: type.downhillRiding || (l.downhill === true && type.downhillMaxSeatShare > 0),
+      downhillSeatShare: type.downhillRiding ? 1 : l.downhill === true ? type.downhillMaxSeatShare : 0,
+      unreachable: false,
     });
     const li = lifts.length - 1;
     // Przystanki: dolna, pośrednie (węzły „pośrN”), górna.
@@ -256,18 +267,35 @@ export function buildGuestNet(input: GuestNetInput): GuestNet {
         boardings.push({ lift: li, stop: si });
         hubs[h].boardings.push(boardings.length - 1);
       }
-      if (si > 0 && type.downhillRiding) hubs[h].downhill.push({ lift: li, stop: si });
+      if (si > 0 && lifts[li].downhillRiding) hubs[h].downhill.push({ lift: li, stop: si });
     });
   }
 
-  // Bazy: wyjście i jedzenie; bez baz – najniższa dolna stacja.
-  const baseHubs = [...new Set(nodes.filter((n) => n.kind === 'base').map((n) => n.hub))];
+  // Bazy: wyjście i jedzenie; bez baz – najniższa dolna stacja. Etap 6b: tylko bazy z dojazdem;
+  // pojemność parkingów sumowana w miejscu.
+  const acc = input.accessibleBases ?? null;
+  const baseNodes = nodes.filter((n) => n.kind === 'base' && (!acc || acc.has(n.id)));
+  const baseHubs = [...new Set(baseNodes.map((n) => n.hub))];
   for (const h of baseHubs) {
     hubs[h].exit = true;
     hubs[h].food = true;
+    if (input.baseCapacityPersons) {
+      let cap = 0;
+      let limited = false;
+      for (const n of baseNodes) {
+        if (n.hub !== h) continue;
+        const c = input.baseCapacityPersons.get(n.id);
+        if (c !== undefined) {
+          cap += c;
+          limited = true;
+        } else cap = Infinity;
+      }
+      hubs[h].capacityPersons = limited ? cap : Infinity;
+    }
   }
+  const anyBase = nodes.some((n) => n.kind === 'base');
   let entryHubs = baseHubs;
-  if (entryHubs.length === 0 && lifts.length > 0) {
+  if (entryHubs.length === 0 && lifts.length > 0 && !anyBase) {
     // Najniższa dolna stacja (wysokość z analizy wyciągu).
     let best = 0;
     let bestZ = Infinity;
@@ -282,6 +310,40 @@ export function buildGuestNet(input: GuestNetInput): GuestNet {
     const h = nodes[lifts[best].bottom].hub;
     hubs[h].exit = true;
     entryHubs = [h];
+  }
+  // Etap 6b: dostępność z parkingu – wyciąg, do którego stacji nie da się dojść, nie pracuje.
+  if (entryHubs.length > 0 || anyBase) {
+    const seen = new Uint8Array(hubs.length);
+    const queue = [...entryHubs];
+    for (const h of queue) seen[h] = 1;
+    while (queue.length) {
+      const h = queue.pop()!;
+      const visit = (x: number) => {
+        if (!seen[x]) {
+          seen[x] = 1;
+          queue.push(x);
+        }
+      };
+      for (const b of hubs[h].boardings) {
+        const bd = boardings[b];
+        const l = lifts[bd.lift];
+        if (l.closed) continue;
+        for (let si = bd.stop + 1; si < l.stops.length; si++) visit(nodes[l.stops[si].node].hub);
+      }
+      for (const d of hubs[h].downhill) {
+        const l = lifts[d.lift];
+        if (l.closed) continue;
+        for (let si = 0; si < d.stop; si++) visit(nodes[l.stops[si].node].hub);
+      }
+      for (const e of hubs[h].outEdges) if (!pistes[edges[e].piste].closed) visit(nodes[edges[e].to].hub);
+      for (let o = 0; o < hubs.length; o++) if (!seen[o] && Math.hypot(hubs[o].xM - hubs[h].xM, hubs[o].yM - hubs[h].yM) <= r * 1.5) visit(o);
+    }
+    lifts.forEach((l) => {
+      if (!l.stops.slice(0, -1).some((st) => seen[nodes[st.node].hub])) {
+        l.unreachable = true;
+        l.closed = true;
+      }
+    });
   }
   for (const fp of input.foodPoints) {
     for (const h of hubs) if (Math.hypot(h.xM - fp.xM, h.yM - fp.yM) <= r * 1.5) h.food = true;

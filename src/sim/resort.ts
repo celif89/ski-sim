@@ -40,10 +40,131 @@ export interface ResortLayout {
   /** Rurociągi naśnieżania z hydrantami i armatki na hydrantach (etap 7). */
   pipelines?: PipelineDesign[];
   snowGuns?: SnowGunDesign[];
+  /** Etap 6b: drogi dojazdowe do parkingów. */
+  roads?: RoadDesign[];
   /** Kolejne numery nowych obiektów. */
   nextId: number;
   /** Ośrodek otwarty (sezon trwa) – decyduje gracz; zamknięty – nie ma gości. Brak pola = otwarty. */
   resortOpen?: boolean;
+}
+
+/** Droga dojazdowa (etap 6b): łamana od drogi publicznej lub innej drogi do parkingu. */
+export interface RoadDesign {
+  id: string;
+  name: string;
+  points: PointM[];
+}
+
+export interface RoadParams {
+  costPlnPerM: number;
+  widthM: number;
+  maxSlopePercent: number;
+  buildMetersPerDay: number;
+  plowingPlnPerKmPerDay: number;
+  plowingFromMonth: number;
+  plowingToMonth: number;
+  connectRadiusM: number;
+  publicRoadKinds: string[];
+}
+
+export interface RoadAnalysis {
+  lengthM: number;
+  maxSlopePercent: number;
+  costPln: number;
+  buildDays: number;
+  /** Połączona z drogą publiczną (bezpośrednio albo przez inne drogi). */
+  connected: boolean;
+  issues: BuildIssue[];
+}
+
+export function parseRoadParams(raw: unknown): RoadParams {
+  const c = readSection(raw, 'roads', 'data/construction.json');
+  const n = (k: string) => readNumber(c, k, 'data/construction.json', { min: 0 });
+  const kinds = (c.publicRoadKinds as { value?: unknown } | undefined)?.value;
+  if (!Array.isArray(kinds)) throw new Error('data/construction.json: roads.publicRoadKinds – lista');
+  return {
+    costPlnPerM: n('costPlnPerM'),
+    widthM: n('widthM'),
+    maxSlopePercent: n('maxSlopePercent'),
+    buildMetersPerDay: n('buildMetersPerDay'),
+    plowingPlnPerKmPerDay: n('plowingPlnPerKmPerDay'),
+    plowingFromMonth: n('plowingFromMonth'),
+    plowingToMonth: n('plowingToMonth'),
+    connectRadiusM: n('connectRadiusM'),
+    publicRoadKinds: kinds.map(String),
+  };
+}
+
+/** Odległość punktu od łamanej [m]. */
+export function distToPolyline(p: PointM, line: PointM[]): number {
+  let best = Infinity;
+  for (let i = 0; i < line.length; i++) {
+    const a = line[i];
+    const b = line[Math.min(line.length - 1, i + 1)];
+    const dx = b.xM - a.xM;
+    const dy = b.yM - a.yM;
+    const t = Math.min(1, Math.max(0, ((p.xM - a.xM) * dx + (p.yM - a.yM) * dy) / (dx * dx + dy * dy || 1)));
+    best = Math.min(best, Math.hypot(p.xM - a.xM - t * dx, p.yM - a.yM - t * dy));
+  }
+  return best;
+}
+
+/**
+ * Drogi i dojazd do parkingów: długość, nachylenie (z terenu co 10 m), koszt, czas budowy; które drogi
+ * są połączone z drogą publiczną i które parkingi (bazy) mają dojazd. Bez dróg publicznych w danych
+ * (mapa proceduralna, testy) – każdy parking ma dojazd.
+ */
+export function analyzeRoads(layout: ResortLayout, grid: TerrainGrid, rp: RoadParams | null, publicRoads: PointM[][] | null, baseRadiusM: number): { roads: Map<string, RoadAnalysis>; accessibleBases: Set<string> } {
+  const roads = new Map<string, RoadAnalysis>();
+  const all = layout.roads ?? [];
+  for (const r of all) {
+    let length = 0;
+    let maxSlope = 0;
+    const issues: BuildIssue[] = [];
+    for (let i = 0; i < r.points.length - 1; i++) {
+      const a = r.points[i];
+      const b = r.points[i + 1];
+      const segL = Math.hypot(b.xM - a.xM, b.yM - a.yM);
+      const steps = Math.max(1, Math.ceil(segL / 10));
+      let zPrev = grid.sampleElevationM(a.xM, a.yM);
+      for (let s = 1; s <= steps; s++) {
+        const t = s / steps;
+        const z = grid.sampleElevationM(a.xM + (b.xM - a.xM) * t, a.yM + (b.yM - a.yM) * t);
+        if (!Number.isNaN(z) && !Number.isNaN(zPrev)) maxSlope = Math.max(maxSlope, (100 * Math.abs(z - zPrev)) / (segL / steps));
+        zPrev = z;
+      }
+      length += segL;
+    }
+    if (rp && maxSlope > rp.maxSlopePercent) issues.push({ severity: 'warning', message: `droga za stroma: ${Math.round(maxSlope)} % (dopuszczalne ${rp.maxSlopePercent} % – poprowadź serpentynami)`, distanceM: null });
+    roads.set(r.id, { lengthM: length, maxSlopePercent: maxSlope, costPln: rp ? length * rp.costPlnPerM : 0, buildDays: rp ? Math.max(1, Math.round(length / Math.max(1, rp.buildMetersPerDay))) : 1, connected: false, issues });
+  }
+  const accessibleBases = new Set<string>();
+  if (!publicRoads || publicRoads.length === 0 || !rp) {
+    for (const b of layout.bases) accessibleBases.add(b.id);
+    for (const a of roads.values()) a.connected = true;
+    return { roads, accessibleBases };
+  }
+  const nearPublic = (p: PointM, r: number) => publicRoads.some((line) => distToPolyline(p, line) <= r);
+  // Drogi połączone: koniec przy drodze publicznej, potem kolejne przy już połączonych.
+  const connected: RoadDesign[] = [];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const r of all) {
+      if (connected.includes(r)) continue;
+      const ends = [r.points[0], r.points[r.points.length - 1]];
+      if (ends.some((e) => nearPublic(e, rp.connectRadiusM) || connected.some((c) => distToPolyline(e, c.points) <= rp.connectRadiusM) || r.points.some((q) => connected.some((c) => distToPolyline(q, [c.points[0], c.points[c.points.length - 1]]) <= rp.connectRadiusM)))) {
+        connected.push(r);
+        roads.get(r.id)!.connected = true;
+        changed = true;
+      }
+    }
+  }
+  for (const r of all) if (!roads.get(r.id)!.connected) roads.get(r.id)!.issues.push({ severity: 'warning', message: 'droga nie łączy się z drogą publiczną ani z inną drogą – nie prowadzi do niej żaden dojazd', distanceM: null });
+  for (const b of layout.bases) {
+    if (nearPublic(b, baseRadiusM) || connected.some((c) => distToPolyline(b, c.points) <= baseRadiusM)) accessibleBases.add(b.id);
+  }
+  return { roads, accessibleBases };
 }
 
 export function emptyLayout(): ResortLayout {
@@ -90,13 +211,14 @@ export function parseLayout(raw: unknown): ResortLayout {
       towers,
       manualTowers: l.manualTowers === true,
       ...(l.closed === true ? { closed: true } : {}),
+      ...(l.downhill === true ? { downhill: true } : {}),
     });
   }
   for (const p of pistes as Record<string, unknown>[]) {
     if (typeof p.id !== 'string' || !Array.isArray(p.points)) throw new Error('Plik układu ośrodka: uszkodzona trasa');
     const points = (p.points as Record<string, unknown>[]).filter((q) => isPoint(q) && isNum(q.widthM)).map((q) => ({ xM: q.xM as number, yM: q.yM as number, widthM: q.widthM as number }));
     if (points.length < 2) continue;
-    out.pistes.push({ id: p.id, name: typeof p.name === 'string' ? p.name : p.id, points, ...(p.closed === true ? { closed: true } : {}), ...(p.graded === true ? { graded: true } : {}) });
+    out.pistes.push({ id: p.id, name: typeof p.name === 'string' ? p.name : p.id, points, ...(p.closed === true ? { closed: true } : {}), ...(p.graded === true ? { graded: true } : {}), ...(p.catwalk === true ? { catwalk: true } : {}) });
   }
   for (const b of bases as Record<string, unknown>[]) {
     if (typeof b.id === 'string' && isNum(b.xM) && isNum(b.yM)) out.bases.push({ id: b.id, name: typeof b.name === 'string' ? b.name : 'Baza', xM: b.xM, yM: b.yM, ...(typeof b.typeId === 'string' ? { typeId: b.typeId } : {}) });
@@ -112,13 +234,19 @@ export function parseLayout(raw: unknown): ResortLayout {
   for (const pp of pipes) {
     if (typeof pp.id !== 'string' || !Array.isArray(pp.points)) continue;
     const points = (pp.points as unknown[]).filter(isPoint).map((q) => ({ xM: q.xM, yM: q.yM }));
-    if (points.length >= 2) (out.pipelines ??= []).push({ id: pp.id, name: typeof pp.name === 'string' ? pp.name : pp.id, points });
+    if (points.length >= 2) (out.pipelines ??= []).push({ id: pp.id, name: typeof pp.name === 'string' ? pp.name : pp.id, points, ...(pp.supply === true ? { supply: true } : {}) });
   }
   const gunsRaw = Array.isArray(r.snowGuns) ? (r.snowGuns as Record<string, unknown>[]) : [];
   for (const g of gunsRaw) {
     if (typeof g.id === 'string' && typeof g.typeId === 'string' && typeof g.pipelineId === 'string' && isNum(g.hydrant)) (out.snowGuns ??= []).push({ id: g.id, typeId: g.typeId, pipelineId: g.pipelineId, hydrant: g.hydrant });
   }
-  const maxId = [...out.lifts, ...out.pistes, ...out.bases, ...(out.buildings ?? []), ...(out.pipelines ?? []), ...(out.snowGuns ?? [])].reduce((m, o) => Math.max(m, Number(/\d+$/.exec(o.id)?.[0] ?? 0)), 0);
+  const roadsRaw = Array.isArray(r.roads) ? (r.roads as Record<string, unknown>[]) : [];
+  for (const rr of roadsRaw) {
+    if (typeof rr.id !== 'string' || !Array.isArray(rr.points)) continue;
+    const points = (rr.points as unknown[]).filter(isPoint).map((q) => ({ xM: q.xM, yM: q.yM }));
+    if (points.length >= 2) (out.roads ??= []).push({ id: rr.id, name: typeof rr.name === 'string' ? rr.name : rr.id, points });
+  }
+  const maxId = [...out.lifts, ...out.pistes, ...out.bases, ...(out.buildings ?? []), ...(out.pipelines ?? []), ...(out.snowGuns ?? []), ...(out.roads ?? [])].reduce((m, o) => Math.max(m, Number(/\d+$/.exec(o.id)?.[0] ?? 0)), 0);
   out.nextId = Math.max(out.nextId, maxId + 1);
   return out;
 }
@@ -175,6 +303,9 @@ export interface ResortContext {
   shrub: Float32Array | null;
   /** Podłoże terenu (etap 5b) – bez tego brak mapy podłoża i kosztu wyrównania. */
   ground?: GroundParams | null;
+  /** Etap 6b: drogi – parametry i drogi publiczne (OSM); brak – każdy parking ma dojazd. */
+  roads?: RoadParams | null;
+  publicRoads?: PointM[][] | null;
 }
 
 export interface ResortAnalysis {
@@ -187,6 +318,9 @@ export interface ResortAnalysis {
   baseGround: Uint8Array | null;
   ground: Uint8Array | null;
   totals: { costPln: number; buildDays: number; clearedForestM2: number };
+  /** Etap 6b: drogi i parkingi z dojazdem. */
+  roads: Map<string, RoadAnalysis>;
+  accessibleBases: Set<string>;
 }
 
 export function analyzeResort(layout: ResortLayout, ctx: ResortContext): ResortAnalysis {
@@ -216,7 +350,12 @@ export function analyzeResort(layout: ResortLayout, ctx: ResortContext): ResortA
     costPln += a.cost.totalPln;
     buildDays += a.buildDays;
   }
-  return { lifts, pistes, network: buildNetwork(layout, lifts, pistes, ctx.pistes), clearedMask, baseGround, ground, totals: { costPln, buildDays, clearedForestM2 } };
+  const access = analyzeRoads(layout, ctx.grid, ctx.roads ?? null, ctx.publicRoads ?? null, ctx.pistes.baseRadiusM);
+  for (const a of access.roads.values()) {
+    costPln += a.costPln;
+    buildDays += a.buildDays;
+  }
+  return { lifts, pistes, network: buildNetwork(layout, lifts, pistes, ctx.pistes, access.accessibleBases), clearedMask, baseGround, ground, totals: { costPln, buildDays, clearedForestM2 }, ...access };
 }
 
 /** Maska wycinki: pasy pod wyciągami (szerokość z typu) i obrysy tras. */
@@ -301,7 +440,7 @@ function nearestOnAxis(axis: { xM: number; yM: number; distanceM: number; elevat
  * przy górnej stacji wyciągu lub na innej trasie; kończy przy dolnej stacji, w bazie lub na innej
  * trasie. Trasy mijające stacje po drodze też się z nimi łączą.
  */
-export function buildNetwork(layout: ResortLayout, lifts: Map<string, LiftAnalysis>, pistes: Map<string, PisteAnalysis>, p: PisteParams): ResortNetwork {
+export function buildNetwork(layout: ResortLayout, lifts: Map<string, LiftAnalysis>, pistes: Map<string, PisteAnalysis>, p: PisteParams, accessibleBases: Set<string> | null = null): ResortNetwork {
   const nodes: NetworkNode[] = [];
   const edges: NetworkEdge[] = [];
   const issues: NetworkIssue[] = [];
@@ -417,14 +556,70 @@ export function buildNetwork(layout: ResortLayout, lifts: Map<string, LiftAnalys
       edges.push({ from: list[i][1], to: list[i + 1][1], kind: 'piste', objectId: piste.id, fromM: list[i][0], toM: list[i + 1][0], lengthM: list[i + 1][0] - list[i][0] });
     }
   }
-  // Wyciągi bez zjazdu: z górnej stacji nie wychodzi żadna trasa.
+  // Wyciągi bez zjazdu: z górnej stacji nie wychodzi żadna trasa (chyba że można zjechać wyciągiem).
   for (const l of layout.lifts) {
     const top = `${l.id}:góra`;
-    if (!edges.some((e) => e.kind === 'piste' && e.from === top)) {
+    if (!edges.some((e) => e.kind === 'piste' && e.from === top) && !liftRidesDown(l, lifts.get(l.id))) {
       issues.push({ objectId: l.id, severity: 'warning', distanceM: null, message: `wyciąg „${l.name}” nie ma zjazdu – z górnej stacji nie zaczyna się żadna trasa` });
     }
   }
+  // Etap 6b: dostępność z parkingu (parking → wyciągi w górę → trasy w dół, spacer między stacjami).
+  const bases = layout.bases.filter((b) => !accessibleBases || accessibleBases.has(b.id));
+  for (const b of layout.bases) if (accessibleBases && !accessibleBases.has(b.id)) issues.push({ objectId: b.id, severity: 'warning', distanceM: null, message: `„${b.name}” bez dojazdu – zbuduj drogę od drogi publicznej (narzędzie „Droga”)` });
+  if (layout.bases.length > 0) {
+    const reach = reachableNodes(nodes, edges, bases.map((b) => b.id), p.walkRadiusM, (id) => {
+      const l = layout.lifts.find((x) => x.id === id);
+      return !!l && liftRidesDown(l, lifts.get(id));
+    });
+    for (const l of layout.lifts) {
+      if (!reach.has(`${l.id}:dół`) && !(l.bends ?? []).some((_, i) => reach.has(`${l.id}:pośr${i + 1}`))) {
+        issues.push({ objectId: l.id, severity: 'warning', distanceM: null, message: `wyciąg „${l.name}” niedostępny z parkingu – goście nie dojdą do stacji (trasa, droga z parkingiem albo zjazd wyciągiem)` });
+      }
+    }
+    for (const pst of valid) {
+      const first = edges.find((e) => e.kind === 'piste' && e.objectId === pst.id);
+      if (first && !reach.has(first.from)) issues.push({ objectId: pst.id, severity: 'warning', distanceM: 0, message: `trasa „${pst.name}” niedostępna z parkingu – żaden wyciąg ani trasa tam nie prowadzi` });
+    }
+  }
   return { nodes, edges, issues };
+}
+
+/** Czy wyciągiem można zjechać w dół (gondola albo opcja przy kanapie). */
+export function liftRidesDown(l: LiftDesign, a: LiftAnalysis | undefined): boolean {
+  if (!a) return false;
+  return a.type.downhillRiding || (l.downhill === true && a.type.downhillMaxSeatShare > 0);
+}
+
+/**
+ * Węzły osiągalne z węzłów startowych: wyciągi w górę (i w dół, gdy można zjechać), trasy w dół,
+ * spacer między węzłami bliżej niż `walkRadiusM`.
+ */
+export function reachableNodes(nodes: NetworkNode[], edges: NetworkEdge[], start: string[], walkRadiusM: number, ridesDown: (liftId: string) => boolean): Set<string> {
+  const out = new Set<string>(start);
+  const queue = [...start];
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const adj = new Map<string, string[]>();
+  const link = (a: string, b: string) => {
+    let l = adj.get(a);
+    if (!l) adj.set(a, (l = []));
+    l.push(b);
+  };
+  for (const e of edges) {
+    link(e.from, e.to);
+    if (e.kind === 'lift' && ridesDown(e.objectId)) link(e.to, e.from);
+  }
+  while (queue.length) {
+    const id = queue.pop()!;
+    const n = byId.get(id);
+    const next = [...(adj.get(id) ?? [])];
+    if (n) for (const m of nodes) if (!out.has(m.id) && Math.hypot(m.xM - n.xM, m.yM - n.yM) <= walkRadiusM) next.push(m.id);
+    for (const x of next) {
+      if (out.has(x)) continue;
+      out.add(x);
+      queue.push(x);
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- porównanie z OSM

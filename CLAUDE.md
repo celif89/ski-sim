@@ -84,6 +84,10 @@ tests/         testy Vitest
 5. Goście (agenci): start 2 tys. jednocześnie, docelowo ok. 5 tys.
 6. Sezon i ekonomia – pierwsza grywalna wersja.
 7. Naśnieżanie i ratraki.
+7b. Sezon letni: kolej linowa dla pieszych (tylko kanapy i gondole), szlaki piesze, bike park (trasy
+    rysowane jak narciarskie, trudność z nachylenia), tor saneczkowy całoroczny, gastronomia na górze;
+    pogoda letnia (deszcz zmniejsza ruch, burze zatrzymują wyciągi); atrakcje odblokowywane w trakcie
+    kariery.
 8. Anomalie, awarie, ratownicy, reputacja, konkurencja.
 9. Dopracowanie, zapis gry, druga lokalizacja.
 
@@ -389,7 +393,65 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
   - testy `tests/snowmaking.test.ts` (12): Twb ponad progiem → 0, zimniej → więcej; energia ρgh/η;
     zbiornik ≥ 0; limit mocy; stromizna bez wyciągarki nieratrakowana; czas pracy ze wzoru; pryzmy
     blokują odcinek; mokry śnieg ubity przed mrozem → lód; wiatr znosi poza trasę; 30 zim z i bez.
-- **Następny: etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja.**
+- **Etap 6b – zrobiony** (listopad 2026): poprawki po pierwszym rozegranym sezonie.
+  - diagnoza śniegu naturalnego (`npm run snow-diagnosis [N]`, `src/tools/snowDiagnosis.ts`): dni XII–III
+    z bazą ubitą ≥ progu otwarcia; przed poprawkami 750 m: generator 11,3 dnia, model na prawdziwej pogodzie
+    2001–2021 24,0; 1270 m: 32,0 wobec 47,5; zima 2026/27 (seed) – 0 dni na dole (0. percentyl), 13 na
+    1270 m (45.); pomiary IMGW (pokrywa ≥ 30 cm XII–III): Korbielów 13,6, Zawoja 27,4, Laliki 32,4 dnia;
+    przyczyny i poprawki: (1) progi bazy z etapu 5b liczone z gęstością ubitą 420 kg/m³, a naturalny śnieg
+    po przejazdach ma ok. 300 – `riding.naturalCoverDensityKgM3` 300, próg łąki 25 → 21 cm, pniaków 40 → 36;
+    (2) gradient opadu z wysokością 3,08 → 5,12 %/100 m (regresja IMGW R² 0,09 słaba – przyjęte 60 mm/100 m
+    z literatury, Hess 1965; `importClimate.ts` PRECIP_FIT_MIN_R2); (3) las – osłona przed wiatrem
+    (Winstral Sx) z wysokością koron 20 m (`wind.forestCanopyHeightM`) – na polanach mniej wywiewania;
+    po poprawkach 750 m: generator 15,8, prawdziwa pogoda 26,0; 1270 m: 48,9 / 60,0; zima 2026/27 – 24 dni
+    na 1270 m (31. percentyl, „słaba”, ale nie z 20 % najsłabszych); norma Łajczaka dla Hali Miziowej
+    (181 dni z pokrywą, marzec ok. 80 cm) nadal nieosiągnięta – model 139 dni, 29 cm (miejsce nawiewania);
+  - klasy zim (`winterClass.ts`, `data/winter-classes.json` z `npm run snow-diagnosis -- --klasy`, 160 zim
+    generatora na 1100 m, próg bazy 21 cm): średnio 39,3 dnia, kwintyle 0/22/48/68 → „bardzo słaba / słaba /
+    przeciętna / dobra / bardzo dobra”; w raporcie sezonu ocena zimy z liczbą dni ze śniegiem; kariera:
+    `careerSeed` – pierwsza zima nie z 20 % najsłabszych (deterministyczne szukanie ziarna; dalej losowo),
+    `setWeatherSeed` przestawia pogodę w wątku obliczeń;
+  - śnieg w ciągu doby (`SnowWorld.advanceLive`, `SnowSeason.hourlyForcing`): od stanu z końca poprzedniego
+    dnia kroki godzinowe do bieżącej godziny gry (topnienie w dzień, zamarzanie nocą – skorupa po
+    zamarznięciu ≥ 0,5 mm wody stopionej, `quality.meltCrustRefreezeMm`, stan „zlodzony”); pomiar: ok.
+    32–40 ms na godzinę dla całej mapy (180 tys. komórek, 1 wątek), doba ok. 0,8 s – w wątku obliczeń,
+    mapa i panele pytają o godzinę (`SnowStateRequest.hour`); testy `tests/snowLive.test.ts`;
+  - ekonomia ośrodka wielkości Pilska (`npm run pilsko-economy`, układ z OSM: 12 wyciągów, 4 parkingi,
+    17 odcinków tras, garaż i 3 ratraki, przeciętna zima 2052/53): przed korektą +4,4 mln zł (marża 59 % –
+    za mało kosztów stałych); dodane: stała załoga na wyciąg (`permanentStaffPerLift`), administracja
+    10 % przychodu (NSAA: G&A 10,3 %); wynik: 74 dni, 37,7 tys. gości, przychód 5,98 mln (karnety 5,74),
+    koszty 5,73 mln (stała załoga 1,85, utrzymanie 1,31, administracja 0,60, ubezpieczenie 0,28, ratownicy
+    0,25, energia 0,25, przeglądy 0,22…) → +0,25 mln zł; udział płac ok. 44 % – popyt prawdopodobnie
+    za niski (do kalibracji);
+  - dymek przy kursorze (`render/cursorTip.ts`, klawisz I, „Nakładki”, zapamiętany w przeglądarce): teren,
+    śnieg (grubość, baza ubita, stan), temperatura na tej wysokości, obiekt (trasa, wyciąg, budynek, droga,
+    rurociąg, potok z przepływem dziś i dopuszczalnym poborem);
+  - dostępność i dojazd (`resort.ts`: `analyzeRoads`, `reachableNodes`; `guestNetwork.ts`, `guests.ts`):
+    wyciąg pracuje tylko, gdy da się do niego dojść z parkingu z dojazdem (ostrzeżenia „niedostępny
+    z parkingu”, „bez dojazdu”); drogi dojazdowe (narzędzie E, `construction.json` sekcja `roads`: 1500 zł/m,
+    nachylenie ≤ 12 %, odśnieżanie 120 zł/km/dzień XI–III) od dróg publicznych z OSM; pojemność parkingu
+    ogranicza przyjazdy, goście wybierają parking wg obciążenia; zjazd wyciągiem w dół (`downhill` na
+    kanapach i gondolach, `downhillMaxSeatShare` w `lifts.json`, powierzchniowe – nie) gdy dolna trasa
+    zamknięta lub za trudna; nartostrada (narzędzie U, szerokość 6 m, ≤ 15 %); transport do schroniska
+    (budynek `shuttle` – 80 os./dzień, 90 zł, tylko goście gastronomii); testy `tests/access.test.ts`;
+  - woda do naśnieżania (`sim/water.ts`, `data/water.json`): potoki z OSM (`osm-water.json` z `npm run
+    import-osm-resort`, 57 km) uzupełniane z modelu terenu (spływ do najniższego sąsiada po wypełnieniu
+    zagłębień, ciek przy zlewni > 0,25 km²); średni przepływ = zlewnia × opad roczny na średniej wysokości
+    zlewni × 0,53 (odpływ jednostkowy ok. 20 l/(s·km²) jak Koszarawa w Pewli Małej), przepływ dnia ×
+    rytm miesięczny IMGW (`npm run import-hydro` → `data/calibration/imgw-hydro.json`, Ujsoły i Pewel Mała
+    2011–2020: styczeń 0,73, sierpień 0,59, III–IV 1,36 średniego) × czynnik suszy (opad 30 dni wobec
+    normy); pobór tylko ponad przepływ nienaruszalny (0,3 średniego) i ≤ 50 % bieżącego, wspólny limit
+    dla ujęć na tym samym potoku (`allocateIntakes`); ujęcie tylko ≤ 25 m od cieku; rura zasilająca
+    (narzędzie F, 250 zł/m; pod górę energia ρgh/η); wodociąg (`mains`, 10 m³/h, tylko gdy ≥ 15 budynków
+    w promieniu 300 m, 8,07 zł/m³ netto + 19,48 zł/mies. – taryfa MPWiK Żywiec od 18 VII 2026, w gminie
+    Jeleśnia MPWiK prowadzi tylko kanalizację; zakup włączany w panelu); studnie 100 i 200 m (wydajność
+    losowana z ziarnem po wierceniu: mediana 2,5 m³/h × (głęb./100)^0,5, rozrzut log-normalny, 15 % prawie
+    suchych; pompa z głębokości 0,4 × otworu); rowy zbierające spływ do zbiornika (`catchment`, do 30 ha:
+    deszcz + topnienie z modelu śniegu × 0,5); panel „Źródła wody” – dziś i od 1 V, ilość i koszt każdego
+    źródła; `npm run water-check` – sieć cieków, przepływy, czas napełniania; potoki na mapie
+    (`ResortLayer.setStreams`); testy `tests/water.test.ts`; bez modelu wody (testy etapu 7, raport
+    ekonomii) zostaje uproszczony dopływ z ujęcia (`water` w `snowmaking.json`).
+- **Następny: etap 7b – sezon letni (albo etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja).**
 
 Uwagi techniczne:
 - Przed wypchnięciem uruchamiać `npm run build` (nie tylko `npm test` i `tsc -p tsconfig.json`):
@@ -451,6 +513,12 @@ Uwagi techniczne:
   słabych zim nieco za mało (10 % najsłabszych: do 59 dni wobec 53).
 
 ## Na później
+
+- Woda (6b): raport ekonomii nadal z uproszczonym dopływem z ujęcia – przestawić na model potoków
+  (ujęcie na Buczynce, rura zasilająca); współczynnik odpływu, przepływ nienaruszalny, wydajności studni
+  i wodociąg (limit, cena dla Korbielowa) do kalibracji; rowy zlewni bez strat na infiltrację zimą;
+  podgląd doby liczy dopływ ze zlewni na kopii stanu (zapamiętany śnieg zlewni). Ekonomia Pilska: popyt
+  i udział płac do kalibracji (frekwencja prawdziwego Pilska).
 
 - Dopracowanie przewiewania śniegu na podstawie zdjęć Sentinel-2 (mapy pokrywy śnieżnej
   po zamieciach – gdzie śnieg znika z grzbietów i gdzie zalega w zagłębieniach).

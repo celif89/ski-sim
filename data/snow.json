@@ -227,6 +227,11 @@
       "unit": "na jednostkę tangensa",
       "source": "wywiewanie × (1 − k·Sx): na grzbiecie (Sx = −0,1) dwa razy silniejsze, w zagłębieniu (Sx ≥ 0,1) zanika; do kalibracji"
     },
+    "forestCanopyHeightM": {
+      "value": 20,
+      "unit": "m",
+      "source": "wysokość drzewostanu jako przeszkody dla wiatru we wskaźniku osłonięcia Sx (Winstral i in. 2002 liczyli Sx z modelu powierzchni z roślinnością); świerczyny regla górnego w Beskidzie Żywieckim ok. 15–25 m (Babiogórski PN, operaty urządzeniowe); udział lasu w komórce × ta wysokość; do kalibracji"
+    },
     "depositBaseFraction": {
       "value": 0.08,
       "unit": "1/komórka",
@@ -279,6 +284,11 @@
       "unit": "część masy",
       "source": "breja – warstwa powierzchniowa nasycona wodą"
     },
+    "meltCrustRefreezeMm": {
+      "value": 0.5,
+      "unit": "mm wody (zamarzniętej od ostatniego topnienia)",
+      "source": "skorupa roztopowo-zamrozowa (Fierz i in. 2009, klasyfikacja śniegu sezonowego, MFcr): po dniu z odwilżą woda roztopowa zamarza w nocy – rano twardo i ślisko; mięknie, gdy powierzchnia znów topnieje (stok południowy po południu); górna warstwa modelu (kilka cm) zatrzymuje ok. 5 % wody, więc zamarza w niej zwykle 0,5–1 mm – próg do kalibracji"
+    },
     "iceRefreezeMm": {
       "value": 0.5,
       "unit": "mm wody",
@@ -325,20 +335,25 @@
       "unit": "kg/m³",
       "source": "gęstość śniegu ubitego na trasie (jak guests.json: snowImpact.packedDensityKgM3); baza równoważna = SWE / ta gęstość"
     },
+    "naturalCoverDensityKgM3": {
+      "value": 300,
+      "unit": "kg/m³",
+      "source": "średnia gęstość osiadłej sezonowej pokrywy śnieżnej w górach umiarkowanych (Sturm i in. 2010, J. Hydrometeorology 11: klasa „montane forest/maritime” ok. 0,25–0,35 g/cm³) – do przeliczenia progów podawanych jako grubość pokrywy na bazę ubitą"
+    },
     "minBaseGradedCm": {
       "value": 15,
       "unit": "cm bazy ubitej",
       "source": "łąka wyrównana bez kamieni: zwarta pokrywa ok. 20 cm wystarcza do pierwszego przygotowania trasy (umowa ze szwajcarskiego sporu o przygotowanie trasy, Blick 2011: 40 cm pokrywy albo zwarte 20 cm; Snoqualmie: wyrównany latem stok wymaga mniej); po ubiciu ok. 15 cm; do kalibracji"
     },
     "minBaseMeadowCm": {
-      "value": 25,
+      "value": 21,
       "unit": "cm bazy ubitej",
-      "source": "łąka naturalna: 30 cm pokrywy uznawane za wystarczające (Umweltbundesamt, wskaźnik TOU-I-2), 30–45 cm ubitego śniegu (Chestnut Mountain); po ubiciu ok. 25 cm; do kalibracji"
+      "source": "łąka naturalna: 30 cm pokrywy uznawane za wystarczające (Umweltbundesamt, wskaźnik TOU-I-2), 30–45 cm ubitego śniegu (Chestnut Mountain); źródła podają grubość pokrywy osiadłej – baza = 30 cm × naturalCoverDensityKgM3 / packedDensityKgM3 = 30 × 300 / 420 ≈ 21 cm (etap 6b; wcześniej 25 – przeliczenie zakładało gęstszą pokrywę); do kalibracji"
     },
     "minBaseStumpsCm": {
-      "value": 40,
+      "value": 36,
       "unit": "cm bazy ubitej",
-      "source": "przecinka z pniakami: jak dobre warunki 50 cm (Umweltbundesamt, TOU-I-2) – pniaki przebijają cieńszą pokrywę; do kalibracji"
+      "source": "przecinka z pniakami: jak dobre warunki 50 cm pokrywy (Umweltbundesamt, TOU-I-2) – pniaki przebijają cieńszą pokrywę; 50 × 300 / 420 ≈ 36 cm bazy (etap 6b; wcześniej 40); do kalibracji"
     },
     "minBaseRockyCm": {
       "value": 70,

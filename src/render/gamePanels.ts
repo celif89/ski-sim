@@ -5,6 +5,7 @@
 import type { DayRecord, Flows, GameState, Loan, SeasonReport } from '../sim/economy';
 import { COST_KEYS, FLOW_NAMES, REVENUE_KEYS, fmtPln, sumCosts, sumRevenue } from '../sim/economy';
 import type { EconomyParams, OpeningHours, PassPrices } from '../sim/economyParams';
+import { WINTER_CLASS_NAMES } from '../sim/winterClass';
 
 const f0 = (v: number) => Math.round(v).toLocaleString('pl-PL');
 const f1 = (v: number) => v.toLocaleString('pl-PL', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -265,6 +266,7 @@ export class SeasonReportView extends Modal {
         <div><b>${f0(r.guests)}</b><span>gości</span></div>
         <div><b>${r.meanRating === null ? '–' : f1(r.meanRating)}</b><span>średnia ocena gości</span></div>
         <div><b>${f1(r.reputationEnd)} ★</b><span>reputacja</span></div>
+        ${r.winter ? `<div title="Dni 1 XII – 31 III z bazą ubitą ≥ ${r.winter.thresholdCm} cm ze śniegu naturalnego na otwartym terenie na ${r.winter.elevationM} m (model w punkcie), na tle 160 zim z generatora pogody"><b>${WINTER_CLASS_NAMES[r.winter.cls]}</b><span>zima: ${r.winter.days} dni ze śniegiem (średnio ${f0(r.winter.meanDays)}; ${f0(r.winter.percentile * 100)}. percentyl)</span></div>` : ''}
       </div>
       ${daysChart(r.days)}
       ${best && best.guests > 0 ? `<div class="muted small">Najlepszy dzień: ${best.date} (${best.label}) – ${f0(best.guests)} gości.</div>` : ''}

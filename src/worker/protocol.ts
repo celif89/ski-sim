@@ -94,6 +94,8 @@ export interface SnowStateRequest {
   type: 'snowState';
   requestId: number;
   date: CalendarDate;
+  /** Etap 6b: godzina dnia (śnieg na żywo, kroki godzinowe); brak – stan na koniec dnia. */
+  hour?: number;
 }
 
 /** Suma dobowa promieniowania. */
@@ -147,7 +149,7 @@ export interface SnowReadyMessage {
 
 export interface SnowProgressMessage {
   type: 'snowProgress';
-  phase: 'radiation' | 'days';
+  phase: 'radiation' | 'days' | 'hours';
   fraction: number;
   date?: CalendarDate;
 }
@@ -164,6 +166,10 @@ export interface SnowStateMessage {
   pileMm: Float32Array;
   techMm: Float32Array;
   liquidMm: Float32Array;
+  /** Etap 6b: godzina stanu na żywo (brak – koniec dnia). */
+  hour?: number;
+  /** Czas liczenia kroków godzinowych tego pytania [ms] (pomiar wydajności). */
+  liveMs?: number;
 }
 
 export interface WorkerErrorMessage {

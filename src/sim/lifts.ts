@@ -49,6 +49,8 @@ export interface LiftType {
   bendFootprintM: number;
   /** Można zjechać wyciągiem w dół (gondola). */
   downhillRiding: boolean;
+  /** Etap 6b: jaka część miejsc może wozić gości w dół (opcja przy wyciągu; 0 – niemożliwe). */
+  downhillMaxSeatShare: number;
 }
 
 export interface LiftCommonParams {
@@ -119,6 +121,7 @@ export function parseLiftParams(raw: unknown): LiftParams {
       allowsMidStation: n(e, 'allowsMidStation', { min: 0, max: 1 }) === 1,
       bendFootprintM: n(e, 'bendFootprintM', { min: 0 }),
       downhillRiding: n(e, 'downhillRiding', { min: 0, max: 1 }) === 1,
+      downhillMaxSeatShare: n(e, 'downhillMaxSeatShare', { min: 0, max: 1 }),
     } satisfies LiftType;
   });
   for (const t of types) if (t.towerMaxHeightM < t.towerMinHeightM) throw new Error(`${FILE}: ${t.id} – towerMaxHeightM < towerMinHeightM`);
@@ -160,6 +163,8 @@ export interface LiftDesign {
    * odchylające (powierzchniowe); mid – stacja pośrednia z wsiadaniem i wysiadaniem.
    */
   bends?: LiftBend[];
+  /** Etap 6b: zjazd wyciągiem w dół (kanapy, gondole – opcja; najwyżej downhillMaxSeatShare miejsc). */
+  downhill?: boolean;
 }
 
 export interface LiftBend extends PointM {

@@ -26,7 +26,7 @@ export function createSnowDomain(grid: TerrainGrid, forest: Float32Array, shrub:
     elevationM: grid.elevationM,
     forest,
     shrub,
-    shelter: computeShelter(grid.elevationM, grid.widthCells, grid.heightCells, grid.cellSizeM, p.exposureDistanceM),
+    shelter: computeShelter(grid.elevationM, grid.widthCells, grid.heightCells, grid.cellSizeM, p.exposureDistanceM, Float32Array.from(forest, (f) => f * p.forestCanopyHeightM)),
   };
 }
 
@@ -242,6 +242,57 @@ export class SnowSeason {
       });
     }
     return out;
+  }
+
+  /**
+   * Warunki jednej godziny dnia `index` (etap 6b: śnieg na żywo w ciągu dnia gry). Promieniowanie
+   * podane z zewnątrz – chwilowe nasłonecznienie z cieniami i chmurami (Environment) w środku godziny.
+   */
+  hourlyForcing(index: number, hour: number, shortwaveWm2: Float32Array | null): SnowStepForcing {
+    const { weather, profile, weatherParams: wp, location, solar } = this.o;
+    const day = weather[index];
+    const prev = weather[Math.max(0, index - 1)];
+    const next = weather[Math.min(weather.length - 1, index + 1)];
+    const zLow = solar.zLowM;
+    const zHigh = solar.zHighM;
+    const dim = daysInMonth(day.date.year, day.date.month);
+    const growth = interpolateMonthly(profile.wind.growthPer1000m, day.date.month, day.date.day, dim);
+    let tLow = 0;
+    let tHigh = 0;
+    let rh = 0;
+    let wind = 0;
+    const samples = 3;
+    for (let s = 0; s < samples; s++) {
+      const h = hour + (s + 0.5) / samples;
+      const lo = hourlyAt(prev, day, next, h, zLow, profile, wp, location);
+      const hi = hourlyAt(prev, day, next, h, zHigh, profile, wp, location);
+      tLow += lo.temperatureC / samples;
+      tHigh += hi.temperatureC / samples;
+      rh += lo.humidityPercent / samples;
+      wind += lo.windMs / samples;
+    }
+    const precipHours = day.wet ? overlap(hour, hour + 1, day.precipitationStartHour, day.precipitationStartHour + day.precipitationDurationHours) : 0;
+    const precipRefMm = day.wet && day.precipitationDurationHours > 0 ? (day.precipitationMm * precipHours) / day.precipitationDurationHours : 0;
+    const cloud = precipHours > 0 ? Math.max(day.cloudFraction, wp.precipitationCloudFraction * precipHours + day.cloudFraction * (1 - precipHours)) : day.cloudFraction;
+    let any = false;
+    if (shortwaveWm2) for (let k = 0; k < shortwaveWm2.length && !any; k++) if (shortwaveWm2[k] > 0) any = true;
+    return {
+      durationS: 3600,
+      tempAtRefC: tLow,
+      tempGradientCPerM: (tHigh - tLow) / dz0(zHigh, zLow),
+      refElevationM: zLow,
+      humidityPercent: rh,
+      windRefMs: wind * Math.exp((-growth * (zLow - profile.referenceElevationM)) / 1000),
+      windRefElevationM: profile.referenceElevationM,
+      windGrowthPer1000m: growth,
+      cloudFraction: cloud,
+      precipRefMm,
+      precipRefElevationM: profile.precipitation.referenceElevationM,
+      precipGradientPerM: profile.precipitation.elevationGradientPercentPer100m / 100 / 100,
+      snowMaxTemperatureC: wp.snowMaxTemperatureC,
+      rainMinTemperatureC: wp.rainMinTemperatureC,
+      shortwaveWm2: any ? shortwaveWm2 : null,
+    };
   }
 
   /** Liczy jeden dzień (kroki + przewiewanie). */

@@ -42,6 +42,10 @@ export interface PisteParams {
   osmPisteWidthM: number;
   osmChainToleranceM: number;
   osmDifficultyToClass: Record<string, string>;
+  /** Etap 6b: spacer między stacjami i parkingiem [m]; nartostrada: szerokość [m] i limit nachylenia [%]. */
+  walkRadiusM: number;
+  catwalkWidthM: number;
+  catwalkMaxSlopePercent: number;
 }
 
 export function parsePisteParams(raw: unknown): PisteParams {
@@ -80,6 +84,9 @@ export function parsePisteParams(raw: unknown): PisteParams {
     osmPisteWidthM: n(osm, 'pisteWidthM', { min: 1 }),
     osmChainToleranceM: n(osm, 'chainToleranceM', { min: 0 }),
     osmDifficultyToClass: map as Record<string, string>,
+    walkRadiusM: n(net, 'walkRadiusM', { min: 0 }),
+    catwalkWidthM: n(readSection(raw, 'catwalk', FILE), 'widthM', { min: 1 }),
+    catwalkMaxSlopePercent: n(readSection(raw, 'catwalk', FILE), 'maxSlopePercent', { min: 0 }),
   };
 }
 
@@ -103,6 +110,8 @@ export interface PisteDesign {
   closed?: boolean;
   /** Teren wyrównany przy budowie (usunięte kamienie i pniaki, niwelacja) – podłoże „łąka wyrównana”. */
   graded?: boolean;
+  /** Etap 6b: nartostrada – łatwy łącznik (szerokość i limit nachylenia z pistes.json, sekcja catwalk). */
+  catwalk?: boolean;
 }
 
 export interface AxisSample extends PointM {
@@ -332,6 +341,7 @@ export function analyzePiste(design: PisteDesign, ctx: PisteContext): PisteAnaly
   const bottom = valid[valid.length - 1]?.elevationM ?? Number.NaN;
   const hard = valid.length >= 2 ? hardestSegment(valid, p.segmentLengthM, p.profileSegmentM) : { slopePercent: 0, atM: 0, uphillPercent: 0 };
   const classIndex = pisteClassIndex(hard.slopePercent, p.classes);
+  if (design.catwalk && hard.slopePercent > p.catwalkMaxSlopePercent) issues.push({ severity: 'warning', message: `nartostrada za stroma: ${fmt0(hard.slopePercent)} % (łatwy łącznik – do ${fmt0(p.catwalkMaxSlopePercent)} %)`, distanceM: null });
   if (hard.uphillPercent > p.uphillWarningPercent) issues.push({ severity: 'warning', message: `odcinek pod górę: ${fmt0(hard.uphillPercent)} % na ${fmt0(p.segmentLengthM)} m – narciarze będą musieli podchodzić`, distanceM: null });
 
   // Profil: odcinki profileSegmentM kolorowane nachyleniem.

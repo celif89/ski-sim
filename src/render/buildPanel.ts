@@ -8,7 +8,7 @@ import type { PisteParams } from '../sim/pistes';
 import type { RealPisteComparison, ResortAnalysis, ResortLayout } from '../sim/resort';
 import type { ThinSegment } from '../sim/snowRiding';
 
-export type BuildTool = 'select' | 'lift' | 'pisteBrush' | 'pisteAxis' | 'base' | 'pipeline' | 'gun';
+export type BuildTool = 'select' | 'lift' | 'pisteBrush' | 'pisteAxis' | 'base' | 'pipeline' | 'supply' | 'gun' | 'road' | 'catwalk';
 
 export interface BuildPanelHandlers {
   onTool(tool: BuildTool): void;
@@ -22,7 +22,7 @@ export interface BuildPanelHandlers {
   onClearAll(): void;
   onToggleNetwork(): void;
   onToggleReality(): void;
-  onSelect(kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun', id: string): void;
+  onSelect(kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road', id: string): void;
   /** Nowe trasy z wyrównaniem terenu (koszt, łąka wyrównana – mniej śniegu potrzeba). */
   onGradeNew(on: boolean): void;
   /** Etap 6: typ budynku do postawienia. */
@@ -42,7 +42,7 @@ export interface BuildPanelState {
   showReality: boolean;
   layout: ResortLayout;
   analysis: ResortAnalysis;
-  selection: { kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun'; id: string } | null;
+  selection: { kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road'; id: string } | null;
   real: RealPisteComparison[] | null;
   message: string;
   gradeNew: boolean;
@@ -62,7 +62,10 @@ const TOOLS: { tool: BuildTool; key: string; label: string; title: string }[] = 
   { tool: 'lift', key: 'L', label: 'Wyciąg', title: 'Kliknij dolną stację, potem górną. Esc – anuluj' },
   { tool: 'pisteBrush', key: 'T', label: 'Trasa – pędzel', title: 'Przeciągnij myszą od góry do dołu (przesuwanie mapy: prawy przycisk albo klawisze). [ ] – szerokość' },
   { tool: 'pisteAxis', key: 'O', label: 'Trasa – oś', title: 'Klikaj kolejne punkty osi trasy; podwójne kliknięcie lub Enter – koniec, Backspace – cofnij punkt, Esc – anuluj' },
+  { tool: 'catwalk', key: 'U', label: 'Nartostrada', title: 'Łatwa trasa łącznikowa (wąska, łagodna) – klikaj punkty osi, Enter – koniec' },
+  { tool: 'road', key: 'E', label: 'Droga', title: 'Droga dojazdowa do parkingu: od drogi publicznej (szarej) albo innej drogi; koszt za metr, zimą odśnieżanie' },
   { tool: 'pipeline', key: 'H', label: 'Rurociąg', title: 'Rurociąg naśnieżania z hydrantami: klikaj punkty od pompowni wzdłuż trasy, Enter – koniec. Wykop tylko latem' },
+  { tool: 'supply', key: 'F', label: 'Rura zasilająca', title: 'Rura zasilająca: od źródła wody (ujęcie, studnia, wodociąg) do zbiornika; pod górę – pompa (energia). Wykop tylko latem' },
   { tool: 'gun', key: 'J', label: 'Armatka', title: 'Armatka lub lanca na hydrancie: kliknij kropkę na rurociągu' },
   { tool: 'base', key: 'B', label: 'Budynek', title: 'Parking (baza – tu przyjeżdżają goście), gastronomia, wypożyczalnia, szkółka – wybierz typ i kliknij na mapie' },
 ];

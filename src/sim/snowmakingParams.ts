@@ -21,7 +21,11 @@ export interface GunType {
   throwM: number;
 }
 
-export type InfraKind = 'intake' | 'reservoir' | 'pump' | 'grid' | 'garage' | 'anchor';
+/**
+ * Rodzaje budynków; `capacity` znaczy: ujęcie, wodociąg, pompownia – m³/h; zbiornik – m³; przyłącze – kW;
+ * garaż – miejsca; kotwa – długość liny m; studnia – głębokość m; rowy – największa zlewnia m².
+ */
+export type InfraKind = 'intake' | 'mains' | 'well' | 'catchment' | 'reservoir' | 'pump' | 'grid' | 'garage' | 'anchor';
 
 export interface InfraType {
   id: string;
@@ -57,7 +61,7 @@ export interface SnowmakingParams {
   };
   pumping: { efficiency: number; pipeLossMPerKm: number; waterDensityKgM3: number; gravityMs2: number };
   energy: { nightTariffFactor: number; nightStartH: number; nightEndH: number };
-  pipe: { costPlnPerM: number; metersPerDay: number; hydrantSpacingM: number; hydrantCostPln: number; trenchFromMonth: number; trenchToMonth: number; connectRadiusM: number };
+  pipe: { costPlnPerM: number; supplyCostPlnPerM: number; metersPerDay: number; hydrantSpacingM: number; hydrantCostPln: number; trenchFromMonth: number; trenchToMonth: number; connectRadiusM: number };
   snow: {
     densityAtStartKgM3: number;
     densityColdKgM3: number;
@@ -114,7 +118,7 @@ function list(raw: Sec, key: string): Sec[] {
   return v as Sec[];
 }
 
-const KINDS: InfraKind[] = ['intake', 'reservoir', 'pump', 'grid', 'garage', 'anchor'];
+const KINDS: InfraKind[] = ['intake', 'mains', 'well', 'catchment', 'reservoir', 'pump', 'grid', 'garage', 'anchor'];
 
 export function parseSnowmakingParams(raw: unknown): SnowmakingParams {
   const r = raw as Sec;
@@ -145,7 +149,7 @@ export function parseSnowmakingParams(raw: unknown): SnowmakingParams {
     water: readAll(wa, ['intakeSummerM3h', 'intakeWinterFactor', 'intakeDryFactorMin', 'normalPrecipMmPerDay', 'precipWindowDays', 'waterFeePlnPerM3', 'fillMonthsFrom', 'fillMonthsTo'] as const, { min: 0 }),
     pumping: readAll(pu, ['efficiency', 'pipeLossMPerKm', 'waterDensityKgM3', 'gravityMs2'] as const, { min: 0 }),
     energy: readAll(en, ['nightTariffFactor', 'nightStartH', 'nightEndH'] as const, { min: 0 }),
-    pipe: readAll(pi, ['costPlnPerM', 'metersPerDay', 'hydrantSpacingM', 'hydrantCostPln', 'trenchFromMonth', 'trenchToMonth', 'connectRadiusM'] as const, { min: 0 }),
+    pipe: readAll(pi, ['costPlnPerM', 'supplyCostPlnPerM', 'metersPerDay', 'hydrantSpacingM', 'hydrantCostPln', 'trenchFromMonth', 'trenchToMonth', 'connectRadiusM'] as const, { min: 0 }),
     snow: {
       ...readAll(sn, ['densityAtStartKgM3', 'densityColdKgM3', 'liquidFractionAtStart', 'waterLossFraction', 'pileThresholdMm', 'groomedDensityHardKgM3', 'groomedDensityWetKgM3', 'wetSnowLiquidFraction', 'throwSpreadM', 'driftPerMs', 'autoFromMonth', 'autoToMonth'] as const, { min: 0 }),
       densityColdWetBulbC: readNumber(sn, 'densityColdWetBulbC', FILE),

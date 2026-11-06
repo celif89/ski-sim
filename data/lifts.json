@@ -181,6 +181,11 @@
         "value": 0,
         "unit": "0/1",
         "source": "zjazd wyciągiem w dół niedozwolony – bez otwartej trasy w dół wyciąg nie pracuje"
+      },
+      "downhillMaxSeatShare": {
+        "value": 0,
+        "unit": "część miejsc",
+        "source": "wyciąg powierzchniowy – zjazd w dół niemożliwy"
       }
     },
     {
@@ -316,6 +321,11 @@
         "value": 0,
         "unit": "0/1",
         "source": "zjazd wyciągiem w dół niedozwolony – bez otwartej trasy w dół wyciąg nie pracuje"
+      },
+      "downhillMaxSeatShare": {
+        "value": 0,
+        "unit": "część miejsc",
+        "source": "wyciąg powierzchniowy – zjazd w dół niemożliwy"
       }
     },
     {
@@ -451,6 +461,11 @@
         "value": 0,
         "unit": "0/1",
         "source": "zjazd wyciągiem w dół niedozwolony – bez otwartej trasy w dół wyciąg nie pracuje"
+      },
+      "downhillMaxSeatShare": {
+        "value": 0,
+        "unit": "część miejsc",
+        "source": "wyciąg powierzchniowy – zjazd w dół niemożliwy"
       }
     },
     {
@@ -576,6 +591,11 @@
         "value": 0,
         "unit": "0/1",
         "source": "zjazd wyciągiem w dół niedozwolony – bez otwartej trasy w dół wyciąg nie pracuje"
+      },
+      "downhillMaxSeatShare": {
+        "value": 0.5,
+        "unit": "część miejsc",
+        "source": "kanapa: zjazd w dół (opcja przy wyciągu) – najwyżej połowa krzesełek, reszta wraca pusta dla wsiadających na górze; do kalibracji"
       }
     },
     {
@@ -701,6 +721,11 @@
         "value": 0,
         "unit": "0/1",
         "source": "zjazd wyciągiem w dół niedozwolony – bez otwartej trasy w dół wyciąg nie pracuje"
+      },
+      "downhillMaxSeatShare": {
+        "value": 0.5,
+        "unit": "część miejsc",
+        "source": "kanapa: zjazd w dół (opcja przy wyciągu) – najwyżej połowa krzesełek, reszta wraca pusta dla wsiadających na górze; do kalibracji"
       }
     },
     {
@@ -826,6 +851,11 @@
         "value": 0,
         "unit": "0/1",
         "source": "zjazd wyciągiem w dół niedozwolony – bez otwartej trasy w dół wyciąg nie pracuje"
+      },
+      "downhillMaxSeatShare": {
+        "value": 0.5,
+        "unit": "część miejsc",
+        "source": "kanapa: zjazd w dół (opcja przy wyciągu) – najwyżej połowa krzesełek, reszta wraca pusta dla wsiadających na górze; do kalibracji"
       }
     },
     {
@@ -951,6 +981,11 @@
         "value": 0,
         "unit": "0/1",
         "source": "zjazd wyciągiem w dół niedozwolony – bez otwartej trasy w dół wyciąg nie pracuje"
+      },
+      "downhillMaxSeatShare": {
+        "value": 0.5,
+        "unit": "część miejsc",
+        "source": "kanapa: zjazd w dół (opcja przy wyciągu) – najwyżej połowa krzesełek, reszta wraca pusta dla wsiadających na górze; do kalibracji"
       }
     },
     {
@@ -1076,6 +1111,11 @@
         "value": 1,
         "unit": "0/1",
         "source": "gondolą można zjechać w dół (kabiny zamknięte) – wyciąg pracuje nawet bez otwartej trasy w dół"
+      },
+      "downhillMaxSeatShare": {
+        "value": 1,
+        "unit": "część miejsc",
+        "source": "gondola – kabiny zamknięte, wszystkie miejsca mogą jechać w dół"
       }
     }
   ]

@@ -12,6 +12,8 @@ import climateJson from '../../data/climate/pilsko.json';
 import constructionJson from '../../data/construction.json';
 import economyJson from '../../data/economy.json';
 import snowmakingJson from '../../data/snowmaking.json';
+import winterClassesJson from '../../data/winter-classes.json';
+import { WINTER_CLASS_NAMES, careerSeed, parseWinterClasses, winterClass, winterSkiDays } from '../sim/winterClass';
 import guestsJson from '../../data/guests.json';
 import liftsJson from '../../data/lifts.json';
 import pistesJson from '../../data/pistes.json';
@@ -92,6 +94,14 @@ const center = puwg92ToLatLon(full.georef!.westEastingM + full.widthM / 2, full.
 const location = { latDeg: center.latDeg, lonDeg: center.lonDeg, timeZone: def.timeZone };
 
 // ------------------------------------------------------------------ parametry
+const winterTable = parseWinterClasses(winterClassesJson);
+const winterDeps = { profile: parseClimateProfile(climateJson), weatherParams: parseWeatherParams(wxJson), snowParams: parseSnowParams(snowJson), radiationParams: parseRadiationParams(radiationJson), riding: parseRidingParams(snowJson), location };
+/** Kariera: pierwsza zima nie z najsłabszych 20 % (jak w grze). */
+const GAME_SEED = careerSeed(settings.seed, 2026, winterTable, winterDeps).seed;
+const winterLabel = (startYear: number) => {
+  const d = winterSkiDays(GAME_SEED, startYear, winterTable, winterDeps);
+  return `${WINTER_CLASS_NAMES[winterClass(d, winterTable)]} (${d} dni)`;
+};
 const lp = parseLiftParams(liftsJson);
 const pp = parsePisteParams(pistesJson);
 const gp = parseGuestParams(guestsJson);
@@ -144,7 +154,7 @@ const game = new HeadlessGame({
   ground: parseGroundParams(constructionJson),
   riding,
   economy: ep,
-  seed: settings.seed,
+  seed: GAME_SEED,
   location,
   mode: 'career',
   startDate: { year: 2026, month: 5, day: 1 },
@@ -288,7 +298,7 @@ const seasonName = (s: SeasonReport) => `${s.startYear}/${String((s.startYear + 
 const opResult = (s: SeasonReport) => sumRevenue(s.flows) - sumCosts(s.flows);
 const rows = hist
   .map(
-    (s) => `<tr><td>${seasonName(s)}</td><td>${s.openDays}</td><td>${s.guests.toLocaleString('pl-PL')}</td><td>${s.meanRating === null ? '–' : fmt(s.meanRating, 2)}</td><td>${fmtPln(sumRevenue(s.flows))}</td><td>${fmtPln(sumCosts(s.flows))}</td><td class="${opResult(s) >= 0 ? 'ok' : 'bad'}">${fmtPln(opResult(s))}</td><td>${fmtPln(s.flows.construction)}</td><td>${fmtPln(s.balanceEnd)}</td><td>${fmt(s.reputationEnd, 2)}</td></tr>`,
+    (s) => `<tr><td>${seasonName(s)}</td><td>${s.openDays}</td><td>${s.guests.toLocaleString('pl-PL')}</td><td>${s.meanRating === null ? '–' : fmt(s.meanRating, 2)}</td><td>${fmtPln(sumRevenue(s.flows))}</td><td>${fmtPln(sumCosts(s.flows))}</td><td class="${opResult(s) >= 0 ? 'ok' : 'bad'}">${fmtPln(opResult(s))}</td><td>${fmtPln(s.flows.construction)}</td><td>${fmtPln(s.balanceEnd)}</td><td>${fmt(s.reputationEnd, 2)}</td><td>${winterLabel(s.startYear)}</td></tr>`,
   )
   .join('');
 const n = hist.length;
@@ -469,8 +479,8 @@ table{border-collapse:collapse;width:100%;font-size:13.5px;font-variant-numeric:
 <p>Ocena: ${totalOp > invest ? 'ośrodek <b>zwraca inwestycję</b> w ciągu dziesięciu lat' : totalOp > 0 ? 'ośrodek <b>zarabia na działalności</b>, ale w 10 lat nie zwraca całej inwestycji' : 'ośrodek <b>traci na działalności</b> – bez naśnieżania sezon jest za krótki'}; najlepszy sezon ${seasonName(best)} (${best.guests.toLocaleString('pl-PL')} gości, ${best.openDays} dni), najsłabszy ${seasonName(worst)} (${worst.guests.toLocaleString('pl-PL')} gości, ${worst.openDays} dni). Liczba dni otwartych zależy wprost od śniegu naturalnego.</p>
 
 <h2>1. Sezon po sezonie</h2>
-<div class="card table-wrap"><table><thead><tr><th>sezon</th><th>dni otw.</th><th>goście</th><th>ocena</th><th>przychody</th><th>koszty</th><th>wynik</th><th>budowa</th><th>saldo na koniec</th><th>reputacja</th></tr></thead><tbody>${rows}</tbody></table>
-<p class="small muted">Rok gry od 1 maja do 30 kwietnia. Wynik = przychody − koszty działalności (bez budowy i kredytu). Saldo zawiera wydatki na budowę.</p></div>
+<div class="card table-wrap"><table><thead><tr><th>sezon</th><th>dni otw.</th><th>goście</th><th>ocena</th><th>przychody</th><th>koszty</th><th>wynik</th><th>budowa</th><th>saldo na koniec</th><th>reputacja</th><th>zima</th></tr></thead><tbody>${rows}</tbody></table>
+<p class="small muted">Rok gry od 1 maja do 30 kwietnia. Wynik = przychody − koszty działalności (bez budowy i kredytu). Saldo zawiera wydatki na budowę. Zima – ocena na tle 160 zim generatora: liczba dni 1 XII – 31 III ze śniegiem naturalnym (baza ubita ≥ ${winterTable.baseThresholdCm} cm na otwartym terenie, ${winterTable.elevationM} m; średnio ${fmt(winterTable.meanDays, 0)} dni).</p></div>
 <div class="grid2" style="margin-top:16px">
 <div class="card"><b>Goście w sezonie</b>${barChart(hist.map((s) => s.guests), hist.map((s) => seasonName(s)), 'osób', 'var(--c1)')}</div>
 <div class="card"><b>Wynik działalności</b>${barChart(hist.map((s) => opResult(s) / 1000), hist.map((s) => seasonName(s)), 'tys. zł', 'var(--ok)')}</div>

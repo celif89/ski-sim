@@ -8,7 +8,8 @@
  * jedno zapytanie zwraca najwyżej 50 tys. punktów. Surowe kafle w .cache/osm (poza repozytorium).
  * Licencja danych: ODbL, © współtwórcy OpenStreetMap.
  *
- * Wynik: data/maps/<mapa>/osm-resort.json – linie w PUWG 1992 [E, N].
+ * Wynik: data/maps/<mapa>/osm-resort.json – linie w PUWG 1992 [E, N]; osm-context.json – otoczenie
+ * (budynki, drogi, parkingi, nazwy); osm-water.json – cieki (waterway=stream/river, etap 6b).
  */
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -191,6 +192,42 @@ async function main(): Promise<void> {
     ) + '\n',
   );
   log(`Zapisano ${join(dir, 'osm-context.json')}.`);
+
+  // Cieki wodne (etap 6b): potoki i rzeki – do modelu wody do naśnieżania i na mapę.
+  const water: { osmId: number; kind: string; name: string; points: number[][] }[] = [];
+  for (const w of [...ways.values()].sort((a, b) => a.id - b.id)) {
+    const pts = toPuwg(w);
+    if (pts.length < 2 || !inside(pts)) continue;
+    const k = w.tags.waterway;
+    if (k !== 'stream' && k !== 'river' && k !== 'brook') continue;
+    // Tylko fragmenty w obszarze mapy (linie z OSM ciągną się daleko poza nią).
+    let run: number[][] = [];
+    const flush = () => {
+      if (run.length >= 2) water.push({ osmId: w.id, kind: k, name: w.tags.name ?? '', points: run });
+      run = [];
+    };
+    for (const pt of pts) {
+      if (inside([pt])) run.push(pt);
+      else flush();
+    }
+    flush();
+  }
+  log(`Cieki: ${water.length} (z nazwą: ${water.filter((x) => x.name).length})`);
+  await writeFile(
+    join(dir, 'osm-water.json'),
+    JSON.stringify(
+      {
+        _opis: 'Cieki wodne z OpenStreetMap (waterway=stream/river/brook) w obszarze mapy – model wody do naśnieżania (etap 6b). Wynik npm run import-osm-resort – nie edytować ręcznie.',
+        source: out.source,
+        downloaded: out.downloaded,
+        units: 'punkty: [E, N] w PUWG 1992 [m]',
+        streams: water,
+      },
+      null,
+      0,
+    ) + '\n',
+  );
+  log(`Zapisano ${join(dir, 'osm-water.json')}.`);
 }
 
 main().catch((e) => {

@@ -208,7 +208,8 @@ describe('Sieć ośrodka', () => {
     const branch = piste([[340, 500], [500, 900]], 25, 'T2', '2');
     const layout: ResortLayout = { ...emptyLayout(), lifts: [lift], pistes: [goodPiste, branch], bases: [{ id: 'B1', name: 'Baza', xM: 500, yM: 920 }] };
     const a = analyzeResort(layout, ctx);
-    expect(a.network.issues).toEqual([]);
+    // Połączenia tras bez ostrzeżeń; wyciąg (dolna stacja daleko od bazy) jest niedostępny z parkingu (etap 6b).
+    expect(a.network.issues.filter((i) => !i.message.includes('niedostępn'))).toEqual([]);
     const fromJunction = a.network.edges.find((e) => e.objectId === 'T2');
     expect(fromJunction?.from).toMatch(/^T1@/);
     expect(fromJunction?.to).toBe('B1');
