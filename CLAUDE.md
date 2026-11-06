@@ -300,9 +300,49 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
   - obserwacja: zima 2026/27 z generatora jest słaba (na początku lutego odwilż, średnio < 1 cm na
     mapie) – na naturalnym śniegu trasy Pilska przez większość sezonu dostają ostrzeżenia; bez
     naśnieżania (etap 7) gra będzie wymagać zamykania tras.
-- **Następny: etap 6 – sezon i ekonomia.**
+- **Etap 6 – zrobiony** (listopad 2026): sezon i ekonomia – pierwsza grywalna wersja.
+  - dane `data/economy.json` (każda liczba ze źródłem lub „do kalibracji”): kalendarz roku, kariera
+    (15 mln zł, start 1 V 2026, debet 1 mln, bankructwo po 90 dniach na minusie), kredyt (7,5 %/rok:
+    WIBOR 3M 3,82 % + marża; do 15 lat; limit 70 % majątku i gotówki), karnety (dzienny 170, 4 h 135,
+    2 h 100 zł, punkt 4 zł; ulga 80 %; Pilsko/Wisła/Szczyrk/Zwardoń 2024–26), godziny, popyt, skład gości
+    (tydzień/weekend/ferie), ferie 2026 wg MEN (3 tury) z wagami regionów (śląskie 0,42, małopolskie
+    0,24), koszty (energia 1,3 zł/kWh, płaca 36 zł/h + 21 %, ratownicy, przeglądy UDT, ubezpieczenie
+    0,4 %, utrzymanie 1–2 %, stała załoga, ratrakowanie TYMCZASOWE 120 zł/ha), budowa zimą ×0,25
+    tempa i ×1,25 ceny, reputacja, model zgrubny, konkurencja (4 wymyślone ośrodki), budynki
+    (parking 300 aut, gastronomia, wypożyczalnia, szkółka);
+  - `src/sim`: `calendar.ts` (pory roku, ferie – ten sam tydzień ISO co wzór, święta), `economyParams.ts`,
+    `weatherBook.ts` (pogoda i prognoza dla ekonomii bez terenu – ta sama seria co Environment),
+    `competition.ts` (śnieg konkurentów: model w punkcie + naśnieżanie), `economy.ts` (GameState, budowy
+    w czasie – `reconcileConstruction` przy każdej zmianie układu, fakty o ośrodku, śnieg na trasach,
+    popyt: pula regionu × dzień × miesiąc × prognoza × szum; udział = A/(A+ΣA_konk+A_inne), A = km^0,7 ×
+    śnieg^1,5 × (reputacja/3,5)^1,5 × (cena/rynek)^−1,6; parking; karnety – najtańszy wystarczający;
+    koszty dnia; raty co miesiąc; przeglądy 1 X; reputacja z zanikiem 0,997/dzień; raport roku gry
+    1 V–30 IV), `gameSave.ts` (zapis: stan + układ + przejazdy gości rzadko zakodowane),
+    `headlessGame.ts` (gra bez grafiki: Environment + SnowWorld + ekonomia, dni zgrubne lub z gośćmi);
+  - goście: `GuestDay` – godziny i skład z planu dnia, `economySummary()`; poprawka: gość, który
+    wyjechał bez zjazdu (brak trasy na jego poziom), ocenia dzień na 2/5 (`noSkiSatisfaction`; wcześniej 5);
+  - model zgrubny dnia (dni przewijane): cykl = wjazd + zjazd (3,5 m/s), czekanie z bilansu
+    przepustowości, pobyt × exp(−czekanie/25 min), goście bez trasy na poziom – od razu odjeżdżają;
+    skalibrowany na symulacji gości (orczyk 840 m, 100–1200 gości: ocena ±0,2, przejazdy ±10 %);
+  - widok: `gameController.ts` (zamykanie dni po kolei przy przewijaniu, plan dnia → goście, budowy →
+    plac budowy, autozapis w IndexedDB `ski-sim-gra`), `gamePanels.ts` (Finanse, Cennik i godziny,
+    Raport sezonu, ekran startowy); budynki w narzędziu B (`layout.buildings`, `bases[].typeId`); latem
+    zegar ×7; w karierze nie można cofać czasu; `?tryb=kariera|piaskownica|widok`;
+  - raport `npm run economy-report` (publikowany jako `raport-ekonomii.html`, ok. 1,5 min): orczyk
+    Korbielów–Buczynka 788–1009 m + 2 trasy (obie czerwone – stok ok. 28 %) + parking, 10 sezonów:
+    średnio 43 dni otwarte, 6,1 tys. gości, wynik +0,19 mln zł/rok (od −0,29 do +0,57), budowa 4,97 mln –
+    bez naśnieżania inwestycja nie zwraca się w 10 lat; ok. 1/3 gości (początkujący) odjeżdża bez trasy
+    na swój poziom;
+  - testy `tests/economy.test.ts` (15), `tests/economyFixture.ts`.
+- **Następny: etap 7 – naśnieżanie i ratraki** (zastąpić tymczasowe ratrakowanie z `economy.ts` /
+  `costs.groomingPlnPerHa`).
 
 Uwagi techniczne:
+- Ekonomia (6): pytania o śnieg do wątku obliczeń idą po kolei (`snowSerial`) – równoległe się
+  „zastępowały” i przerywały liczenie; promieniowania na sezon wątek już nie przerywa (wspólne dla
+  sezonu). Podczas przeliczania dni mapa nie pyta o śnieg (`game.busy`), potem `onCaughtUp`.
+  Zamknięcie dnia: jeśli wątek gości skończył ten dzień – wynik z symulacji (`agentOutcome`), inaczej
+  model zgrubny. Latem (V–IX) śniegu nie liczymy (null).
 - Edycja (5b): przeciąganie zmienia `this.layout` na miejscu i liczy tylko analizę edytowanego
   obiektu (`applyEdit`); historia (`LayoutHistory`) dostaje stan sprzed przeciągania przy puszczeniu.
   Kliknięcie: najpierw uchwyt edycji, potem postać gościa (promień 9 px), potem wybór obiektu.
@@ -360,6 +400,11 @@ Uwagi techniczne:
 - Generator pogody: wielodniowe epizody silnego opadu (śnieżyce) – za niskie maksima grubości.
 - Budowa: trasy obszarowe z OSM (area=yes) w porównaniu; mapa bazowa przerysowana po wycince
   (teraz przecinka to osobna warstwa nad mapą).
+- Ekonomia (6): pula popytu, udziały typów grup, wagi regionów, elastyczność cenowa i koszty – do
+  kalibracji (frekwencja i finanse prawdziwych ośrodków); konkurencja bez reakcji na nasze ceny;
+  ceny bez inflacji w kolejnych latach; brak karnetów sezonowych i wielodniowych; brak oświetlenia
+  tras (jazda wieczorna); w raporcie 10 sezonów obie trasy czerwone – na Pilsku orczyk mieści się
+  tylko na niższych, stromych stokach (przechył toru ≤ 10 % na siatce 10 m).
 - Śnieg a jazda (5b): progi minimalnej bazy i skutki cienkiej bazy do kalibracji (dane ośrodków,
   ratraków); podłoże tylko z pokrycia i nachylenia (bez mapy kamienistości); podłoże nie wpływa na
   model śniegu (np. kamienie szybciej przebijają się przy topnieniu); limity kąta i koszty stacji
