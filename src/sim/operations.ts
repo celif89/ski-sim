@@ -9,7 +9,7 @@ import type { DayExtra, Flows, GameState, OpsState, OpsSummary, ResortFacts } fr
 import { ensureOps } from './economy';
 import type { EconomyParams } from './economyParams';
 import type { GroomPiste, GroomerUnit } from './grooming';
-import { breakdownTonight, planNight } from './grooming';
+import { anchorsReach, breakdownTonight, planNight } from './grooming';
 import type { PointM } from './lifts';
 import type { ResortAnalysis, ResortLayout } from './resort';
 import { Rng } from './rng';
@@ -316,10 +316,31 @@ export function runDayOperations(i: DayOpsInput): DayOpsResult {
     });
   }
   const canMake = i.snow !== null && infra.guns.length > 0 && infra.pumpCapacityM3h > 0 && infra.gridKw > 0;
+  // Automat nie naśnieża stromych odcinków, których nikt nie rozepchnie (brak ratraka z wyciągarką
+  // albo punktu kotwienia w zasięgu liny) – pryzmy zostałyby tam na stałe i zamykały trasę.
+  // Ręcznie włączona armatka pracuje mimo to (decyzja gracza).
+  const winch = ops.groomers.some((g) => groomerTypeById(sp, g.typeId).winch);
+  const cs = i.grid.cellSizeM;
+  const steepNear = (g: GunFact): boolean => {
+    if (!g.pisteId) return false;
+    const geo = pisteGeometry(i.analysis, g.pisteId, i.grid, sp);
+    if (!geo || !geo.steep.some((v) => v)) return false;
+    if (winch && anchorsReach(geo.steepTops, infra.anchors)) return false;
+    const r2 = (sp.snow.throwSpreadM + cs) ** 2;
+    for (let n = 0; n < geo.cells.length; n++) {
+      if (!geo.steep[n]) continue;
+      const k = geo.cells[n];
+      const x = ((k % i.grid.widthCells) + 0.5) * cs;
+      const y = (Math.floor(k / i.grid.widthCells) + 0.5) * cs;
+      if ((x - g.aimXM) ** 2 + (y - g.aimYM) ** 2 <= r2) return true;
+    }
+    return false;
+  };
+  const gunsToday = canMake ? infra.guns.map((g) => (g.mode === 'auto' && steepNear(g) ? { ...g, mode: 'off' as const } : g)) : [];
   const smd = runSnowmakingDay(
     {
       weather: (h, z) => i.book.hourAt(date, h, z),
-      guns: canMake ? infra.guns : [],
+      guns: gunsToday,
       needs,
       reservoirM3: ops.reservoirM3,
       reservoirCapacityM3: capacity,
@@ -342,7 +363,7 @@ export function runDayOperations(i: DayOpsInput): DayOpsResult {
   if (smd.snowKg > 0) {
     const mask = new Uint8Array(i.grid.widthCells * i.grid.heightCells);
     for (const a of i.analysis.pistes.values()) for (const k of a.cells) mask[k] = 1;
-    const dep = depositSnow(smd, infra.guns, i.grid, mask, sp);
+    const dep = depositSnow(smd, gunsToday, i.grid, mask, sp);
     snowOps.addSweMm = dep.addSweMm;
     snowOps.addDensityKgM3 = smd.meanDensityKgM3;
     snowOps.addLiquidFraction = smd.meanLiquidFraction;

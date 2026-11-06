@@ -339,6 +339,8 @@ export class GameController {
     const r = reconcileConstruction(s, objectCosts(layout, analysis, this.o.ep), this.o.ep);
     if (r.messages.length) this.o.toast(r.messages.join(' · '));
     this.refreshNet();
+    // Nowy układ – plan dnia (goście, trasy zablokowane pryzmami) i podgląd naśnieżania od nowa.
+    if (!this.running) void this.planToday();
     this.refreshPanel(true);
   }
 
