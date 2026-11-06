@@ -4,6 +4,9 @@
  */
 import { puwg92ToLatLon, slopePercentToDeg } from '../sim';
 import { SNOW_QUALITY_CODES, SNOW_QUALITY_NAMES } from '../sim/snow';
+import { GROUND_FOREST, GROUND_NAMES } from '../sim/ground';
+import type { RidingParams } from '../sim/snowRiding';
+import { minBaseCm, packedBaseCm } from '../sim/snowRiding';
 import type { TerrainGrid } from '../sim';
 import type { Camera } from './camera';
 import { compassName } from './colors';
@@ -29,6 +32,9 @@ export interface SnowReadoutData {
   sweMm: Float32Array;
   densityKgM3: Float32Array;
   quality: Uint8Array;
+  /** Podłoże (ground.ts) i progi jazdy – baza ubita i minimum (etap 5b). */
+  ground?: Uint8Array | null;
+  riding?: RidingParams | null;
 }
 
 const EMPTY: CursorReadout = { position: 'kursor poza mapą', geographic: '', elevation: '', slope: '', aspect: '', snow: '' };
@@ -68,8 +74,16 @@ export function describePoint(grid: TerrainGrid, xM: number, yM: number, flatSlo
 
 function describeSnow(snow: SnowReadoutData, k: number): string {
   const q = SNOW_QUALITY_CODES[snow.quality[k]];
-  if (q === 'none' || !(snow.depthCm[k] > 0)) return 'śnieg: brak';
-  return `śnieg ${formatInt.format(snow.depthCm[k])} cm · SWE ${formatInt.format(snow.sweMm[k])} mm · ${formatInt.format(snow.densityKgM3[k])} kg/m³ · ${SNOW_QUALITY_NAMES[q]}`;
+  const g = snow.ground ? snow.ground[k] : -1;
+  const groundText = g >= 0 ? ` · podłoże: ${GROUND_NAMES[g]}` : '';
+  if (q === 'none' || !(snow.depthCm[k] > 0)) return `śnieg: brak${groundText}`;
+  let base = '';
+  if (snow.riding) {
+    const b = packedBaseCm(snow.sweMm[k], snow.riding);
+    const need = g >= 0 && g !== GROUND_FOREST ? minBaseCm(g, snow.riding) : null;
+    base = ` (baza ubita ${formatInt.format(b)} cm${need !== null ? `, potrzeba ${formatInt.format(need)} cm${b < need ? ' – ZA MAŁO' : ''}` : ''})`;
+  }
+  return `śnieg ${formatInt.format(snow.depthCm[k])} cm${base} · SWE ${formatInt.format(snow.sweMm[k])} mm · ${formatInt.format(snow.densityKgM3[k])} kg/m³ · ${SNOW_QUALITY_NAMES[q]}${groundText}`;
 }
 
 export class Hud {

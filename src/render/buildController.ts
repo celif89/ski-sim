@@ -5,7 +5,10 @@
  */
 import type { Container } from 'pixi.js';
 import type { LiftAnalysis, LiftDesign, LiftParams, PointM, Tower } from '../sim/lifts';
-import { analyzeLift, autoPlaceTowers, designLift, liftTypeById, sampleGroundAlong } from '../sim/lifts';
+import { analyzeLift, designLift, liftPath, liftTypeById, pointAlongPath, retowerLift } from '../sim/lifts';
+import type { GroundParams } from '../sim/ground';
+import type { RidingParams, ThinSegment } from '../sim/snowRiding';
+import { thinSegments } from '../sim/snowRiding';
 import type { AxisPoint, PisteAnalysis, PisteParams } from '../sim/pistes';
 import { analyzePiste, orientDownhill } from '../sim/pistes';
 import type { ClearingCost, OsmResort, RealPisteComparison, ResortAnalysis, ResortLayout } from '../sim/resort';
@@ -16,7 +19,7 @@ import { BuildPanel } from './buildPanel';
 import { BuildProfile } from './buildProfile';
 import type { Camera } from './camera';
 import { ResortLayer } from './resortLayer';
-import type { MapContextData, MapLabel } from './resortLayer';
+import type { EditHandle, HandleKind, MapContextData, MapLabel } from './resortLayer';
 import type { LodThresholds } from './illustration';
 
 export interface BuildControllerOptions {
@@ -45,9 +48,21 @@ export interface BuildControllerOptions {
   onLayoutChange?(layout: ResortLayout, analysis: ResortAnalysis): void;
   /** Narzędzie budowy aktywne – kursor mapy. */
   onToolChange(tool: BuildTool): void;
+  /** Podłoże terenu i progi śniegu do jazdy (etap 5b). */
+  ground: GroundParams;
+  riding: RidingParams;
+  /** Ostrzeżenia „za mało śniegu” na otwartych trasach (po każdej zmianie śniegu lub układu). */
+  onSnowWarnings?(warnings: SnowWarning[]): void;
+}
+
+export interface SnowWarning {
+  pisteId: string;
+  pisteName: string;
+  segments: ThinSegment[];
 }
 
 const SELECT_RADIUS_PX = 12;
+const HANDLE_RADIUS_PX = 10;
 
 export class BuildController {
   private layout: ResortLayout;
@@ -73,6 +88,13 @@ export class BuildController {
   private draftPiste: { points: AxisPoint[]; analysis: PisteAnalysis | null } | null = null;
   private lastCursorKey = '';
   private hoverPoint: PointM | null = null;
+  /** Przeciąganie uchwytu (punkt osi, szerokość, stacja, załamanie). */
+  private edit: { kind: HandleKind; index: number; side?: 1 | -1; id: string; before: ResortLayout; prevLift: LiftDesign | null } | null = null;
+  private hoverHandle: EditHandle | null = null;
+  /** Nowe trasy z wyrównaniem terenu. */
+  private gradeNew = false;
+  private snowSweMm: Float32Array | null = null;
+  private thin = new Map<string, ThinSegment[]>();
   private readonly panel: BuildPanel;
   private readonly profile: BuildProfile;
   private readonly layer: ResortLayer;
@@ -105,6 +127,10 @@ export class BuildController {
       onToggleNetwork: () => this.toggleNetwork(),
       onToggleReality: () => this.toggleReality(),
       onSelect: (kind, id) => this.select({ kind, id }),
+      onGradeNew: (on) => {
+        this.gradeNew = on;
+        this.refreshPanel();
+      },
     });
     this.profile = new BuildProfile(o.profileParent, o.pisteParams, {
       onTowersChange: (towers, final) => this.changeTowers(towers, final),
@@ -114,6 +140,8 @@ export class BuildController {
         this.cancelDraft();
         this.select(null);
       },
+      onToggleClosed: () => this.toggleClosed(),
+      onToggleGraded: () => this.toggleGraded(),
     });
     window.addEventListener('keydown', (e) => {
       if (!(e.ctrlKey || e.metaKey) || isTyping(e)) return;
@@ -167,7 +195,8 @@ export class BuildController {
   }
 
   private reanalyze(): void {
-    this.analysis = analyzeResort(this.layout, { grid: this.o.grid, lifts: this.o.liftParams, pistes: this.o.pisteParams, clearing: this.o.clearing, forest: this.o.forest, shrub: this.o.shrub });
+    this.analysis = analyzeResort(this.layout, { grid: this.o.grid, lifts: this.o.liftParams, pistes: this.o.pisteParams, clearing: this.o.clearing, forest: this.o.forest, shrub: this.o.shrub, ground: this.o.ground });
+    this.recomputeWarnings();
     this.version++;
     this.drawVersion++;
     if (this.selection && !this.findSelected()) this.selection = null;
@@ -178,6 +207,18 @@ export class BuildController {
 
   get currentTool(): BuildTool {
     return this.tool;
+  }
+
+  /** Ośrodek otwarty (sezon) / zamknięty – decyduje gracz; zapisywane z układem, bez historii cofania. */
+  get resortOpen(): boolean {
+    return this.layout.resortOpen !== false;
+  }
+
+  setResortOpen(open: boolean): void {
+    if (open === this.resortOpen) return;
+    if (open) delete this.layout.resortOpen;
+    else this.layout.resortOpen = false;
+    this.save();
   }
 
   /** Wczytanie gotowego układu (np. prawdziwy ośrodek z OSM) – z możliwością cofnięcia. */
@@ -304,6 +345,12 @@ export class BuildController {
   handleClick(xPx: number, yPx: number): boolean {
     const p = this.world(xPx, yPx);
     if (this.tool === 'select') {
+      const h = this.hitHandle(xPx, yPx);
+      if (h && (h.kind === 'pisteAdd' || h.kind === 'liftAdd')) {
+        this.insertAt(h);
+        return true;
+      }
+      if (h) return true; // klik na uchwyt – bez zmiany zaznaczenia
       this.select(p ? this.pick(xPx, yPx, p) : null);
       return true;
     }
@@ -350,9 +397,11 @@ export class BuildController {
 
   handleDoubleClick(): void {
     if (this.tool === 'pisteAxis') this.finishAxis();
+    else if (this.tool === 'select' && this.hoverHandle?.kind === 'liftBend') this.toggleBendMid(this.hoverHandle.index);
   }
 
   handleRightClick(): void {
+    if (this.tool === 'select' && this.hoverHandle && this.removeAt(this.hoverHandle)) return;
     if (this.tool === 'pisteAxis' && this.axisPoints.length) {
       this.axisPoints.pop();
       this.updateDraftPiste(this.axisPoints, null);
@@ -360,6 +409,13 @@ export class BuildController {
   }
 
   handleDragStart(xPx: number, yPx: number): boolean {
+    if (this.tool === 'select') {
+      const h = this.hitHandle(xPx, yPx);
+      if (!h || h.kind === 'pisteAdd' || h.kind === 'liftAdd' || !this.selection) return false;
+      const lift = this.selection.kind === 'lift' ? this.layout.lifts.find((l) => l.id === this.selection!.id) ?? null : null;
+      this.edit = { kind: h.kind, index: h.index, side: h.side, id: this.selection.id, before: this.clone(), prevLift: lift ? JSON.parse(JSON.stringify(lift)) : null };
+      return true;
+    }
     if (this.tool !== 'pisteBrush') return false;
     const p = this.world(xPx, yPx);
     if (!p) return false;
@@ -370,6 +426,11 @@ export class BuildController {
   }
 
   handleDragMove(xPx: number, yPx: number): void {
+    if (this.edit) {
+      const p = this.world(xPx, yPx);
+      if (p) this.applyEdit(p);
+      return;
+    }
     if (!this.brushing) return;
     const p = this.world(xPx, yPx);
     if (!p) return;
@@ -380,6 +441,16 @@ export class BuildController {
   }
 
   handleDragEnd(): void {
+    if (this.edit) {
+      const e = this.edit;
+      this.edit = null;
+      this.history.push(e.before);
+      this.message = e.kind.startsWith('piste') ? 'Zmieniono trasę (Cofnij przywraca).' : 'Zmieniono wyciąg (Cofnij przywraca).';
+      this.reanalyze();
+      this.save();
+      this.notifyLandCover(false);
+      return;
+    }
     if (!this.brushing) return;
     this.brushing = false;
     this.finishAxis();
@@ -421,6 +492,7 @@ export class BuildController {
         this.deleteSelected();
         return true;
       case 'Delete':
+        if (this.hoverHandle && this.removeAt(this.hoverHandle)) return true;
         this.deleteSelected();
         return true;
       case 'BracketLeft':
@@ -457,8 +529,8 @@ export class BuildController {
     const next = this.clone();
     const id = `T${next.nextId++}`;
     const name = String(this.nextNumber('piste'));
-    const design = { id, name, points: oriented };
-    const a = analyzePiste(design, { grid: this.o.grid, params: this.o.pisteParams, forest: this.o.forest, shrub: this.o.shrub, clearingCost: this.o.clearing });
+    const design = { id, name, points: oriented, ...(this.gradeNew ? { graded: true } : {}) };
+    const a = analyzePiste(design, this.pisteCtx());
     if (!a.ok) {
       this.message = `Nie można zbudować trasy: ${a.issues.find((i) => i.severity === 'error')?.message ?? ''}`;
       this.profile.hide();
@@ -499,13 +571,16 @@ export class BuildController {
     }
     let best: { id: string; d: number } | null = null;
     for (const l of this.layout.lifts) {
-      const a = cam.worldToScreen(l.bottom.xM, l.bottom.yM);
-      const b = cam.worldToScreen(l.top.xM, l.top.yM);
-      const dx = b.xPx - a.xPx;
-      const dy = b.yPx - a.yPx;
-      const t = Math.min(1, Math.max(0, ((xPx - a.xPx) * dx + (yPx - a.yPx) * dy) / (dx * dx + dy * dy || 1)));
-      const d = Math.hypot(xPx - a.xPx - t * dx, yPx - a.yPx - t * dy);
-      if (d <= SELECT_RADIUS_PX && (!best || d < best.d)) best = { id: l.id, d };
+      const path = liftPath(l).map((q) => cam.worldToScreen(q.xM, q.yM));
+      for (let i = 0; i < path.length - 1; i++) {
+        const a = path[i];
+        const b = path[i + 1];
+        const dx = b.xPx - a.xPx;
+        const dy = b.yPx - a.yPx;
+        const t = Math.min(1, Math.max(0, ((xPx - a.xPx) * dx + (yPx - a.yPx) * dy) / (dx * dx + dy * dy || 1)));
+        const d = Math.hypot(xPx - a.xPx - t * dx, yPx - a.yPx - t * dy);
+        if (d <= SELECT_RADIUS_PX && (!best || d < best.d)) best = { id: l.id, d };
+      }
     }
     if (best) return { kind: 'lift', id: best.id };
     const cell = this.o.grid.cellAt(p.xM, p.yM);
@@ -537,12 +612,12 @@ export class BuildController {
     if (s?.kind === 'lift') {
       const l = this.layout.lifts.find((x) => x.id === s.id);
       const a = this.analysis.lifts.get(s.id);
-      if (l && a) return this.profile.showLift(l, a, false);
+      if (l && a) return this.profile.showLift(l, a, false, { closed: l.closed === true, noDescent: !this.analysis.network.edges.some((e) => e.kind === 'piste' && !this.layout.pistes.find((x) => x.id === e.objectId)?.closed && (e.from === `${l.id}:góra` || e.from.startsWith(`${l.id}:pośr`))) });
     }
     if (s?.kind === 'piste') {
       const p = this.layout.pistes.find((x) => x.id === s.id);
       const a = this.analysis.pistes.get(s.id);
-      if (p && a) return this.profile.showPiste(p.name, a, false);
+      if (p && a) return this.profile.showPiste(p.name, a, false, '', { closed: p.closed === true, graded: p.graded === true, thin: this.thin.get(p.id) ?? [] });
     }
     this.profile.hide();
   }
@@ -590,10 +665,8 @@ export class BuildController {
     const next = this.clone();
     const lift = next.lifts.find((l) => l.id === s.id);
     if (!lift) return;
-    const type = liftTypeById(this.o.liftParams, lift.typeId);
-    const ground = sampleGroundAlong(this.o.grid, lift.bottom, lift.top, this.o.liftParams.common.profileStepM);
-    lift.towers = autoPlaceTowers(ground.map((g) => ({ ...g, elevationM: Number.isNaN(g.elevationM) ? 0 : g.elevationM })), type, this.o.liftParams.common);
     lift.manualTowers = false;
+    lift.towers = retowerLift(this.o.grid, this.o.liftParams, lift, null);
     this.commit(next, 'Podpory rozstawione automatycznie.');
   }
 
@@ -605,14 +678,259 @@ export class BuildController {
       const lift = draft ?? (s?.kind === 'lift' ? this.layout.lifts.find((l) => l.id === s.id) : undefined);
       const pisteA = this.draftPiste?.analysis ?? (s?.kind === 'piste' ? this.analysis.pistes.get(s.id) : undefined);
       if (lift) {
-        const L = Math.hypot(lift.top.xM - lift.bottom.xM, lift.top.yM - lift.bottom.yM) || 1;
-        this.hoverPoint = { xM: lift.bottom.xM + ((lift.top.xM - lift.bottom.xM) * d) / L, yM: lift.bottom.yM + ((lift.top.yM - lift.bottom.yM) * d) / L };
+        this.hoverPoint = pointAlongPath(liftPath(lift), d);
       } else if (pisteA) {
         const s2 = pisteA.axis.reduce((best, x) => (Math.abs(x.distanceM - d) < Math.abs(best.distanceM - d) ? x : best), pisteA.axis[0]);
         this.hoverPoint = { xM: s2.xM, yM: s2.yM };
       }
     }
     this.drawVersion++;
+  }
+
+  // ------------------------------------------------------------------ edycja geometrii (etap 5b)
+
+  private pisteCtx() {
+    return {
+      grid: this.o.grid,
+      params: this.o.pisteParams,
+      forest: this.o.forest,
+      shrub: this.o.shrub,
+      clearingCost: this.o.clearing,
+      baseGround: this.analysis?.baseGround ?? null,
+      leveling: { costPlnPerM2: this.o.ground.levelingCostPlnPerM2, daysPerHectare: this.o.ground.levelingDaysPerHectare },
+    };
+  }
+
+  /** Uchwyty zaznaczonej trasy (punkty osi, „+” na odcinkach, szerokość) lub wyciągu (stacje, załamania, „+”). */
+  private handles(): EditHandle[] {
+    const s = this.selection;
+    if (!s || this.tool !== 'select' || this.draftLift || this.draftPiste) return [];
+    const out: EditHandle[] = [];
+    const hov = this.hoverHandle;
+    const isHover = (kind: HandleKind, index: number, side?: 1 | -1) => !!hov && hov.kind === kind && hov.index === index && hov.side === side;
+    if (s.kind === 'piste') {
+      const p = this.layout.pistes.find((x) => x.id === s.id);
+      if (!p) return [];
+      const pts = p.points;
+      pts.forEach((q, i) => {
+        const a = pts[Math.max(0, i - 1)];
+        const b = pts[Math.min(pts.length - 1, i + 1)];
+        const dx = b.xM - a.xM;
+        const dy = b.yM - a.yM;
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len;
+        const ny = dx / len;
+        for (const side of [1, -1] as const) out.push({ kind: 'pisteWidth', index: i, side, xM: q.xM + nx * side * (q.widthM / 2), yM: q.yM + ny * side * (q.widthM / 2), hover: isHover('pisteWidth', i, side) });
+        if (i < pts.length - 1) out.push({ kind: 'pisteAdd', index: i, xM: (q.xM + pts[i + 1].xM) / 2, yM: (q.yM + pts[i + 1].yM) / 2, hover: isHover('pisteAdd', i) });
+      });
+      pts.forEach((q, i) => out.push({ kind: 'pistePoint', index: i, xM: q.xM, yM: q.yM, hover: isHover('pistePoint', i) }));
+    } else if (s.kind === 'lift') {
+      const l = this.layout.lifts.find((x) => x.id === s.id);
+      if (!l) return [];
+      const path = liftPath(l);
+      for (let i = 0; i < path.length - 1; i++) out.push({ kind: 'liftAdd', index: i, xM: (path[i].xM + path[i + 1].xM) / 2, yM: (path[i].yM + path[i + 1].yM) / 2, hover: isHover('liftAdd', i) });
+      (l.bends ?? []).forEach((b, i) => out.push({ kind: 'liftBend', index: i, xM: b.xM, yM: b.yM, hover: isHover('liftBend', i), mid: b.mid === true }));
+      out.push({ kind: 'liftBottom', index: 0, xM: l.bottom.xM, yM: l.bottom.yM, hover: isHover('liftBottom', 0) });
+      out.push({ kind: 'liftTop', index: 0, xM: l.top.xM, yM: l.top.yM, hover: isHover('liftTop', 0) });
+    }
+    return out;
+  }
+
+  /** Czy pod kursorem jest uchwyt edycji (ma pierwszeństwo przed kliknięciem gościa). */
+  hasHandleAt(xPx: number, yPx: number): boolean {
+    return this.tool === 'select' && this.hitHandle(xPx, yPx) !== null;
+  }
+
+  /** Uchwyt pod kursorem (najpierw punkty i stacje, potem szerokość, na końcu „+”). */
+  private hitHandle(xPx: number, yPx: number): EditHandle | null {
+    const cam = this.o.camera;
+    let best: EditHandle | null = null;
+    let bestScore = Infinity;
+    const rank: Record<HandleKind, number> = { pistePoint: 0, liftBottom: 0, liftTop: 0, liftBend: 0, pisteWidth: 1, pisteAdd: 2, liftAdd: 2 };
+    for (const h of this.handles()) {
+      const p = cam.worldToScreen(h.xM, h.yM);
+      const d = Math.hypot(p.xPx - xPx, p.yPx - yPx);
+      if (d > HANDLE_RADIUS_PX) continue;
+      const score = rank[h.kind] * 100 + d;
+      if (score < bestScore) {
+        bestScore = score;
+        best = h;
+      }
+    }
+    return best;
+  }
+
+  /** Przeciąganie: zmiana tylko jednego obiektu i jego analizy (szybko) – reszta po puszczeniu. */
+  private applyEdit(p: PointM): void {
+    const e = this.edit!;
+    if (e.kind.startsWith('piste')) {
+      const piste = this.layout.pistes.find((x) => x.id === e.id);
+      if (!piste) return;
+      const q = piste.points[e.index];
+      if (e.kind === 'pistePoint') piste.points[e.index] = { xM: p.xM, yM: p.yM, widthM: q.widthM };
+      else if (e.kind === 'pisteWidth') {
+        const pts = piste.points;
+        const a = pts[Math.max(0, e.index - 1)];
+        const b = pts[Math.min(pts.length - 1, e.index + 1)];
+        const len = Math.hypot(b.xM - a.xM, b.yM - a.yM) || 1;
+        const nx = -(b.yM - a.yM) / len;
+        const ny = (b.xM - a.xM) / len;
+        const half = Math.abs((p.xM - q.xM) * nx + (p.yM - q.yM) * ny);
+        const w = Math.round(Math.min(this.o.pisteParams.maxWidthM, Math.max(this.o.pisteParams.minWidthM, 2 * half)));
+        piste.points[e.index] = { ...q, widthM: w };
+      }
+      this.analysis.pistes.set(piste.id, analyzePiste(piste, this.pisteCtx()));
+    } else {
+      const lift = this.layout.lifts.find((x) => x.id === e.id);
+      if (!lift) return;
+      if (e.kind === 'liftBottom') lift.bottom = { xM: p.xM, yM: p.yM };
+      else if (e.kind === 'liftTop') lift.top = { xM: p.xM, yM: p.yM };
+      else if (e.kind === 'liftBend' && lift.bends) lift.bends[e.index] = { ...lift.bends[e.index], xM: p.xM, yM: p.yM };
+      lift.towers = retowerLift(this.o.grid, this.o.liftParams, lift, e.prevLift);
+      this.analysis.lifts.set(lift.id, analyzeLift(lift, { grid: this.o.grid, params: this.o.liftParams, forest: this.o.forest, shrub: this.o.shrub, clearingCost: this.o.clearing, otherLifts: this.layout.lifts }));
+    }
+    this.drawVersion++;
+    this.refreshProfile();
+  }
+
+  /** Nowy punkt osi trasy albo nowe załamanie wyciągu w środku odcinka. */
+  private insertAt(h: EditHandle): void {
+    const s = this.selection;
+    if (!s) return;
+    const next = this.clone();
+    if (h.kind === 'pisteAdd' && s.kind === 'piste') {
+      const p = next.pistes.find((x) => x.id === s.id);
+      if (!p) return;
+      const a = p.points[h.index];
+      const b = p.points[h.index + 1];
+      p.points.splice(h.index + 1, 0, { xM: (a.xM + b.xM) / 2, yM: (a.yM + b.yM) / 2, widthM: Math.round((a.widthM + b.widthM) / 2) });
+      this.commit(next, 'Dodano punkt osi trasy – przeciągnij go myszą.');
+    } else if (h.kind === 'liftAdd' && s.kind === 'lift') {
+      const l = next.lifts.find((x) => x.id === s.id);
+      const prev = this.layout.lifts.find((x) => x.id === s.id) ?? null;
+      if (!l) return;
+      const bends = [...(l.bends ?? [])];
+      bends.splice(h.index, 0, { xM: h.xM, yM: h.yM });
+      l.bends = bends;
+      l.towers = retowerLift(this.o.grid, this.o.liftParams, l, prev);
+      const type = liftTypeById(this.o.liftParams, l.typeId);
+      this.commit(next, type.kind === 'aerial' ? 'Dodano stację kątową – przeciągnij ją; podwójne kliknięcie – stacja pośrednia z wsiadaniem.' : 'Dodano koła odchylające – przeciągnij je (tylko niewielki kąt).');
+    }
+  }
+
+  /** Usunięcie punktu osi trasy (zostają co najmniej 2) lub załamania wyciągu. */
+  private removeAt(h: EditHandle): boolean {
+    const s = this.selection;
+    if (!s) return false;
+    const next = this.clone();
+    if (h.kind === 'pistePoint' && s.kind === 'piste') {
+      const p = next.pistes.find((x) => x.id === s.id);
+      if (!p || p.points.length <= 2) return false;
+      p.points.splice(h.index, 1);
+      this.hoverHandle = null;
+      this.commit(next, 'Usunięto punkt osi trasy.');
+      return true;
+    }
+    if (h.kind === 'liftBend' && s.kind === 'lift') {
+      const l = next.lifts.find((x) => x.id === s.id);
+      const prev = this.layout.lifts.find((x) => x.id === s.id) ?? null;
+      if (!l?.bends) return false;
+      l.bends.splice(h.index, 1);
+      if (!l.bends.length) delete l.bends;
+      l.towers = retowerLift(this.o.grid, this.o.liftParams, l, prev);
+      this.hoverHandle = null;
+      this.commit(next, 'Usunięto załamanie wyciągu.');
+      return true;
+    }
+    return false;
+  }
+
+  private toggleBendMid(i: number): void {
+    const s = this.selection;
+    if (s?.kind !== 'lift') return;
+    const next = this.clone();
+    const l = next.lifts.find((x) => x.id === s.id);
+    if (!l?.bends?.[i]) return;
+    l.bends[i] = { ...l.bends[i], mid: !l.bends[i].mid };
+    if (!l.bends[i].mid) delete l.bends[i].mid;
+    this.commit(next, l.bends[i].mid ? 'Stacja pośrednia: goście wsiadają i wysiadają (droższa).' : 'Stacja kątowa (bez wsiadania).');
+  }
+
+  /** Otwarcie / zamknięcie zaznaczonej trasy lub wyciągu (decyduje gracz). */
+  private toggleClosed(): void {
+    const s = this.selection;
+    if (!s || s.kind === 'base') return;
+    const next = this.clone();
+    const obj = s.kind === 'piste' ? next.pistes.find((x) => x.id === s.id) : next.lifts.find((x) => x.id === s.id);
+    if (!obj) return;
+    if (obj.closed) delete obj.closed;
+    else obj.closed = true;
+    this.commit(next, `${s.kind === 'piste' ? 'Trasa' : 'Wyciąg'} ${obj.name} ${obj.closed ? 'zamknięt' + (s.kind === 'piste' ? 'a' : 'y') : 'otwart' + (s.kind === 'piste' ? 'a' : 'y')}.`);
+  }
+
+  /** Wyrównanie terenu na zaznaczonej trasie (usunięcie kamieni i pniaków, niwelacja – koszt). */
+  private toggleGraded(): void {
+    const s = this.selection;
+    if (s?.kind !== 'piste') return;
+    const next = this.clone();
+    const p = next.pistes.find((x) => x.id === s.id);
+    if (!p) return;
+    if (p.graded) delete p.graded;
+    else p.graded = true;
+    this.commit(next, p.graded ? `Trasa ${p.name}: teren wyrównany (łąka wyrównana – mniej śniegu potrzeba).` : `Trasa ${p.name}: bez wyrównania terenu.`);
+  }
+
+  /** Śnieg (zapas wody) do ostrzeżeń „za mało śniegu”. */
+  setSnow(sweMm: Float32Array | null): void {
+    this.snowSweMm = sweMm;
+    this.recomputeWarnings();
+    this.drawVersion++;
+    this.refreshPanel();
+    this.refreshProfile();
+  }
+
+  get groundMap(): Uint8Array | null {
+    return this.analysis.ground;
+  }
+
+  /** Bieżące ostrzeżenia „za mało śniegu” (otwarte trasy). */
+  get thinWarningRows(): SnowWarning[] {
+    const out: SnowWarning[] = [];
+    for (const p of this.layout.pistes) {
+      const segs = this.thin.get(p.id);
+      if (segs) out.push({ pisteId: p.id, pisteName: p.name, segments: segs });
+    }
+    return out;
+  }
+
+  get thinWarnings(): Map<string, ThinSegment[]> {
+    return this.thin;
+  }
+
+  private recomputeWarnings(): void {
+    this.thin = new Map();
+    const swe = this.snowSweMm;
+    const ground = this.analysis?.ground;
+    if (!swe || !ground) {
+      this.o.onSnowWarnings?.([]);
+      return;
+    }
+    const g = this.o.grid;
+    const cellAt = (x: number, y: number) => {
+      const c = g.cellAt(x, y);
+      return c ? g.index(c.i, c.j) : -1;
+    };
+    const out: SnowWarning[] = [];
+    for (const p of this.layout.pistes) {
+      if (p.closed) continue;
+      const a = this.analysis.pistes.get(p.id);
+      if (!a) continue;
+      const segs = thinSegments(a.axis.filter((x) => !Number.isNaN(x.elevationM)), cellAt, swe, ground, this.o.riding);
+      if (!segs.length) continue;
+      this.thin.set(p.id, segs);
+      out.push({ pisteId: p.id, pisteName: p.name, segments: segs });
+    }
+    this.o.onSnowWarnings?.(out);
   }
 
   // ------------------------------------------------------------------ plik
@@ -654,6 +972,8 @@ export class BuildController {
       selection: this.selection,
       real: this.real,
       message: this.message,
+      gradeNew: this.gradeNew,
+      thin: this.thin,
     });
   }
 
@@ -665,6 +985,14 @@ export class BuildController {
       const p = this.world(cursor.xPx, cursor.yPx);
       if (p && this.liftBottom) this.updateDraftLift(p);
       if (p && this.tool === 'pisteAxis' && this.axisPoints.length) this.updateDraftPiste(this.axisPoints, p);
+      if (!this.edit) {
+        const h = this.tool === 'select' ? this.hitHandle(cursor.xPx, cursor.yPx) : null;
+        const k = (x: EditHandle | null) => (x ? `${x.kind}|${x.index}|${x.side ?? 0}` : '');
+        if (k(h) !== k(this.hoverHandle)) {
+          this.hoverHandle = h;
+          this.drawVersion++;
+        }
+      }
     }
     this.layer.update({
       layout: this.layout,
@@ -677,6 +1005,8 @@ export class BuildController {
       draftLift: this.draftLift,
       draftPiste: this.draftPiste,
       hoverPoint: this.hoverPoint,
+      handles: this.handles(),
+      thinMarks: this.thin,
       version: this.version,
       drawVersion: this.drawVersion,
       timeS,

@@ -47,12 +47,15 @@ import { designLift } from './sim/lifts';
 import { WeatherFx } from './render/weatherFx';
 import { DevMenu } from './render/devMenu';
 import { BuildController } from './render/buildController';
+import type { SnowWarning } from './render/buildController';
 import type { MapContextData, MapLabel } from './render/resortLayer';
 import { parseLiftParams } from './sim/lifts';
 import { parsePisteParams } from './sim/pistes';
 import type { OsmResort, ResortAnalysis, ResortLayout } from './sim/resort';
 import { parseConstructionParams } from './sim/resort';
-import { SNOW_QUALITY_COLORS } from './render/colors';
+import { parseGroundParams } from './sim/ground';
+import { parseRidingParams, thinField } from './sim/snowRiding';
+import { GROUND_COLORS, SNOW_QUALITY_COLORS } from './render/colors';
 import type { SnowReadoutData } from './render/hud';
 import { Camera } from './render/camera';
 import { FieldOverlay, fieldScale } from './render/fieldOverlay';
@@ -214,8 +217,8 @@ async function start(): Promise<void> {
     let lastState: EnvironmentStateMessage | null = null;
     let radiationSum: { date: CalendarDate; values: Float32Array } | null = null;
     let radiationRequest = 0;
-    const isField = (k: OverlayKind): k is FieldKind | 'snowQuality' =>
-      k === 'insolation' || k === 'radiationSum' || k === 'temperature' || k === 'snowDepth' || k === 'snowQuality' || k === 'traffic';
+    const isField = (k: OverlayKind): k is FieldKind | 'snowQuality' | 'ground' =>
+      k === 'insolation' || k === 'radiationSum' || k === 'temperature' || k === 'snowDepth' || k === 'snowQuality' || k === 'traffic' || k === 'ground';
     // Natężenie ruchu gości (nakładka 9) – odświeżane co sekundę z wątku gości.
     let trafficTimer = 0;
     let trafficValues: Float32Array | null = null;
@@ -306,6 +309,9 @@ async function start(): Promise<void> {
     // Goście dostają sieć ośrodka po każdej zmianie układu (ustawiane niżej, gdy kontroler gości gotowy).
     let onGuestLayout: (layout: ResortLayout, analysis: ResortAnalysis) => void = () => {};
     const liftParams = parseLiftParams(liftsJson);
+    const ridingParams = parseRidingParams(snowJson);
+    // Ostrzeżenia „za mało śniegu” → panel gości (ustawiane niżej, gdy kontroler gości gotowy).
+    let onSnowWarnings: (w: SnowWarning[]) => void = () => {};
     const build = new BuildController({
       grid,
       camera,
@@ -316,6 +322,9 @@ async function start(): Promise<void> {
       liftParams,
       pisteParams: parsePisteParams(pistesJson),
       clearing: parseConstructionParams(constructionJson).clearing,
+      ground: parseGroundParams(constructionJson),
+      riding: ridingParams,
+      onSnowWarnings: (w) => onSnowWarnings(w),
       forest: landCover?.forest ?? null,
       shrub: landCover?.shrub ?? null,
       osm: (OSM_RESORTS[`../data/maps/${simSettings.mapName}/osm-resort.json`] as OsmResort | undefined) ?? null,
@@ -328,6 +337,8 @@ async function start(): Promise<void> {
       onLayoutChange: (layout, analysis) => {
         terrain.setLayout(layout, new Map([...analysis.pistes].map(([id, a]) => [id, a.axis.filter((x) => !Number.isNaN(x.elevationM))])), liftParams);
         onGuestLayout(layout, analysis);
+        sendGuestSnow();
+        if (overlay === 'ground') refreshField();
       },
       onToolChange: (tool) => {
         buildBar.setTool(tool);
@@ -342,6 +353,12 @@ async function start(): Promise<void> {
         const scale = fieldScale('traffic', style);
         if (trafficValues) field.update(trafficValues, scale, 1);
         legend.setFieldInfo(scale, trafficValues ? 'przejazdy gości przez miejsce na godzinę (ostatnie pół godziny); przezroczyste – mniej niż 1/h' : 'czekam na gości…');
+        return;
+      }
+      if (overlay === 'ground') {
+        const g = build.groundMap;
+        if (g) field.updateCategorical(Uint8Array.from(g, (v) => v + 1), GROUND_COLORS);
+        legend.setFieldInfo(null, 'po budowie: wycięty las – pniaki, dopóki trasa nie zostanie wyrównana (opcja w profilu trasy)');
         return;
       }
       if (overlay === 'snowDepth' || overlay === 'snowQuality') {
@@ -498,7 +515,8 @@ async function start(): Promise<void> {
         .then((m) => {
           if (id !== latestSnowRequest) return;
           lastSnow = { date: m.date, depthCm: m.depthCm, sweMm: m.sweMm, densityKgM3: m.densityKgM3, quality: m.quality, moguls: m.moguls };
-          guests?.setSnow(m.quality, m.depthCm, m.moguls);
+          build.setSnow(m.sweMm);
+          sendGuestSnow();
           terrain.setSnow(m.depthCm, m.quality, m.moguls);
           if (lastState) topBar.setWeather(lastState, snowAtStations());
           // Śnieg na dachach: gdy w dolnych partiach (do ok. 750 m) zwykle leży śnieg.
@@ -525,6 +543,13 @@ async function start(): Promise<void> {
       else if (p.date) timePanel.setStatus(`Liczę śnieg dzień po dniu… ${fmtDate(p.date)}`);
     };
     /** Średnia grubość śniegu w komórkach na wysokości dolnej i górnej stacji pogody (±25 m). */
+    /** Śnieg dla gości: stan, grubość, muldy i „za cienka baza” (zależna od podłoża po budowie). */
+    function sendGuestSnow(): void {
+      if (!lastSnow || !guests) return;
+      const ground = build.groundMap;
+      guests.setSnow(lastSnow.quality, lastSnow.depthCm, lastSnow.moguls ?? null, ground ? thinField(lastSnow.sweMm, ground, ridingParams) : null);
+    }
+
     function snowAtStations(): SnowAtPoints | null {
       if (!lastSnow || !lastState) return null;
       const at = (elevM: number) => {
@@ -682,9 +707,14 @@ async function start(): Promise<void> {
         const layout = layoutFromOsm(osm, grid, liftParams, pisteParamsAll, (e, n) => grid.puwg92ToLocal(e, n), { snapToStationM: 150, parkings }, (id, t, name, b, top) => designLift(grid, liftParams, id, t, name, b, top));
         build.loadLayout(layout, 'Wczytano prawdziwy ośrodek Pilsko z OpenStreetMap (Cofnij przywraca poprzedni).');
       },
+      onResortOpen: (open) => build.setResortOpen(open),
     });
     guests = guestCtl;
     guestsRef.current = guestCtl;
+    onSnowWarnings = (w) => guestCtl.setSnowWarnings(w);
+    guestCtl.setSnowWarnings(build.thinWarningRows);
+    guestCtl.setResortOpen(build.resortOpen);
+    sendGuestSnow();
     onGuestLayout = (layout, analysis) =>
       guestCtl.setNet(
         buildGuestNet({
@@ -706,7 +736,7 @@ async function start(): Promise<void> {
     input.onClick = (x, y) => {
       if (profile.handleClick(x, y)) return;
       // Kliknięcie postaci (gdy nie budujemy) – karta gościa.
-      if (build.currentTool === 'select' && guestCtl.handleClick(x, y, timePanel.hour * 3600)) return;
+      if (build.currentTool === 'select' && !build.hasHandleAt(x, y) && guestCtl.handleClick(x, y, timePanel.hour * 3600)) return;
       build.handleClick(x, y);
     };
     input.onDoubleClick = () => build.handleDoubleClick();
@@ -731,6 +761,10 @@ async function start(): Promise<void> {
       }
       if (code === 'KeyK') {
         setOverlay(overlay === 'liftWait' ? 'none' : 'liftWait');
+        return true;
+      }
+      if (code === 'KeyG') {
+        setOverlay(overlay === 'ground' ? 'none' : 'ground');
         return true;
       }
       if (code === 'KeyP') {
@@ -769,7 +803,7 @@ async function start(): Promise<void> {
       if (overlay === 'traffic') trafficTick(ticker.deltaMS / 1000);
       profile.update(input.cursor);
       build.update(input.cursor, guestCtl.gameTimeS ?? nowS);
-      hud.update(camera, grid, input.cursor, lastSnow);
+      hud.update(camera, grid, input.cursor, lastSnow ? { ...lastSnow, ground: build.groundMap, riding: ridingParams } : null);
       const wx = lastState?.top.now;
       weatherFx.update(ticker.deltaMS / 1000, camera.viewportWidthPx, camera.viewportHeightPx, wx && wx.precipitationMm > 0 ? Math.min(1, 0.25 + wx.precipitationMm / 2) : 0, wx?.phase === 'rain', lastState?.cloudFraction ?? 0, wx?.windMs ?? 0);
       devMenu.frame(performance.now() - frameStart, `kafle terenu: ${terrain.stats.visibleTiles} widocznych, ${terrain.stats.bakedTotal} policzonych · goście: ${movers.personCount} w ramce, ${movers.visibleCount} na ekranie`);

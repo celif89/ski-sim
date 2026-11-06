@@ -12,7 +12,7 @@
 import { BufferImageSource, CanvasSource, Container, Geometry, Matrix, Mesh, RenderTexture, Shader, Sprite } from 'pixi.js';
 import type { Renderer } from 'pixi.js';
 import type { LiftParams } from '../sim/lifts';
-import { liftTypeById } from '../sim/lifts';
+import { liftPath, liftTypeById } from '../sim/lifts';
 import type { ResortLayout } from '../sim/resort';
 import type { TerrainGrid } from '../sim/terrainGrid';
 import type { Camera } from './camera';
@@ -390,8 +390,9 @@ export class TerrainRenderer {
       ctx.strokeStyle = 'rgb(255,0,0)';
       ctx.lineWidth = w;
       ctx.beginPath();
-      ctx.moveTo(l.bottom.xM, l.bottom.yM);
-      ctx.lineTo(l.top.xM, l.top.yM);
+      const path = liftPath(l);
+      ctx.moveTo(path[0].xM, path[0].yM);
+      for (const q of path.slice(1)) ctx.lineTo(q.xM, q.yM);
       ctx.stroke();
     }
     ctx.lineCap = 'round';

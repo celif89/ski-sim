@@ -154,3 +154,13 @@ export const SNOW_QUALITY_COLORS: Rgb[] = [
   [60, 120, 210],
   [176, 150, 110],
 ];
+
+/** Podłoże (nakładka G): indeks = kod podłoża + 1 (0 – przezroczyste). Kolejność jak GROUND_NAMES. */
+export const GROUND_COLORS: Rgb[] = [
+  [0, 0, 0],
+  [46, 110, 60], // las
+  [140, 214, 120], // łąka wyrównana
+  [206, 220, 140], // łąka naturalna
+  [150, 140, 130], // kamienisty / skała
+  [170, 110, 60], // przecinka (pniaki)
+];
