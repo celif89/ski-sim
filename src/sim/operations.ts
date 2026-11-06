@@ -5,7 +5,7 @@
  * koszty (energia z taryfą nocną, woda, paliwo, operatorzy, serwis, leasing, naprawy), operacje na
  * śniegu dla modelu śniegu i podsumowanie dla paneli. Bez DOM – ta sama logika w grze i bez grafiki.
  */
-import type { DayExtra, Flows, GameState, OpsState, OpsSummary, ResortFacts } from './economy';
+import type { DayExtra, Flows, GameState, OpsState, OpsSummary, ResortFacts, WaterSourceDay } from './economy';
 import { ensureOps } from './economy';
 import type { EconomyParams } from './economyParams';
 import type { GroomPiste, GroomerUnit } from './grooming';
@@ -13,8 +13,8 @@ import { anchorsReach, breakdownTonight, planNight } from './grooming';
 import type { PointM } from './lifts';
 import type { ResortAnalysis, ResortLayout } from './resort';
 import { Rng } from './rng';
-import type { GunFact, PisteSnowNeed } from './snowmaking';
-import { connectPipelines, depositSnow, intakeRateM3h, pipelineHydrants, pumpHeadM, runSnowmakingDay, tariffPrice } from './snowmaking';
+import type { GunFact, PipelineDesign, PisteSnowNeed } from './snowmaking';
+import { connectPipelines, depositSnow, intakeRateM3h, pipelineHydrants, pumpEnergyKWh, pumpHeadM, runSnowmakingDay, tariffPrice } from './snowmaking';
 import type { SnowOps } from './snowOps';
 import { emptyOps } from './snowOps';
 import type { SnowmakingParams } from './snowmakingParams';
@@ -25,12 +25,49 @@ import { formatIsoDate, parseIsoDate, daysBetween } from './time';
 import type { CalendarDate } from './weather';
 import { dailyAtElevation } from './weather';
 import type { WeatherBook } from './weatherBook';
+import type { Catchment, StreamNet, SupplyLink, WaterParams } from './water';
+import { allocateIntakes, catchmentInflowM3, connectSources, flowFactor, normalPrecipMm, reservoirCatchment, streamAt, villageCoverage, wellYieldM3h } from './water';
 
 export interface OpsGrid {
   widthCells: number;
   heightCells: number;
   cellSizeM: number;
   sampleElevationM(xM: number, yM: number): number;
+}
+
+/** Etap 6b: model wody – sieć cieków, parametry, zabudowa wsi (zasięg wodociągu), wysokości. */
+export interface WaterContext {
+  net: StreamNet;
+  wp: WaterParams;
+  villageBuildings: PointM[];
+  elevationM: Float32Array;
+}
+
+export type WaterSourceKind = 'intake' | 'mains' | 'well' | 'catchment';
+
+/** Zbudowane źródło wody: połączenie ze zbiornikiem i to, co wiadomo o jego wydajności. */
+export interface WaterSourceFact {
+  id: string;
+  kind: WaterSourceKind;
+  name: string;
+  xM: number;
+  yM: number;
+  zM: number;
+  /** Wydajność urządzenia: ujęcie i wodociąg – m³/h, studnia – głębokość m, rowy – największa zlewnia m². */
+  capacity: number;
+  link: SupplyLink | null;
+  /** Dlaczego nie daje wody (null – działa). */
+  problem: string | null;
+  /** Ujęcie: potok i komórka dna doliny. */
+  streamName?: string;
+  cell?: number;
+  meanFlowM3s?: number;
+  /** Studnia: wydajność po wierceniu [m³/h]. */
+  wellYieldM3h?: number;
+  /** Rowy: zlewnia zbiornika. */
+  catchment?: Catchment;
+  /** Wysokość podnoszenia do zbiornika [m] (0 – grawitacyjnie). */
+  headM: number;
 }
 
 export interface OpsSnow {
@@ -56,13 +93,15 @@ export interface Infra {
   guns: GunFact[];
   /** Połączone rurociągi: odległość rurą od pompowni do początku. */
   connected: Map<string, number>;
+  /** Etap 6b: źródła wody (gdy jest model wody). */
+  sources: WaterSourceFact[];
 }
 
 const built = (state: GameState, id: string) => !state.construction[id];
 
-export function infraFacts(layout: ResortLayout, analysis: ResortAnalysis, state: GameState, sp: SnowmakingParams, grid: OpsGrid): Infra {
+export function infraFacts(layout: ResortLayout, analysis: ResortAnalysis, state: GameState, sp: SnowmakingParams, grid: OpsGrid, water: WaterContext | null = null): Infra {
   const ops = ensureOps(state);
-  const out: Infra = { reservoirCapacityM3: 0, intakeM3h: 0, pumpCapacityM3h: 0, pump: null, pumpZ: 0, gridKw: 0, garageSlots: 0, anchors: [], guns: [], connected: new Map() };
+  const out: Infra = { reservoirCapacityM3: 0, intakeM3h: 0, pumpCapacityM3h: 0, pump: null, pumpZ: 0, gridKw: 0, garageSlots: 0, anchors: [], guns: [], connected: new Map(), sources: [] };
   for (const b of layout.buildings ?? []) {
     const t = sp.buildings.find((x) => x.id === b.typeId);
     if (!t || !built(state, b.id)) continue;
@@ -80,6 +119,7 @@ export function infraFacts(layout: ResortLayout, analysis: ResortAnalysis, state
   }
   const pipes = (layout.pipelines ?? []).filter((p) => built(state, p.id));
   out.connected = connectPipelines(pipes, out.pump, sp);
+  if (water) out.sources = waterSources(layout, state, sp, grid, water, pipes);
   const pisteOf = pisteCellMap(analysis, grid);
   for (const g of layout.snowGuns ?? []) {
     if (!built(state, g.id)) continue;
@@ -104,6 +144,52 @@ export function infraFacts(layout: ResortLayout, analysis: ResortAnalysis, state
     });
   }
   return out;
+}
+
+/** Źródła wody z układu: ujęcia na ciekach, wodociąg, studnie, rowy – z połączeniem do zbiornika. */
+export function waterSources(layout: ResortLayout, state: GameState, sp: SnowmakingParams, grid: OpsGrid, water: WaterContext, builtPipes?: PipelineDesign[]): WaterSourceFact[] {
+  const wp = water.wp;
+  const reservoirs: { id: string; xM: number; yM: number; capacity: number }[] = [];
+  const raw: { id: string; kind: WaterSourceKind; name: string; xM: number; yM: number; capacity: number }[] = [];
+  for (const b of layout.buildings ?? []) {
+    const t = sp.buildings.find((x) => x.id === b.typeId);
+    if (!t || !built(state, b.id)) continue;
+    if (t.kind === 'reservoir') reservoirs.push({ id: b.id, xM: b.xM, yM: b.yM, capacity: t.capacity });
+    else if (t.kind === 'intake' || t.kind === 'mains' || t.kind === 'well' || t.kind === 'catchment') raw.push({ id: b.id, kind: t.kind, name: b.name, xM: b.xM, yM: b.yM, capacity: t.capacity });
+  }
+  const pipes = (builtPipes ?? (layout.pipelines ?? []).filter((p) => built(state, p.id))).filter((p) => p.supply);
+  const links = connectSources(raw, reservoirs, pipes, wp);
+  return raw.map((r) => {
+    const z = grid.sampleElevationM(r.xM, r.yM);
+    const link = links.get(r.id) ?? null;
+    const res = link ? reservoirs.find((x) => x.id === link.reservoirId)! : null;
+    const zRes = res ? grid.sampleElevationM(res.xM, res.yM) : z;
+    const f: WaterSourceFact = { ...r, zM: z, link, problem: link ? null : 'brak połączenia ze zbiornikiem (rura zasilająca)', headM: 0 };
+    let lift = Math.max(0, zRes - z);
+    if (r.kind === 'intake') {
+      const hit = streamAt(water.net, r.xM, r.yM, wp.streams.intakeMaxDistanceM, wp);
+      if (!hit) f.problem = 'poza ciekiem – ujęcie musi stać na potoku';
+      else {
+        f.streamName = hit.line.name;
+        f.cell = hit.cell;
+        f.meanFlowM3s = hit.meanFlowM3s;
+      }
+    } else if (r.kind === 'mains') {
+      const v = villageCoverage(r.xM, r.yM, water.villageBuildings, wp);
+      if (!v.ok) f.problem = `poza zasięgiem wodociągu wsi (budynków w promieniu ${wp.mains.villageRadiusM} m: ${v.buildings})`;
+    } else if (r.kind === 'well') {
+      f.wellYieldM3h = wellYieldM3h(state.seed, r.id, r.capacity, wp);
+      lift += wp.wells.dynamicLevelShare * r.capacity;
+    } else if (r.kind === 'catchment') {
+      // Rowy zbierają wodę ze zlewni zbiornika, do którego są podłączone.
+      if (res) {
+        f.catchment = reservoirCatchment(water.net, res.xM, res.yM, r.capacity, wp, water.elevationM);
+        lift = 0;
+      }
+    }
+    if (r.kind !== 'catchment' && r.kind !== 'mains') f.headM = lift > 0 ? lift + (sp.pumping.pipeLossMPerKm * (link?.lengthM ?? 0)) / 1000 : 0;
+    return f;
+  });
 }
 
 /** Najbliższy punkt osi trasy (cel armatki). */
@@ -265,6 +351,93 @@ export interface DayOpsInput {
   ep: EconomyParams;
   riding: RidingParams;
   date: CalendarDate;
+  /** Etap 6b: model wody (potoki, wodociąg, studnie, zlewnia); brak – uproszczony dopływ z ujęcia (etap 7). */
+  water?: WaterContext | null;
+}
+
+interface WaterPlanItem {
+  id: string;
+  kind: WaterSourceKind;
+  name: string;
+  rateM3h: number;
+  feePlnPerM3: number;
+  energyKWhPerM3: number;
+  fixedPln: number;
+  note: string;
+}
+
+const fmt1 = (v: number) => (Math.round(v * 10) / 10).toLocaleString('pl-PL');
+
+/**
+ * Plan wody na dobę: ile każde źródło może dać do zbiornika [m³/h]. Ujęcia – przepływ potoku dziś
+ * i wspólny limit poboru; studnie – wydajność; rowy – topnienie i deszcz na zlewni (z modelu śniegu);
+ * wodociąg – limit przyłącza, gdy gracz go włączył. Bez modelu wody – uproszczony dopływ z ujęć.
+ */
+export function planWater(i: DayOpsInput, infra: Infra): { items: WaterPlanItem[]; freeM3h: number; mainsM3h: number } {
+  const sp = i.ep.snowmaking!;
+  const ops = ensureOps(i.state);
+  const date = i.date;
+  const items: WaterPlanItem[] = [];
+  if (!i.water) {
+    const precip = i.book.precipitationBefore(date, sp.water.precipWindowDays);
+    const rate = intakeRateM3h(infra.intakeM3h, date.month, precip, sp);
+    if (rate > 0) items.push({ id: 'ujecia', kind: 'intake', name: 'Ujęcia', rateM3h: rate, feePlnPerM3: 0, energyKWhPerM3: 0, fixedPln: 0, note: 'uproszczony dopływ' });
+    return { items, freeM3h: rate, mainsM3h: 0 };
+  }
+  const wp = i.water.wp;
+  const precip = i.book.precipitationBefore(date, wp.streams.precipWindowDays);
+  const factor = flowFactor(date.month, precip, normalPrecipMm(i.book.profile, date.month, wp.streams.precipWindowDays), wp);
+  const energy = (s: WaterSourceFact) => (s.headM > 0 ? pumpEnergyKWh(1, s.headM, sp) : 0);
+  const intakes = infra.sources.filter((s) => s.kind === 'intake');
+  const alloc = allocateIntakes(
+    i.water.net,
+    intakes.map((s) => ({ id: s.id, cell: s.problem ? -1 : (s.cell ?? -1), capacityM3h: s.capacity })),
+    factor,
+    wp,
+  );
+  intakes.forEach((s, n) => {
+    const a = alloc[n];
+    const note = s.problem ?? `${s.streamName}: przepływ ${fmt1(a.flowM3h)} m³/h, wolno pobrać ${fmt1(a.availableM3h)} m³/h`;
+    items.push({ id: s.id, kind: 'intake', name: s.name, rateM3h: s.problem ? 0 : a.allocatedM3h, feePlnPerM3: wp.streams.streamFeePlnPerM3, energyKWhPerM3: energy(s), fixedPln: 0, note });
+  });
+  for (const s of infra.sources.filter((x) => x.kind === 'well')) {
+    const y = s.wellYieldM3h ?? 0;
+    items.push({ id: s.id, kind: 'well', name: s.name, rateM3h: s.problem ? 0 : y, feePlnPerM3: wp.wells.groundwaterFeePlnPerM3, energyKWhPerM3: energy(s), fixedPln: 0, note: s.problem ?? `wydajność ${fmt1(y)} m³/h, pompa podnosi ${Math.round(s.headM)} m` });
+  }
+  const catchSwe = (ops.catchSweMm ??= {});
+  for (const s of infra.sources.filter((x) => x.kind === 'catchment')) {
+    let rate = 0;
+    let note = s.problem ?? '';
+    const c = s.catchment;
+    if (!s.problem && c && c.cells.length) {
+      let swe = 0;
+      if (i.snow) for (const k of c.cells) swe += Number.isNaN(i.snow.sweMm[k]) ? 0 : i.snow.sweMm[k];
+      swe /= c.cells.length;
+      const prev = catchSwe[s.id] ?? swe;
+      catchSwe[s.id] = swe;
+      const p = dailyAtElevation(i.book.daily(date), c.meanZM, i.book.profile, i.book.weatherParams).precipitationMm;
+      rate = catchmentInflowM3(c.areaM2, p, prev, swe, wp) / 24;
+      note = `zlewnia ${fmt1(c.areaM2 / 10000)} ha: opad ${fmt1(p)} mm, śnieg ${fmt1(prev)} → ${fmt1(swe)} mm wody`;
+    } else if (!s.problem) note = 'brak zlewni przy zbiorniku';
+    items.push({ id: s.id, kind: 'catchment', name: s.name, rateM3h: rate, feePlnPerM3: 0, energyKWhPerM3: 0, fixedPln: 0, note });
+  }
+  const freeM3h = items.reduce((a, x) => a + x.rateM3h, 0);
+  let mainsM3h = 0;
+  for (const s of infra.sources.filter((x) => x.kind === 'mains')) {
+    const on = !!ops.mainsOn && !s.problem;
+    if (on) mainsM3h += s.capacity;
+    items.push({
+      id: s.id,
+      kind: 'mains',
+      name: s.name,
+      rateM3h: on ? s.capacity : 0,
+      feePlnPerM3: wp.mains.pricePlnPerM3,
+      energyKWhPerM3: 0,
+      fixedPln: date.day === 1 ? wp.mains.fixedPlnPerMonth : 0,
+      note: s.problem ?? (on ? `zakup do ${fmt1(s.capacity)} m³/h po ${fmt1(wp.mains.pricePlnPerM3)} zł/m³` : 'wyłączony (włącz zakup w panelu)'),
+    });
+  }
+  return { items, freeM3h, mainsM3h };
 }
 
 export interface DayOpsResult {
@@ -280,14 +453,14 @@ export function runDayOperations(i: DayOpsInput): DayOpsResult {
   const ops = ensureOps(state);
   const date = i.date;
   const iso = formatIsoDate(date);
-  const infra = infraFacts(i.layout, i.analysis, state, sp, i.grid);
+  const infra = infraFacts(i.layout, i.analysis, state, sp, i.grid, i.water ?? null);
   const flows: Partial<Flows> = {};
   const add = (k: keyof Flows, v: number) => (flows[k] = (flows[k] ?? 0) + v);
   const cellM2 = i.grid.cellSizeM ** 2;
   const capacity = infra.reservoirCapacityM3;
   ops.reservoirM3 = Math.min(ops.reservoirM3, capacity);
-  const precip = i.book.precipitationBefore(date, sp.water.precipWindowDays);
-  const inflowM3h = capacity > 0 ? intakeRateM3h(infra.intakeM3h, date.month, precip, sp) : 0;
+  const wplan = capacity > 0 ? planWater(i, infra) : { items: [], freeM3h: 0, mainsM3h: 0 };
+  const inflowM3h = wplan.freeM3h;
   const working = state.seasonOpen && i.facts.lifts.some((l) => l.operating);
   const liftKw = working ? i.facts.lifts.filter((l) => l.operating).reduce((a, l) => a + l.powerKw, 0) : 0;
   const hours = state.hours;
@@ -345,6 +518,7 @@ export function runDayOperations(i: DayOpsInput): DayOpsResult {
       reservoirM3: ops.reservoirM3,
       reservoirCapacityM3: capacity,
       inflowM3h,
+      mainsM3h: wplan.mainsM3h,
       pumpCapacityM3h: infra.pumpCapacityM3h,
       gridLimitKw: infra.gridKw,
       otherLoadKw: (h) => (h + 0.5 >= hours.openH && h + 0.5 < hours.closeH ? liftKw : 0),
@@ -357,7 +531,30 @@ export function runDayOperations(i: DayOpsInput): DayOpsResult {
   );
   ops.reservoirM3 = smd.reservoirEndM3;
   add('snowEnergy', smd.energyCostPln);
-  add('water', smd.waterM3 * sp.water.waterFeePlnPerM3);
+  // Woda ze źródeł: bezpłatny dopływ dzielony proporcjonalnie do wydajności; opłaty za pobór,
+  // energia pompowania do zbiornika (średnia cena doby), zakup z wodociągu.
+  const meanPrice = Array.from({ length: 24 }, (_, h) => tariffPrice(h, i.ep.costs.energyPlnPerKWh, sp)).reduce((a, b) => a + b, 0) / 24;
+  const sources: WaterSourceDay[] = [];
+  let supplyKWh = 0;
+  for (const it of wplan.items) {
+    const m3 = it.kind === 'mains' ? (wplan.mainsM3h > 0 ? (smd.mainsM3 * it.rateM3h) / wplan.mainsM3h : 0) : wplan.freeM3h > 0 ? (smd.intakeM3 * it.rateM3h) / wplan.freeM3h : 0;
+    const kwh = m3 * it.energyKWhPerM3;
+    supplyKWh += kwh;
+    const cost = m3 * it.feePlnPerM3 + kwh * meanPrice + it.fixedPln;
+    add('water', m3 * it.feePlnPerM3 + it.fixedPln);
+    add('snowEnergy', kwh * meanPrice);
+    sources.push({ id: it.id, kind: it.kind, name: it.name, rateM3h: it.rateM3h, m3, costPln: cost, note: it.note });
+  }
+  if (!i.water) add('water', smd.waterM3 * sp.water.waterFeePlnPerM3); // uproszczony model (etap 7): opłata od zużycia
+  // Suma od początku roku gry (1 V).
+  const yStart = date.month >= 5 ? date.year : date.year - 1;
+  const from = `${yStart}-05-01`;
+  if (!ops.waterSeason || ops.waterSeason.from !== from) ops.waterSeason = { from, byKind: {} };
+  for (const so of sources) {
+    const b = (ops.waterSeason.byKind[so.kind] ??= { m3: 0, costPln: 0 });
+    b.m3 += so.m3;
+    b.costPln += so.costPln;
+  }
   const snowOps = emptyOps();
   let offShare = 0;
   if (smd.snowKg > 0) {
@@ -458,10 +655,10 @@ export function runDayOperations(i: DayOpsInput): DayOpsResult {
     hourly: smd.hourly,
     gridLimitKw: infra.gridKw,
     reservoirCapacityM3: capacity,
-    inflowM3: smd.intakeM3,
+    inflowM3: smd.intakeM3 + smd.mainsM3,
     snowM3: smd.snowM3,
     waterM3: smd.waterM3,
-    energyKWh: smd.energyKWh,
+    energyKWh: smd.energyKWh + supplyKWh,
     offPisteShare: offShare,
     gunHours,
     jobs: night.jobs.map((j) => ({ groomerId: j.groomerId, pisteId: j.pisteId, startH: j.startH, endH: j.endH, complete: j.complete, steepDone: j.steepDone, mode: j.mode })),
@@ -470,6 +667,7 @@ export function runDayOperations(i: DayOpsInput): DayOpsResult {
     finishH: night.finishH,
     fuelL: night.fuelL,
     broken,
+    sources,
   };
   ops.last = summary;
   ops.dayGroom = [];

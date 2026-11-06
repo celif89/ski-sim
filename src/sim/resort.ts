@@ -234,7 +234,7 @@ export function parseLayout(raw: unknown): ResortLayout {
   for (const pp of pipes) {
     if (typeof pp.id !== 'string' || !Array.isArray(pp.points)) continue;
     const points = (pp.points as unknown[]).filter(isPoint).map((q) => ({ xM: q.xM, yM: q.yM }));
-    if (points.length >= 2) (out.pipelines ??= []).push({ id: pp.id, name: typeof pp.name === 'string' ? pp.name : pp.id, points });
+    if (points.length >= 2) (out.pipelines ??= []).push({ id: pp.id, name: typeof pp.name === 'string' ? pp.name : pp.id, points, ...(pp.supply === true ? { supply: true } : {}) });
   }
   const gunsRaw = Array.isArray(r.snowGuns) ? (r.snowGuns as Record<string, unknown>[]) : [];
   for (const g of gunsRaw) {

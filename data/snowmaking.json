@@ -116,6 +116,11 @@
       "value": 60,
       "unit": "m",
       "source": "początek rurociągu musi być tak blisko pompowni albo innego rurociągu"
+    },
+    "supplyCostPlnPerM": {
+      "value": 250,
+      "unit": "zł/m",
+      "source": "rura zasilająca (ujęcie/studnia/wodociąg → zbiornik): PE DN 110–160 w wykopie, bez hydrantów i kabli; do kalibracji"
     }
   },
   "snow": {
@@ -306,15 +311,99 @@
       "costPln": {
         "value": 400000,
         "unit": "zł",
-        "source": "jaz, osadnik, rurociąg do zbiornika; do kalibracji"
+        "source": "jaz, osadnik, pompa ujęcia; rura do zbiornika osobno (rura zasilająca); do kalibracji"
       },
       "capacity": {
         "value": 60,
         "unit": "m³/h",
-        "source": "limit poboru – water.intakeSummerM3h"
+        "source": "największy pobór, na jaki zbudowano jaz i rurę; faktyczny pobór ograniczają przepływ potoku i wspólny limit poboru (data/water.json)"
       },
       "buildDays": {
         "value": 30,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 1
+    },
+    {
+      "id": "mains",
+      "name": "Przyłącze wodociągowe 10 m³/h",
+      "kind": "mains",
+      "costPln": {
+        "value": 150000,
+        "unit": "zł",
+        "source": "przyłącze do sieci wsi z wodomierzem i zaworem zwrotnym, rura do 300 m; do kalibracji"
+      },
+      "capacity": {
+        "value": 10,
+        "unit": "m³/h",
+        "source": "limit poboru z sieci wiejskiej (mała sieć, priorytet gospodarstw); do kalibracji"
+      },
+      "buildDays": {
+        "value": 30,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 1
+    },
+    {
+      "id": "well100",
+      "name": "Studnia głębinowa 100 m",
+      "kind": "well",
+      "costPln": {
+        "value": 125000,
+        "unit": "zł",
+        "source": "wiercenie 100 m × ok. 450 zł/m (oferty 2025: 250–600 zł/m) + pompa głębinowa, obudowa, sterowanie ok. 80 tys.; do kalibracji"
+      },
+      "capacity": {
+        "value": 100,
+        "unit": "m",
+        "source": "głębokość otworu – wydajność losowana po wierceniu (data/water.json, wells)"
+      },
+      "buildDays": {
+        "value": 20,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 0
+    },
+    {
+      "id": "well200",
+      "name": "Studnia głębinowa 200 m",
+      "kind": "well",
+      "costPln": {
+        "value": 170000,
+        "unit": "zł",
+        "source": "wiercenie 200 m × ok. 450 zł/m + pompa głębinowa, obudowa, sterowanie ok. 80 tys.; do kalibracji"
+      },
+      "capacity": {
+        "value": 200,
+        "unit": "m",
+        "source": "głębokość otworu – wydajność losowana po wierceniu (data/water.json, wells)"
+      },
+      "buildDays": {
+        "value": 35,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "summerOnly": 0
+    },
+    {
+      "id": "catchment",
+      "name": "Rowy zbierające spływ do zbiornika",
+      "kind": "catchment",
+      "costPln": {
+        "value": 120000,
+        "unit": "zł",
+        "source": "ok. 1,5 km rowów z przepustami (ok. 60 zł/m) i osadnik przed zbiornikiem; do kalibracji"
+      },
+      "capacity": {
+        "value": 300000,
+        "unit": "m²",
+        "source": "największa powierzchnia zlewni, z której rowy zbierają wodę (30 ha); do kalibracji"
+      },
+      "buildDays": {
+        "value": 20,
         "unit": "dni",
         "source": "do kalibracji"
       },

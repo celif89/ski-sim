@@ -33,6 +33,7 @@ import { WeatherBook } from './weatherBook';
 import type { GameSave } from './gameSave';
 import { makeSave } from './gameSave';
 import type { DayOpsResult } from './operations';
+import type { WaterContext } from './operations';
 import { blockedPistes, runDayOperations } from './operations';
 import type { SnowOps } from './snowOps';
 
@@ -64,6 +65,8 @@ export interface HeadlessGameOptions {
   /** Etap 6b: drogi – parametry i drogi publiczne (brak – każdy parking ma dojazd). */
   roads?: RoadParams | null;
   publicRoads?: PointM[][] | null;
+  /** Etap 6b: model wody (potoki, wodociąg, studnie, zlewnia); brak – uproszczony dopływ z ujęć. */
+  water?: WaterContext | null;
 }
 
 export class HeadlessGame {
@@ -220,6 +223,7 @@ export class HeadlessGame {
         ep: this.o.economy,
         riding: this.o.riding,
         date,
+        water: this.o.water ?? null,
       });
       extra = res.extra;
       this.lastOps = res;

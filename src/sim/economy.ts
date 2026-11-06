@@ -139,6 +139,27 @@ export interface OpsState {
   dayGroom: string[];
   /** Ostatnia doba naśnieżania i noc ratraków – do paneli i mapy. */
   last: OpsSummary | null;
+  /** Etap 6b: gracz kupuje wodę z wodociągu (przełącznik w panelu). */
+  mainsOn?: boolean;
+  /** Etap 6b: średni zapas wody w śniegu na zlewni rowów wczoraj [mm] (id rowów → mm). */
+  catchSweMm?: Record<string, number>;
+  /** Etap 6b: woda ze źródeł od początku roku gry (1 V): rodzaj → ilość i koszt. */
+  waterSeason?: { from: string; byKind: Record<string, { m3: number; costPln: number }> };
+}
+
+/** Etap 6b: woda z jednego źródła w dobie (do panelu zbiornika). */
+export interface WaterSourceDay {
+  id: string;
+  kind: 'intake' | 'mains' | 'well' | 'catchment';
+  name: string;
+  /** Wydajność dziś (dopływ, który źródło mogło dać) [m³/h]. */
+  rateM3h: number;
+  /** Do zbiornika naprawdę trafiło [m³]. */
+  m3: number;
+  /** Koszt: opłata za pobór, energia pompowania, zakup z wodociągu [zł]. */
+  costPln: number;
+  /** Krótki opis: potok i przepływ, wydajność studni, problem. */
+  note: string;
 }
 
 export interface OpsSummary {
@@ -159,6 +180,8 @@ export interface OpsSummary {
   finishH: number;
   fuelL: number;
   broken: string[];
+  /** Etap 6b: źródła wody w dobie. */
+  sources?: WaterSourceDay[];
 }
 
 export interface DayRecord {

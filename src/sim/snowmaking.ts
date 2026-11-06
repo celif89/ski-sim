@@ -67,6 +67,8 @@ export interface PipelineDesign {
   id: string;
   name: string;
   points: PointM[];
+  /** Etap 6b: rura zasilająca (źródło wody → zbiornik) – bez hydrantów, poza siecią pompowni. */
+  supply?: boolean;
 }
 
 export interface SnowGunDesign {
@@ -109,6 +111,7 @@ function pointAt(points: PointM[], d: number): PointM {
 
 /** Hydranty co `hydrantSpacingM` wzdłuż rurociągu (pierwszy w połowie odstępu od początku). */
 export function pipelineHydrants(pipe: PipelineDesign, p: SnowmakingParams): Hydrant[] {
+  if (pipe.supply) return [];
   const L = polylineLengthM(pipe.points);
   const sp = p.pipe.hydrantSpacingM;
   const out: Hydrant[] = [];
@@ -123,7 +126,7 @@ export function pipelineHydrants(pipe: PipelineDesign, p: SnowmakingParams): Hyd
 export function pipelineCost(pipe: PipelineDesign, p: SnowmakingParams): { costPln: number; buildDays: number; lengthM: number; hydrants: number } {
   const L = polylineLengthM(pipe.points);
   const n = pipelineHydrants(pipe, p).length;
-  return { costPln: L * p.pipe.costPlnPerM + n * p.pipe.hydrantCostPln, buildDays: Math.max(1, Math.ceil(L / p.pipe.metersPerDay)), lengthM: L, hydrants: n };
+  return { costPln: L * (pipe.supply ? p.pipe.supplyCostPlnPerM : p.pipe.costPlnPerM) + n * p.pipe.hydrantCostPln, buildDays: Math.max(1, Math.ceil(L / p.pipe.metersPerDay)), lengthM: L, hydrants: n };
 }
 
 /**
@@ -138,7 +141,7 @@ export function connectPipelines(pipes: PipelineDesign[], pump: PointM | null, p
   while (changed) {
     changed = false;
     for (const pipe of pipes) {
-      if (out.has(pipe.id) || pipe.points.length < 2) continue;
+      if (out.has(pipe.id) || pipe.points.length < 2 || pipe.supply) continue;
       const start = pipe.points[0];
       if (Math.hypot(start.xM - pump.xM, start.yM - pump.yM) <= r) {
         out.set(pipe.id, Math.hypot(start.xM - pump.xM, start.yM - pump.yM));
@@ -146,6 +149,7 @@ export function connectPipelines(pipes: PipelineDesign[], pump: PointM | null, p
         continue;
       }
       for (const other of pipes) {
+        if (other.supply) continue;
         const base = out.get(other.id);
         if (base === undefined) continue;
         // Najbliższy punkt innego rurociągu (wierzchołki i co 10 m).
@@ -207,8 +211,10 @@ export interface SnowmakingDayInput {
   needs: Map<string, PisteSnowNeed>;
   reservoirM3: number;
   reservoirCapacityM3: number;
-  /** Dopływ z ujęcia [m³/h] tego dnia. */
+  /** Dopływ ze źródeł bezpłatnych (potok, studnie, zlewnia) [m³/h] tego dnia. */
   inflowM3h: number;
+  /** Zakup z wodociągu [m³/h], gdy zbiornik nie jest pełny (etap 6b; brak – 0). */
+  mainsM3h?: number;
   pumpCapacityM3h: number;
   gridLimitKw: number;
   /** Inne odbiory mocy w godzinie (wyciągi w godzinach pracy) [kW]. */
@@ -245,6 +251,8 @@ export interface SnowmakingDayResult {
   gunKWh: number;
   energyCostPln: number;
   intakeM3: number;
+  /** Woda kupiona z wodociągu [m³]. */
+  mainsM3: number;
   reservoirEndM3: number;
   maxPowerKw: number;
   meanDensityKgM3: number;
@@ -262,6 +270,7 @@ export function runSnowmakingDay(input: SnowmakingDayInput, p: SnowmakingParams)
   const hourly: SnowmakingDayResult['hourly'] = [];
   let reservoir = Math.max(0, Math.min(input.reservoirCapacityM3, input.reservoirM3));
   let intake = 0;
+  let mains = 0;
   let energyCost = 0;
   let maxPower = 0;
   const needLeft = new Map<string, number>();
@@ -271,6 +280,10 @@ export function runSnowmakingDay(input: SnowmakingDayInput, p: SnowmakingParams)
     const inflow = Math.min(input.inflowM3h, input.reservoirCapacityM3 - reservoir);
     reservoir += Math.max(0, inflow);
     intake += Math.max(0, inflow);
+    // Wodociąg dolewa, dopóki zbiornik nie jest pełny (płatne za m³).
+    const bought = Math.max(0, Math.min(input.mainsM3h ?? 0, input.reservoirCapacityM3 - reservoir));
+    reservoir += bought;
+    mains += bought;
     const other = Math.max(0, input.otherLoadKw(h));
     const lifts = h + 0.5 >= input.liftsOpenH && h + 0.5 < input.liftsCloseH;
     const cand: { g: GunFact; q: number; tw: number; w: HourlyWeather; prio: number; waterM3: number; gunKw: number; pumpKw: number; density: number; liquid: number }[] = [];
@@ -366,6 +379,7 @@ export function runSnowmakingDay(input: SnowmakingDayInput, p: SnowmakingParams)
     gunKWh,
     energyCostPln: energyCost,
     intakeM3: intake,
+    mainsM3: mains,
     reservoirEndM3: reservoir,
     maxPowerKw: maxPower,
     meanDensityKgM3: snowKg > 0 ? dSum / snowKg : 450,
