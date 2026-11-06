@@ -44,7 +44,7 @@ export interface MapLabel {
 export interface ResortDrawState {
   layout: ResortLayout;
   analysis: ResortAnalysis;
-  selection: { kind: 'lift' | 'piste' | 'base'; id: string } | null;
+  selection: { kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun'; id: string } | null;
   showNetwork: boolean;
   showReality: boolean;
   realLifts: OsmResort['lifts'] | null;
@@ -63,6 +63,13 @@ export interface ResortDrawState {
   /** Etap 6: budowy w toku (id → postęp 0–1) – plac budowy na mapie. */
   construction?: Map<string, number>;
   buildingTypes?: { id: string; name: string }[] | null;
+  /** Etap 7: hydranty (z armatkami), rysowany rurociąg, chmury śniegu pracujących armatek. */
+  snowNet?: {
+    hydrants: { pipelineId: string; index: number; xM: number; yM: number; gunId: string | null }[];
+    draftPipe: { xM: number; yM: number }[];
+    plumes: { xM: number; yM: number; aimXM: number; aimYM: number; rateM3h: number; windFromDeg: number; windMs: number }[];
+    cursor: { xM: number; yM: number } | null;
+  } | null;
 }
 
 const BUILDING_STYLE: Record<string, { color: number; letter: string }> = {
@@ -70,7 +77,20 @@ const BUILDING_STYLE: Record<string, { color: number; letter: string }> = {
   gastronomy: { color: 0xd9480f, letter: 'G' },
   rental: { color: 0x7048e8, letter: 'W' },
   school: { color: 0x2b8a3e, letter: 'S' },
+  intake: { color: 0x1971c2, letter: 'U' },
+  reservoir20: { color: 0x1864ab, letter: 'Z' },
+  reservoir50: { color: 0x1864ab, letter: 'Z' },
+  reservoir100: { color: 0x1864ab, letter: 'Z' },
+  pump150: { color: 0x0b7285, letter: 'Pm' },
+  pump300: { color: 0x0b7285, letter: 'Pm' },
+  pump600: { color: 0x0b7285, letter: 'Pm' },
+  grid500: { color: 0xe67700, letter: 'E' },
+  grid1000: { color: 0xe67700, letter: 'E' },
+  grid2000: { color: 0xe67700, letter: 'E' },
+  garage: { color: 0x495057, letter: 'R' },
+  anchor: { color: 0x862e9c, letter: 'K' },
 };
+const PIPE_COLOR = 0x1c7ed6;
 const SITE_COLOR = 0xf59f00;
 
 export type HandleKind = 'pistePoint' | 'pisteAdd' | 'pisteWidth' | 'liftBottom' | 'liftTop' | 'liftBend' | 'liftAdd';
@@ -253,7 +273,7 @@ export class ResortLayer {
     this.buildingsFar.visible = w.w1 > 0.01;
     this.buildingsNear.visible = w.w1 < 0.99;
     const chairsVisible = mpp < 5 && st.layout.lifts.length > 0;
-    const key = [st.version, st.drawVersion, cam.centerXM, cam.centerYM, mpp, cam.viewportWidthPx, cam.viewportHeightPx, cam.rotated, st.showNetwork, st.showReality, st.hoverPoint?.xM, st.hoverPoint?.yM, chairsVisible ? st.timeS : 0].join('|');
+    const key = [st.version, st.drawVersion, cam.centerXM, cam.centerYM, mpp, cam.viewportWidthPx, cam.viewportHeightPx, cam.rotated, st.showNetwork, st.showReality, st.hoverPoint?.xM, st.hoverPoint?.yM, chairsVisible ? st.timeS : 0, st.snowNet?.plumes.length ? Math.floor(performance.now() / 50) : 0].join('|');
     if (key === this.lastKey) return;
     this.lastKey = key;
     const g = this.g;
@@ -535,6 +555,63 @@ export class ResortLayer {
       this.label(li++, style.letter, p.xPx, p.yPx, { size: 13, fill: 0xffffff, stroke: style.color });
     }
 
+    // ---- naśnieżanie (etap 7): rurociągi, hydranty, armatki, chmury śniegu
+    if (st.snowNet) {
+      for (const pipe of st.layout.pipelines ?? []) {
+        const pts = pipe.points.map((q) => toS(q.xM, q.yM));
+        const sel = st.selection?.kind === 'pipeline' && st.selection.id === pipe.id;
+        g.moveTo(pts[0].xPx, pts[0].yPx);
+        for (const q of pts) g.lineTo(q.xPx, q.yPx);
+        g.stroke({ width: 5, color: 0xffffff, alpha: 0.9, cap: 'round', join: 'round' });
+        g.moveTo(pts[0].xPx, pts[0].yPx);
+        for (const q of pts) g.lineTo(q.xPx, q.yPx);
+        g.stroke({ width: sel ? 3.5 : 2.5, color: sel ? SELECT_COLOR : PIPE_COLOR, cap: 'round', join: 'round' });
+      }
+      if (st.snowNet.draftPipe.length) {
+        const pts = [...st.snowNet.draftPipe, ...(st.snowNet.cursor ? [st.snowNet.cursor] : [])].map((q) => toS(q.xM, q.yM));
+        g.moveTo(pts[0].xPx, pts[0].yPx);
+        for (const q of pts) g.lineTo(q.xPx, q.yPx);
+        g.stroke({ width: 3, color: PIPE_COLOR, alpha: 0.6 });
+      }
+      const showHydrants = mpp < 6;
+      for (const h of st.snowNet.hydrants) {
+        const p = toS(h.xM, h.yM);
+        if (h.gunId) {
+          const sel = st.selection?.kind === 'gun' && st.selection.id === h.gunId;
+          const gun = (st.layout.snowGuns ?? []).find((x) => x.id === h.gunId);
+          // Widok z góry z cieniem w prawo w dół: armatka śmigłowa – okrągła obudowa wentylatora, lanca – smukła rura.
+          if (gun?.typeId === 'lance') {
+            g.rect(p.xPx - 1, p.yPx - 9, 4, 14).fill({ color: 0x0f172a, alpha: 0.18 });
+            g.rect(p.xPx - 2, p.yPx - 11, 4, 14).fill({ color: 0x343a40 }).stroke({ width: sel ? 2.5 : 1.5, color: sel ? SELECT_COLOR : 0xffffff });
+          } else {
+            g.circle(p.xPx + 2, p.yPx + 2, 7).fill({ color: 0x0f172a, alpha: 0.18 });
+            g.circle(p.xPx, p.yPx, 7).fill({ color: 0x343a40 }).stroke({ width: sel ? 2.5 : 1.5, color: sel ? SELECT_COLOR : 0xffffff });
+            g.circle(p.xPx, p.yPx, 3).fill({ color: 0xdee2e6 });
+          }
+        } else if (showHydrants) g.circle(p.xPx, p.yPx, 3).fill({ color: 0xffffff }).stroke({ width: 1.5, color: PIPE_COLOR });
+      }
+      // Chmury śniegu: w stronę trasy i z wiatrem, ruchome (czas realny – tempo nie zależy od prędkości zegara gry).
+      const t = performance.now() / 1000;
+      for (const pl of st.snowNet.plumes) {
+        const p0 = toS(pl.xM, pl.yM);
+        const ax = pl.aimXM - pl.xM;
+        const ay = pl.aimYM - pl.yM;
+        const al = Math.hypot(ax, ay) || 1;
+        const az = ((pl.windFromDeg + 180) * Math.PI) / 180;
+        const dirX = (ax / al) * 25 + Math.sin(az) * 2.5 * pl.windMs;
+        const dirY = (ay / al) * 25 - Math.cos(az) * 2.5 * pl.windMs;
+        const end = toS(pl.xM + dirX, pl.yM + dirY);
+        const n = 7;
+        const strength = Math.min(1, pl.rateM3h / 60);
+        for (let i = 0; i < n; i++) {
+          const f = ((i + ((t * 0.6) % 1)) / n) % 1;
+          const x = p0.xPx + (end.xPx - p0.xPx) * f;
+          const y = p0.yPx + (end.yPx - p0.yPx) * f;
+          g.circle(x, y, (3 + 14 * f) * Math.max(0.6, Math.min(2, 4 / mpp))).fill({ color: 0xffffff, alpha: (0.55 - 0.45 * f) * (0.4 + 0.6 * strength) });
+        }
+      }
+    }
+
     // ---- plac budowy (etap 6): przerywana pomarańczowa linia, postęp w procentach
     if (st.construction && st.construction.size) {
       const dashed = (pts: { xPx: number; yPx: number }[]) => {
@@ -580,6 +657,14 @@ export class ResortLayer {
           const a = pts[0];
           const b = pts[pts.length - 1];
           tag((a.xPx + b.xPx) / 2, (a.yPx + b.yPx) / 2 - 20, prog);
+          continue;
+        }
+        const pipe = (st.layout.pipelines ?? []).find((x) => x.id === id);
+        if (pipe) {
+          const pts = pipe.points.map((q) => toS(q.xM, q.yM));
+          dashed(pts);
+          const m = pts[Math.floor(pts.length / 2)];
+          tag(m.xPx, m.yPx - 16, prog);
           continue;
         }
         const bld = [...st.layout.bases, ...(st.layout.buildings ?? [])].find((x) => x.id === id);

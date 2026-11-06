@@ -482,3 +482,11 @@ export function acquireGroomer(state: GameState, typeId: string, leased: boolean
   state.log.push({ date: formatIsoDate(state.date), text: `${leased ? 'Leasing' : 'Zakup'}: ${t.name} (${id})` });
   return null;
 }
+
+/**
+ * Podgląd doby (bez zmiany stanu gry): to samo liczenie na kopii stanu – plan naśnieżania dnia
+ * (chmury armatek na mapie), plan nocy z przewidywanym czasem zakończenia, moc chwilowa.
+ */
+export function previewDayOperations(i: DayOpsInput): DayOpsResult {
+  return runDayOperations({ ...i, state: structuredClone(i.state) });
+}

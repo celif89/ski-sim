@@ -135,7 +135,7 @@ export class FinancePanel {
 
 // ------------------------------------------------------------------ okna
 
-abstract class Modal {
+export abstract class Modal {
   protected readonly root: HTMLElement;
   protected readonly body: HTMLElement;
   constructor(parent: HTMLElement, cls: string) {
@@ -225,6 +225,25 @@ function flowsTable(f: Flows): string {
     <table class="build-list" style="margin-top:6px"><tr><td>Budowa (inwestycje)</td><td>${fmtPln(f.construction)}</td></tr>${f.refunds ? `<tr><td>Zwroty za anulowane budowy</td><td>${fmtPln(f.refunds)}</td></tr>` : ''}<tr><td>Kredyt – wypłaty / spłata kapitału</td><td>${fmtPln(f.loanIn)} / ${fmtPln(f.loanPrincipal)}</td></tr></table>`;
 }
 
+/** Naśnieżanie i ratraki w sezonie (etap 7): śnieg, woda, energia, paliwo, koszty, dni dzięki naśnieżaniu. */
+function snowSection(r: SeasonReport): string {
+  const sum = (k: 'snowM3' | 'waterM3' | 'snowKWh' | 'fuelL' | 'groomed' | 'unfinished') => r.days.reduce((a, d) => a + (d[k] ?? 0), 0);
+  const snowM3 = sum('snowM3');
+  const fuel = sum('fuelL');
+  if (snowM3 <= 0 && fuel <= 0) return '';
+  const f = r.flows;
+  const snowCost = f.snowEnergy + f.water;
+  const groomCost = f.groomFuel + f.groomStaff + f.groomService + f.leasing + f.repairs;
+  const tech = r.days.filter((d) => d.techOpen).length;
+  return `<h4>Naśnieżanie i ratraki</h4>
+    <table class="build-list">
+      <tr><td>Śnieg techniczny</td><td>${f0(snowM3)} m³</td><td>woda ${f0(sum('waterM3'))} m³ · energia ${f0(sum('snowKWh') / 1000)} MWh</td></tr>
+      <tr><td>Koszt naśnieżania</td><td>${fmtPln(snowCost)}</td><td>${snowM3 > 0 ? `${f1(snowCost / snowM3)} zł/m³ śniegu (bez budowy)` : ''}</td></tr>
+      <tr><td>Ratraki</td><td>${f0(fuel)} l paliwa</td><td>${f0(sum('groomed'))} przejazdów tras · nie zdążyły ${f0(sum('unfinished'))} razy · koszt ${fmtPln(groomCost)}</td></tr>
+      <tr><td><b>Dni otwarte dzięki naśnieżaniu</b></td><td><b>${tech}</b></td><td>na samym naturalnym śniegu połowa tras miałaby zbyt cienką bazę</td></tr>
+    </table>`;
+}
+
 export class SeasonReportView extends Modal {
   constructor(parent: HTMLElement) {
     super(parent, 'season-report');
@@ -253,7 +272,8 @@ export class SeasonReportView extends Modal {
       <h4>Porównanie z konkurencją</h4>
       <table class="build-list"><tr><th>ośrodek</th><th>trasy</th><th>karnet</th><th>dni otw.</th><th>goście</th></tr>
       <tr><td><b>Twój ośrodek</b></td><td>${f1(us.kmOpen)} km</td><td>${f0(us.dayPln)} zł</td><td>${r.openDays}</td><td>${f0(r.guests)}</td></tr>${comp}</table>
-      <div class="muted small">Konkurenci naśnieżają – dlatego zwykle mają dłuższy sezon. Kredyt na koniec: ${fmtPln(r.debtEnd)}. Ratrakowanie liczone tymczasowo jako usługa za hektar (etap 7 – własne ratraki).</div>`;
+      ${snowSection(r)}
+      <div class="muted small">Konkurenci naśnieżają – dlatego zwykle mają dłuższy sezon. Kredyt na koniec: ${fmtPln(r.debtEnd)}.</div>`;
     this.showRoot();
   }
 }

@@ -7,6 +7,9 @@ import type { Container } from 'pixi.js';
 import type { LiftAnalysis, LiftDesign, LiftParams, PointM, Tower } from '../sim/lifts';
 import { analyzeLift, designLift, liftPath, liftTypeById, pointAlongPath, retowerLift } from '../sim/lifts';
 import type { GroundParams } from '../sim/ground';
+import type { Hydrant } from '../sim/snowmaking';
+import { pipelineCost, pipelineHydrants } from '../sim/snowmaking';
+import type { SnowmakingParams } from '../sim/snowmakingParams';
 import type { RidingParams, ThinSegment } from '../sim/snowRiding';
 import { thinSegments } from '../sim/snowRiding';
 import type { AxisPoint, PisteAnalysis, PisteParams } from '../sim/pistes';
@@ -57,7 +60,11 @@ export interface BuildControllerOptions {
   beforeCommit?(next: ResortLayout, analysis: ResortAnalysis): string | null;
   /** Etap 6: typy budynków (parking, gastronomia…) do narzędzia „Budynki”. */
   buildingTypes?: { id: string; name: string; base: boolean; costPln: number }[];
+  /** Etap 7: parametry naśnieżania (rurociągi, hydranty, armatki). */
+  snowmaking?: SnowmakingParams | null;
 }
+
+export type SelKind = 'lift' | 'piste' | 'base' | 'pipeline' | 'gun';
 
 export interface SnowWarning {
   pisteId: string;
@@ -75,7 +82,7 @@ export class BuildController {
   private tool: BuildTool = 'select';
   private liftTypeId: string;
   private widthM: number;
-  private selection: { kind: 'lift' | 'piste' | 'base'; id: string } | null = null;
+  private selection: { kind: SelKind; id: string } | null = null;
   private showNetwork = false;
   private showReality = false;
   private real: RealPisteComparison[] | null = null;
@@ -102,6 +109,9 @@ export class BuildController {
   /** Budowy w toku: postęp 0–1 (etap 6 – plac budowy na mapie). */
   private construction = new Map<string, number>();
   private buildingTypeId = 'parking';
+  /** Etap 7: rurociąg w trakcie rysowania, typ stawianej armatki, armatki pracujące teraz (chmury). */
+  private pipePoints: PointM[] = [];
+  private gunTypeId = 'fan';
   private readonly panel: BuildPanel;
   private readonly profile: BuildProfile;
   private readonly layer: ResortLayer;
@@ -142,7 +152,11 @@ export class BuildController {
         this.buildingTypeId = id;
         this.setTool('base');
       },
-    }, o.buildingTypes ?? null);
+      onGunType: (id) => {
+        this.gunTypeId = id;
+        this.setTool('gun');
+      },
+    }, o.buildingTypes ?? null, o.snowmaking ? o.snowmaking.guns.map((g) => ({ id: g.id, name: g.name, costPln: g.costPln })) : null);
     this.profile = new BuildProfile(o.profileParent, o.pisteParams, {
       onTowersChange: (towers, final) => this.changeTowers(towers, final),
       onAutoTowers: () => this.autoTowers(),
@@ -334,7 +348,11 @@ export class BuildController {
           ? 'Trasa – pędzel: przeciągnij myszą wzdłuż trasy. Mapę przesuwasz prawym przyciskiem lub klawiszami.'
           : tool === 'pisteAxis'
             ? 'Trasa – oś: klikaj punkty osi; podwójne kliknięcie lub Enter – koniec; Backspace – cofnij punkt.'
-            : tool === 'base'
+            : tool === 'pipeline'
+              ? 'Rurociąg: klikaj punkty od pompowni (albo od innego rurociągu) wzdłuż trasy; Enter lub podwójne kliknięcie – koniec. Hydranty stawiają się same co kilkadziesiąt metrów.'
+              : tool === 'gun'
+                ? `Armatka: kliknij hydrant (kropka na rurociągu) – ${this.o.snowmaking?.guns.find((g) => g.id === this.gunTypeId)?.name ?? ''}. Zaznaczoną armatkę śmigłową przestawisz, klikając wolny hydrant.`
+                : tool === 'base'
               ? `Budynek: kliknij miejsce (${this.o.buildingTypes?.find((t) => t.id === this.buildingTypeId)?.name ?? 'baza'}).`
               : '';
     this.o.onToolChange(tool);
@@ -342,6 +360,7 @@ export class BuildController {
   }
 
   private cancelDraft(): void {
+    this.pipePoints = [];
     this.liftBottom = null;
     this.draftLift = null;
     this.axisPoints = [];
@@ -423,6 +442,15 @@ export class BuildController {
       this.updateDraftPiste(this.axisPoints, p);
       return true;
     }
+    if (this.tool === 'pipeline') {
+      this.pipePoints.push({ xM: p.xM, yM: p.yM });
+      this.drawVersion++;
+      return true;
+    }
+    if (this.tool === 'gun') {
+      this.placeGun(xPx, yPx);
+      return true;
+    }
     if (this.tool === 'base') {
       const next = this.clone();
       const id = `B${next.nextId++}`;
@@ -443,7 +471,8 @@ export class BuildController {
   }
 
   handleDoubleClick(): void {
-    if (this.tool === 'pisteAxis') this.finishAxis();
+    if (this.tool === 'pipeline') this.finishPipeline();
+    else if (this.tool === 'pisteAxis') this.finishAxis();
     else if (this.tool === 'select' && this.hoverHandle?.kind === 'liftBend') this.toggleBendMid(this.hoverHandle.index);
   }
 
@@ -536,6 +565,15 @@ export class BuildController {
         return true;
       case 'Enter':
         if (this.tool === 'pisteAxis') this.finishAxis();
+        if (this.tool === 'pipeline') this.finishPipeline();
+        return true;
+      case 'KeyH':
+        if (!this.o.snowmaking) return false;
+        this.setTool('pipeline');
+        return true;
+      case 'KeyJ':
+        if (!this.o.snowmaking) return false;
+        this.setTool('gun');
         return true;
       case 'Backspace':
         if (this.tool === 'pisteAxis' && this.axisPoints.length) {
@@ -557,13 +595,90 @@ export class BuildController {
         return true;
       }
       case 'Escape':
-        if (this.liftBottom || this.axisPoints.length) this.cancelDraft();
+        if (this.liftBottom || this.axisPoints.length || this.pipePoints.length) this.cancelDraft();
         else if (this.selection) this.select(null);
         else this.setTool('select');
         return true;
       default:
         return false;
     }
+  }
+
+  // ------------------------------------------------------------------ naśnieżanie (etap 7)
+
+  /** Hydranty wszystkich rurociągów z informacją o armatce. */
+  hydrants(layout = this.layout): (Hydrant & { gunId: string | null })[] {
+    const sp = this.o.snowmaking;
+    if (!sp) return [];
+    const out: (Hydrant & { gunId: string | null })[] = [];
+    for (const pipe of layout.pipelines ?? []) {
+      for (const h of pipelineHydrants(pipe, sp)) {
+        const g = (layout.snowGuns ?? []).find((x) => x.pipelineId === pipe.id && x.hydrant === h.index);
+        out.push({ ...h, gunId: g?.id ?? null });
+      }
+    }
+    return out;
+  }
+
+  private finishPipeline(): void {
+    const pts = this.pipePoints.filter((q, i, a) => i === 0 || Math.hypot(q.xM - a[i - 1].xM, q.yM - a[i - 1].yM) > 1);
+    this.pipePoints = [];
+    this.drawVersion++;
+    if (pts.length < 2) {
+      this.message = 'Rurociąg potrzebuje co najmniej dwóch punktów.';
+      this.refreshPanel();
+      return;
+    }
+    const next = this.clone();
+    const id = `R${next.nextId++}`;
+    const n = (next.pipelines ?? []).length + 1;
+    (next.pipelines ??= []).push({ id, name: `Rurociąg ${n}`, points: pts });
+    const c = pipelineCost(next.pipelines[next.pipelines.length - 1], this.o.snowmaking!);
+    if (this.commit(next, `Rurociąg ${n}: ${Math.round(c.lengthM)} m, ${c.hydrants} hydrantów. Wykop tylko latem (V–X). Początek musi być przy pompowni albo innym rurociągu.`)) this.select({ kind: 'pipeline', id });
+  }
+
+  /** Armatka na hydrancie pod kursorem; zaznaczona armatka śmigłowa – przestawienie na wolny hydrant. */
+  private placeGun(xPx: number, yPx: number): void {
+    const sp = this.o.snowmaking;
+    if (!sp) return;
+    const cam = this.o.camera;
+    let best: (Hydrant & { gunId: string | null }) | null = null;
+    let bd = 14;
+    for (const h of this.hydrants()) {
+      const s = cam.worldToScreen(h.xM, h.yM);
+      const d = Math.hypot(s.xPx - xPx, s.yPx - yPx);
+      if (d < bd) {
+        bd = d;
+        best = h;
+      }
+    }
+    if (!best) {
+      this.message = 'Kliknij hydrant (kropka na rurociągu).';
+      this.refreshPanel();
+      return;
+    }
+    if (best.gunId) {
+      this.select({ kind: 'gun', id: best.gunId });
+      return;
+    }
+    const sel = this.selection?.kind === 'gun' ? (this.layout.snowGuns ?? []).find((g) => g.id === this.selection!.id) : undefined;
+    const next = this.clone();
+    if (sel) {
+      const type = sp.guns.find((t) => t.id === sel.typeId);
+      if (!type?.movable) {
+        this.message = 'Lanca jest stała – usuń ją i postaw nową w innym miejscu.';
+        this.refreshPanel();
+        return;
+      }
+      const g = next.snowGuns!.find((x) => x.id === sel.id)!;
+      g.pipelineId = best.pipelineId;
+      g.hydrant = best.index;
+      this.commit(next, 'Armatkę przestawiono na inny hydrant.');
+      return;
+    }
+    const id = `A${next.nextId++}`;
+    (next.snowGuns ??= []).push({ id, typeId: this.gunTypeId, pipelineId: best.pipelineId, hydrant: best.index });
+    if (this.commit(next, `Postawiono: ${sp.guns.find((t) => t.id === this.gunTypeId)?.name ?? 'armatka'}.`)) this.select({ kind: 'gun', id });
   }
 
   private finishAxis(): void {
@@ -617,11 +732,16 @@ export class BuildController {
 
   // ------------------------------------------------------------------ zaznaczanie i edycja
 
-  private pick(xPx: number, yPx: number, p: PointM): { kind: 'lift' | 'piste' | 'base'; id: string } | null {
+  private pick(xPx: number, yPx: number, p: PointM): { kind: SelKind; id: string } | null {
     const cam = this.o.camera;
     for (const b of [...this.layout.bases, ...(this.layout.buildings ?? [])]) {
       const s = cam.worldToScreen(b.xM, b.yM);
       if (Math.hypot(s.xPx - xPx, s.yPx - yPx) <= SELECT_RADIUS_PX) return { kind: 'base', id: b.id };
+    }
+    for (const h of this.hydrants()) {
+      if (!h.gunId) continue;
+      const s = cam.worldToScreen(h.xM, h.yM);
+      if (Math.hypot(s.xPx - xPx, s.yPx - yPx) <= SELECT_RADIUS_PX) return { kind: 'gun', id: h.gunId };
     }
     let best: { id: string; d: number } | null = null;
     for (const l of this.layout.lifts) {
@@ -637,6 +757,17 @@ export class BuildController {
       }
     }
     if (best) return { kind: 'lift', id: best.id };
+    for (const pipe of this.layout.pipelines ?? []) {
+      const path = pipe.points.map((q) => cam.worldToScreen(q.xM, q.yM));
+      for (let i = 0; i < path.length - 1; i++) {
+        const a = path[i];
+        const b = path[i + 1];
+        const dx = b.xPx - a.xPx;
+        const dy = b.yPx - a.yPx;
+        const t = Math.min(1, Math.max(0, ((xPx - a.xPx) * dx + (yPx - a.yPx) * dy) / (dx * dx + dy * dy || 1)));
+        if (Math.hypot(xPx - a.xPx - t * dx, yPx - a.yPx - t * dy) <= 6) return { kind: 'pipeline', id: pipe.id };
+      }
+    }
     const cell = this.o.grid.cellAt(p.xM, p.yM);
     if (cell) {
       const k = this.o.grid.index(cell.i, cell.j);
@@ -650,7 +781,19 @@ export class BuildController {
     if (!s) return null;
     if (s.kind === 'lift') return this.layout.lifts.find((l) => l.id === s.id) ?? null;
     if (s.kind === 'piste') return this.layout.pistes.find((p) => p.id === s.id) ?? null;
+    if (s.kind === 'pipeline') return (this.layout.pipelines ?? []).find((p) => p.id === s.id) ?? null;
+    if (s.kind === 'gun') return (this.layout.snowGuns ?? []).find((g) => g.id === s.id) ?? null;
     return this.layout.bases.find((b) => b.id === s.id) ?? this.layout.buildings?.find((b) => b.id === s.id) ?? null;
+  }
+
+  /** Armatki pracujące teraz (chmury śniegu): położenie, wydajność, wiatr. */
+  plumes: { xM: number; yM: number; aimXM: number; aimYM: number; rateM3h: number; windFromDeg: number; windMs: number }[] = [];
+  setPlumes(p: BuildController['plumes']): void {
+    const key = (x: BuildController['plumes']) => x.map((q) => `${q.xM}|${q.rateM3h}|${q.windFromDeg}`).join(',');
+    if (key(p) !== key(this.plumes)) {
+      this.plumes = p;
+      this.drawVersion++;
+    }
   }
 
   /** Budowy w toku (etap 6): id → postęp 0–1. */
@@ -672,7 +815,7 @@ export class BuildController {
     this.notifyLandCover(false);
   }
 
-  private select(sel: { kind: 'lift' | 'piste' | 'base'; id: string } | null): void {
+  private select(sel: { kind: SelKind; id: string } | null): void {
     this.selection = sel;
     this.drawVersion++;
     this.refreshProfile();
@@ -701,6 +844,10 @@ export class BuildController {
     const next = this.clone();
     if (s.kind === 'lift') next.lifts = next.lifts.filter((l) => l.id !== s.id);
     else if (s.kind === 'piste') next.pistes = next.pistes.filter((p) => p.id !== s.id);
+    else if (s.kind === 'pipeline') {
+      next.pipelines = (next.pipelines ?? []).filter((p) => p.id !== s.id);
+      next.snowGuns = (next.snowGuns ?? []).filter((g) => g.pipelineId !== s.id);
+    } else if (s.kind === 'gun') next.snowGuns = (next.snowGuns ?? []).filter((g) => g.id !== s.id);
     else {
       next.bases = next.bases.filter((b) => b.id !== s.id);
       if (next.buildings) next.buildings = next.buildings.filter((b) => b.id !== s.id);
@@ -1052,6 +1199,7 @@ export class BuildController {
       thin: this.thin,
       buildingTypeId: this.buildingTypeId,
       construction: this.construction,
+      gunTypeId: this.gunTypeId,
     });
   }
 
@@ -1087,6 +1235,7 @@ export class BuildController {
       thinMarks: this.thin,
       construction: this.construction,
       buildingTypes: this.o.buildingTypes ?? null,
+      snowNet: this.o.snowmaking ? { hydrants: this.hydrants(), draftPipe: this.pipePoints, plumes: this.plumes, cursor: this.hoverPoint } : null,
       version: this.version,
       drawVersion: this.drawVersion,
       timeS,

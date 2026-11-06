@@ -35,6 +35,10 @@ import {
   takeLoan,
 } from '../sim/economy';
 import type { EconomyParams } from '../sim/economyParams';
+import type { DayOpsResult, Infra, OpsSnow } from '../sim/operations';
+import { acquireGroomer, blockedPistes, infraFacts, previewDayOperations, runDayOperations } from '../sim/operations';
+import type { SnowOps } from '../sim/snowOps';
+import { encodeOps } from '../sim/gameSave';
 import { parseIsoDate } from '../sim/time';
 import type { GameSave } from '../sim/gameSave';
 import { encodeTraffic, makeSave, parseSave } from '../sim/gameSave';
@@ -55,6 +59,11 @@ import type { GuestController } from './guestController';
 export interface GameSnow {
   quality: Uint8Array;
   sweMm: Float32Array;
+  /** Etap 7: do naśnieżania i ratraków. */
+  depthCm?: Float32Array;
+  pileMm?: Float32Array;
+  techMm?: Float32Array;
+  liquidMm?: Float32Array;
 }
 
 export interface GameControllerOptions {
@@ -81,6 +90,10 @@ export interface GameControllerOptions {
   setDateTime(date: CalendarDate, hour: number): void;
   /** Przejazdy dnia z zapisu → model śniegu. */
   setTraffic(date: CalendarDate, passes: Float32Array): void;
+  /** Etap 7: naśnieżanie i ratrakowanie dnia → model śniegu. */
+  setOperations?(date: CalendarDate, ops: SnowOps): void;
+  /** Etap 7: po przeliczeniu dnia lub podglądu – panele i mapa (armatki, ratraki). */
+  onOps?(): void;
   toast(text: string): void;
   /** Ekonomia skończyła przeliczać dni – mapa może pobrać śnieg. */
   onCaughtUp?(): void;
@@ -137,6 +150,14 @@ export class GameController {
   private readonly report: SeasonReportView;
   private readonly start: StartScreen;
   private lastPanelMs = 0;
+  /** Etap 7: trasy zablokowane przez pryzmy (śnieg techniczny nierozepchnięty). */
+  private blocked = new Set<string>();
+  /** Etap 7: operacje dnia (zakodowane – do zapisu gry). */
+  private readonly opsSaved = new Map<string, ReturnType<typeof encodeOps>>();
+  /** Etap 7: podgląd bieżącej doby (armatki dziś, plan nadchodzącej nocy). */
+  preview: DayOpsResult | null = null;
+  /** Ostatnio policzony śnieg bieżącego dnia (do podglądu). */
+  private todaySnow: { date: CalendarDate; snow: GameSnow | null } | null = null;
 
   constructor(private readonly o: GameControllerOptions) {
     this.finance = new FinancePanel(o.panelParent, {
@@ -197,6 +218,8 @@ export class GameController {
     const state = newGameState({ mode, seed: o.seed, date, ep: o.ep });
     this.summaries.clear();
     this.traffic.clear();
+    this.opsSaved.clear();
+    this.preview = null;
     if (mode === 'career') {
       state.hour = 8;
       this.state = state;
@@ -229,6 +252,8 @@ export class GameController {
     const traffic = new Map<string, Float32Array>();
     const out = makeSave(this.state!, this.layout, traffic, this.o.mapName, new Date().toISOString());
     for (const [k, v] of this.traffic) out.traffic[k] = v;
+    out.ops = {};
+    for (const [k, v] of this.opsSaved) out.ops[k] = v;
     return out;
   }
 
@@ -275,6 +300,11 @@ export class GameController {
     const s = parseSave(raw);
     this.summaries.clear();
     this.traffic.clear();
+    this.opsSaved.clear();
+    for (const [k, v] of s.ops) {
+      this.o.setOperations?.(parseIsoDate(k), v);
+      this.opsSaved.set(k, encodeOps(v));
+    }
     // Przejazdy z zapisu → model śniegu (zanim zapytamy o śnieg).
     for (const [k, v] of s.traffic) {
       this.o.setTraffic(parseIsoDate(k), v);
@@ -315,10 +345,10 @@ export class GameController {
   private refreshNet(): void {
     const s = this.state;
     if (!s || !this.analysis) return;
-    const op = operationalLayout(this.layout, s);
+    const op = operationalLayout(this.layout, s, this.blocked);
     const net = this.o.buildNet(op, this.analysis);
     this.o.guests.setNet(net);
-    this.facts = resortFacts(this.layout, this.analysis, net, s, this.o.lp, this.o.ep);
+    this.facts = resortFacts(this.layout, this.analysis, net, s, this.o.lp, this.o.ep, this.blocked);
     const prog = new Map<string, number>();
     for (const [id, c] of Object.entries(s.construction)) prog.set(id, Math.max(0, Math.min(1, 1 - c.leftDays / Math.max(1, c.totalDays))));
     this.o.build.setConstruction(prog);
@@ -435,14 +465,30 @@ export class GameController {
     return competitorsOn(this.comp, date);
   }
 
-  private async context(date: CalendarDate): Promise<DayContext> {
-    if (!this.facts) this.refreshNet();
-    const snow = date.month >= 5 && date.month <= 9 ? null : await this.snowSerial(date);
+  private readonly cellAt = (x: number, y: number): number => {
     const g = this.o.grid;
-    const cellAt = (x: number, y: number) => {
-      const c = g.cellAt(x, y);
-      return c ? g.index(c.i, c.j) : -1;
-    };
+    const c = g.cellAt(x, y);
+    return c ? g.index(c.i, c.j) : -1;
+  };
+
+  /** Śnieg na koniec dnia i (etap 7) trasy zablokowane pryzmami → sieć i fakty. */
+  private async snowAndBlocked(date: CalendarDate): Promise<GameSnow | null> {
+    const snow = date.month >= 5 && date.month <= 9 ? null : await this.snowSerial(date);
+    this.todaySnow = { date: { ...date }, snow };
+    const s = this.state;
+    if (s && this.analysis && this.o.ep.snowmaking) {
+      const b = blockedPistes(s, this.analysis, snow?.pileMm ? { pileMm: snow.pileMm } : null, this.cellAt, this.o.ep.snowmaking);
+      const changed = b.size !== this.blocked.size || [...b].some((x) => !this.blocked.has(x));
+      this.blocked = b;
+      if (changed || !this.facts) this.refreshNet();
+    }
+    return snow;
+  }
+
+  private async context(date: CalendarDate, snowIn?: GameSnow | null): Promise<DayContext> {
+    const snow = snowIn !== undefined ? snowIn : await this.snowAndBlocked(date);
+    if (!this.facts) this.refreshNet();
+    const cellAt = this.cellAt;
     const facts = this.facts!;
     return {
       date,
@@ -465,14 +511,26 @@ export class GameController {
   private async closeOneDay(): Promise<void> {
     const s = this.state!;
     const date = { ...s.date };
-    const ctx = await this.context(date);
+    const snow = await this.snowAndBlocked(date);
+    const ctx = await this.context(date, snow);
     const plan = planDay(s, ctx, this.o.ep);
     const guestPlan = this.o.guests.dayPlan;
     if (guestPlan && sameDate(guestPlan.date, date)) plan.guests = guestPlan.guests; // ręczna liczba gości (piaskownica)
     const sum = this.summaries.get(formatIsoDate(date));
     const outcome: DayOutcome = sum && plan.open ? agentOutcome(sum, ctx.facts) : quickDayOutcome(s, plan, ctx, this.o.ep, this.o.gp);
     const ids = [...this.layout.lifts, ...this.layout.pistes, ...this.layout.bases, ...(this.layout.buildings ?? [])];
-    const r = closeDay(s, ctx, plan, outcome, this.o.ep, { ids: ids.map((x) => x.id), names: ids.map((x) => x.name) });
+    // Etap 7: doba naśnieżania i noc ratraków.
+    let extra = null;
+    const opsSnow = this.opsSnow(snow);
+    if (this.o.ep.snowmaking && this.analysis) {
+      const res = runDayOperations({ ...this.opsInput(date, ctx.facts, opsSnow) });
+      extra = res.extra;
+      if (res.ops.addSweMm || res.ops.groomGroup) {
+        this.o.setOperations?.(date, res.ops);
+        this.opsSaved.set(formatIsoDate(date), encodeOps(res.ops));
+      }
+    }
+    const r = closeDay(s, ctx, plan, outcome, this.o.ep, { ids: ids.map((x) => x.id), names: ids.map((x) => x.name) }, extra);
     this.summaries.delete(formatIsoDate(date));
     if (r.finishedConstruction.length) {
       this.o.toast(`Gotowe: ${r.finishedConstruction.map((id) => ids.find((x) => x.id === id)?.name ?? id).join(', ')}`);
@@ -480,10 +538,87 @@ export class GameController {
     } else this.refreshNet();
     if (r.seasonReport) {
       this.traffic.clear();
+      this.opsSaved.clear();
       this.o.guests.setResortOpen(false);
       this.report.show(r.seasonReport, this.o.ep, true, { kmOpen: this.facts?.kmOpen ?? 0, dayPln: s.prices.dayPln });
     }
     if (s.bankrupt) this.o.toast('Bankructwo – koniec kariery.');
+  }
+
+  private opsSnow(snow: GameSnow | null): OpsSnow | null {
+    if (!snow || !snow.depthCm || !snow.pileMm || !snow.techMm || !snow.liquidMm) return null;
+    return { sweMm: snow.sweMm, depthCm: snow.depthCm, pileMm: snow.pileMm, techMm: snow.techMm, liquidMm: snow.liquidMm };
+  }
+
+  private opsInput(date: CalendarDate, facts: ResortFacts, snow: OpsSnow | null) {
+    return {
+      state: this.state!,
+      layout: this.layout,
+      analysis: this.analysis!,
+      facts,
+      grid: this.o.grid,
+      cellAt: this.cellAt,
+      snow,
+      book: this.o.book,
+      ep: this.o.ep,
+      riding: this.o.riding,
+      date,
+    };
+  }
+
+  /** Etap 7: infrastruktura naśnieżania (do paneli). */
+  infra(): Infra | null {
+    const sp = this.o.ep.snowmaking;
+    if (!sp || !this.state || !this.analysis) return null;
+    return infraFacts(this.layout, this.analysis, this.state, sp, this.o.grid);
+  }
+
+  /** Etap 7: przelicz podgląd doby (po zmianie planu, armatek, floty). */
+  refreshPreview(): void {
+    const s = this.state;
+    if (!s || !this.o.ep.snowmaking || !this.analysis || !this.facts || this.running) return;
+    const t = this.todaySnow;
+    const snow = t && sameDate(t.date, s.date) ? t.snow : null;
+    try {
+      this.preview = previewDayOperations(this.opsInput({ ...s.date }, this.facts, this.opsSnow(snow)));
+    } catch (e) {
+      console.warn('Podgląd naśnieżania nieudany', e);
+      this.preview = null;
+    }
+    this.o.onOps?.();
+  }
+
+  /** Etap 7: ratrak – zakup lub leasing. */
+  acquireGroomer(typeId: string, leased: boolean): void {
+    const s = this.state;
+    const sp = this.o.ep.snowmaking;
+    if (!s || !sp) return;
+    const err = acquireGroomer(s, typeId, leased, this.infra()?.garageSlots ?? 0, sp);
+    this.o.toast(err ?? (leased ? 'Ratrak w leasingu – rata co miesiąc.' : 'Ratrak kupiony.'));
+    this.refreshPreview();
+    this.refreshPanel(true);
+  }
+
+  /** Etap 7: ratrakowanie w dzień – trasa zamknięta dla gości do końca dnia. */
+  setDayGroom(pisteId: string, on: boolean): void {
+    const s = this.state;
+    if (!s) return;
+    const ops = s.ops;
+    if (!ops) return;
+    ops.dayGroom = ops.dayGroom.filter((x) => x !== pisteId);
+    if (on) ops.dayGroom.push(pisteId);
+    void this.planToday();
+  }
+
+  /** Etap 7: zmiana planów (naśnieżania, nocy, armatek) – podgląd od nowa. */
+  opsChanged(): void {
+    this.refreshPreview();
+    this.refreshPanel(true);
+  }
+
+  /** Trasy zablokowane pryzmami (do mapy i paneli). */
+  get blockedPistes(): ReadonlySet<string> {
+    return this.blocked;
   }
 
   /** Plan bieżącego dnia → goście (liczba z popytu, skład, godziny). */
@@ -501,6 +636,7 @@ export class GameController {
         ? 'Sezon otwarty, ale żaden wyciąg nie pracuje (budowa, brak otwartej trasy w dół).'
         : `Sezon zamknięty (${PHASE_NAMES[yearPhase(date, this.o.ep)]}). ${yearPhase(date, this.o.ep) === 'summer' ? 'Czas budowy – zegar latem idzie tygodniami.' : ''}`;
     this.o.guests.setDayPlan({ date, guests: p.guests, typeShares: p.typeShares, hours: p.hours, note: this.planNote });
+    this.refreshPreview();
     this.refreshPanel(true);
   }
 
