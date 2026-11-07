@@ -3,7 +3,10 @@
 Realistyczny symulator budowy i prowadzenia ośrodka narciarskiego na północnych stokach Pilska.
 Zasady projektu i plan etapów: plik [CLAUDE.md](CLAUDE.md).
 
-**Stan: etap 7 – naśnieżanie i ratraki.** Kariera od pustej góry z ograniczonym
+**Stan: etap 7b – sezon letni i karty obiektów.** Latem koleje krzesełkowe i gondole wożą pieszych
+w górę i w dół (rowery na wieszakach), są szlaki PTTK z OpenStreetMap, bike park, ścieżki, tor saneczkowy
+całoroczny, plac zabaw i punkt widokowy; burze (dane IMGW) zatrzymują kolej i tor. Kliknięcie obiektu
+otwiera jego kartę z liczbami na żywo i wykresem dnia. Kariera od pustej góry z ograniczonym
 kapitałem (budowa kosztuje i trwa, kredyt, bankructwo) albo piaskownica bez limitu pieniędzy. Goście
 przyjeżdżają według popytu (dzień tygodnia, ferie, święta, śnieg, prognoza, reputacja, ceny, konkurencja,
 parking), płacą za karnety, ośrodek ponosi koszty (energia, obsługa, ratownicy, przeglądy, ubezpieczenie,
@@ -11,6 +14,10 @@ naśnieżanie, ratraki). System naśnieżania: ujęcie wody, zbiornik, pompownia
 rurociąg z hydrantami, armatki śmigłowe i lance; flota ratraków z planem nocy. Mapa to NMT z Geoportalu
 (GUGiK) w siatce 10 m, pogoda – generator oparty na danych IMGW 2001–2025, śnieg – model fizyczny
 (naturalny i techniczny).
+
+**Raport lata** (ośrodek wielkości Pilska w przeciętnym roku – bez lata i z latem; wynik zimy, lata
+i koszty wspólne osobno; atrakcje, goście latem, burze):
+https://celif89.github.io/ski-sim/raport-lata.html
 
 **Raport ekonomii** (10 sezonów prostego ośrodka: orczyk i dwie trasy, tryb kariery; ten sam ośrodek
 z naśnieżaniem na 30 zimach i tabela kalibracji naśnieżania):
@@ -328,6 +335,33 @@ wynik, zwrot) i **tabela kalibracji** (woda i energia na hektar, energia na wizy
 wobec danych z koncepcji); założenia. Lokalnie: `npm run economy-report` → `reports/raport-ekonomii.html`
 (ok. 4–5 min; szybciej: `WINTERS=5 npm run economy-report`).
 
+### Raport lata (etap 7b)
+
+https://celif89.github.io/ski-sim/raport-lata.html – prawdziwy układ Pilska z OpenStreetMap w przeciętnym
+roku gry dwa razy: bez sezonu letniego i z sezonem letnim (najdłuższa kanapa kursuje latem z wieszakami
+na rowery, restauracja i punkt widokowy przy górnej stacji, plac zabaw przy parkingu, tor saneczkowy
+i trasa rowerowa). Tabela przychodów i kosztów osobno dla zimy, lata, dni poza sezonem i kosztów wspólnych;
+o ile lato zmienia wynik roku; goście latem miesiąc po miesiącu i wg typu; dni z burzą; ceny i źródła.
+Lokalnie: `npm run summer-report` → `reports/raport-lata.html` (ok. 2 min; `SUMMER_AGENTS=0` – model
+zgrubny zamiast symulacji gości).
+
+### Sezon letni w grze (etap 7b)
+
+- **Otwarcie:** panel „Finanse” → sekcja „Sezon letni” → „Otwórz sezon letni” (od maja do października).
+  Tam też ceny lata: bilet w górę, góra-dół, karnet rowerowy, przejazd torem. Gdy sezon letni jest
+  otwarty, dni płyną jak zimą (bez przewijania tygodniami); burze i deszcz zmniejszają ruch.
+- **Atrakcje:** przycisk „Lato” na dolnym pasku albo klawisze `X` (trasa rowerowa – trudność z nachylenia),
+  `Q` (ścieżka spacerowa), `C` (tor saneczkowy – od góry do dolnej stacji, nachylenie w granicach toru);
+  plac zabaw i punkt widokowy – narzędzie „Budynki”. W karierze atrakcje odblokowują się z reputacją
+  i saldem.
+- **Kolej latem:** karta kanapy lub gondoli – „Kursuj latem / Nie kursuj latem”, „Załóż wieszaki na
+  rowery” (mniej miejsc dla pieszych). Orczyki i talerzyki latem stoją.
+- **Przeglądy:** każdy wyciąg ma przegląd ważny rok; termin wybierasz w karcie wyciągu („Termin
+  przeglądu”). W czasie przeglądu wyciąg nie wozi – najlepiej w listopadzie lub kwietniu.
+- **Karta obiektu:** kliknij wyciąg, trasę, parking, restaurację, tor, zbiornik… – status, liczby na żywo
+  (np. parking: zajęte, wolne, szczyt, kiedy był pełny, ilu odjechało), wykres dnia i akcje (otwórz /
+  zamknij, cena, rozbiórka).
+
 ### Jednorazowa konfiguracja publikacji (zrobione przy etapie 0)
 
 W repozytorium na GitHubie: **Settings → Pages → Build and deployment → Source:
@@ -483,6 +517,8 @@ Potem otworzyć w przeglądarce adres wypisany w Terminalu (zwykle http://localh
 | `npm run snow-diagnosis` | diagnoza śniegu naturalnego: dni z bazą do otwarcia – generator a prawdziwe zimy IMGW (`-- --klasy` zapisuje klasy zim) |
 | `npm run pilsko-economy` | ekonomia ośrodka wielkości Pilska (prawdziwy układ z OSM) w przeciętnej zimie – struktura przychodów i kosztów |
 | `npm run import-hydro` | pobiera z IMGW przepływy potoków (Ujsoły, Pewel Mała) i liczy rytm roczny |
+| `npm run summer-report` | raport lata: ośrodek wielkości Pilska z sezonem letnim i bez (`reports/raport-lata.html`) |
+| `npm run import-storms` | pobiera z IMGW dni z burzą (Bielsko-Biała 2001–2025) do pogody letniej |
 | `npm run water-check` | potoki na mapie: przepływy, ile wolno pobrać w miesiącach, czas napełniania zbiornika |
 
 ## Budowa projektu

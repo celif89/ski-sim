@@ -187,6 +187,7 @@ export class ResortLayer {
     this.summerOn = on;
     this.hikingG.visible = on;
     this.hikingMpp = -1;
+    this.lastKey = '';
   }
 
   private drawHiking(mpp: number): void {
@@ -483,6 +484,13 @@ export class ResortLayer {
         g.stroke({ width: Math.max(16, a.meanWidthM * pxPerM), color: SELECT_COLOR, alpha: 0.4, cap: 'round', join: 'round' });
       }
       const closed = p.closed === true;
+      if (this.summerOn) {
+        // Latem trasa narciarska to łąka – tylko cienka, blada linia (żeby było wiadomo, gdzie jest).
+        g.moveTo(pts[0].xPx, pts[0].yPx);
+        for (const q of pts) g.lineTo(q.xPx, q.yPx);
+        g.stroke({ width: 3, color, alpha: 0.35, cap: 'round', join: 'round' });
+        continue;
+      }
       g.moveTo(pts[0].xPx, pts[0].yPx);
       for (const q of pts) g.lineTo(q.xPx, q.yPx);
       g.stroke({ width: 10, color: 0xffffff, alpha: closed ? 0.6 : 0.95, cap: 'round', join: 'round' });

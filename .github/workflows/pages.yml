@@ -2,7 +2,7 @@
 #
 # - Po każdej zmianie na gałęzi main: testy → budowanie → raporty klimatu i zimy → publikacja
 #   pod adresem https://celif89.github.io/ski-sim/ (raporty: …/ski-sim/raport-klimatu.html,
-#   …/ski-sim/raport-zimy.html, …/ski-sim/raport-ekonomii.html)
+#   …/ski-sim/raport-zimy.html, …/ski-sim/raport-ekonomii.html, …/ski-sim/raport-lata.html)
 # - Jeśli testy nie przejdą, kolejne kroki się nie wykonują i gra NIE jest publikowana
 #   (na stronie zostaje poprzednia, sprawna wersja).
 # - Przy propozycjach zmian (pull request) uruchamiane są tylko testy i budowanie, bez publikacji.
@@ -56,6 +56,9 @@ jobs:
 
       - name: Raport ekonomii (npm run economy-report) – 10 sezonów prostego ośrodka + 30 zim z naśnieżaniem i bez; ok. 4–6 min
         run: npm run economy-report -- dist/raport-ekonomii.html
+
+      - name: Raport lata (npm run summer-report) – ośrodek wielkości Pilska z sezonem letnim i bez; ok. 2–3 min
+        run: npm run summer-report -- dist/raport-lata.html
 
       - name: Przygotowanie plików do publikacji
         if: github.event_name != 'pull_request'

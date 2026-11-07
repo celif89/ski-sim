@@ -304,6 +304,7 @@ export class SeasonReportView extends Modal {
       </div>
       ${daysChart(r.days)}
       ${best && best.guests > 0 ? `<div class="muted small">Najlepszy dzień: ${best.date} (${best.label}) – ${f0(best.guests)} gości.</div>` : ''}
+      ${seasonSplit(r)}
       <h4>Przepływy pieniędzy</h4>${flowsTable(r.flows)}
       <h4>Porównanie z konkurencją</h4>
       <table class="build-list"><tr><th>ośrodek</th><th>trasy</th><th>karnet</th><th>dni otw.</th><th>goście</th></tr>
@@ -312,6 +313,20 @@ export class SeasonReportView extends Modal {
       <div class="muted small">Konkurenci naśnieżają – dlatego zwykle mają dłuższy sezon. Kredyt na koniec: ${fmtPln(r.debtEnd)}.</div>`;
     this.showRoot();
   }
+}
+
+/** Etap 7b: wynik roku osobno – zima, lato, poza sezonem, koszty wspólne. */
+function seasonSplit(r: SeasonReport): string {
+  const sf = r.seasonFlows;
+  if (!sf) return '';
+  const res = (f: Flows) => sumRevenue(f) - sumCosts(f);
+  const row = (name: string, f: Flows, extra = '') => `<tr><td>${name}</td><td>${fmtPln(sumRevenue(f))}</td><td>${fmtPln(sumCosts(f))}</td><td class="${res(f) >= 0 ? '' : 'g-bad'}"><b>${fmtPln(res(f))}</b></td><td>${extra}</td></tr>`;
+  return `<h4>Zima i lato</h4><table class="build-list"><tr><th></th><th>przychody</th><th>koszty</th><th>wynik</th><th></th></tr>
+    ${row('zima', sf.winter, `${r.openDays} dni, ${f0(r.guests)} gości`)}
+    ${row('lato', sf.summer, `${r.summerOpenDays ?? 0} dni, ${f0(r.summerGuests ?? 0)} gości${r.summerRating ? `, ocena ${f1(r.summerRating)}` : ''}`)}
+    ${row('poza sezonem', sf.off)}
+    ${row('koszty wspólne', sf.common, 'stała załoga, utrzymanie, ubezpieczenie, przeglądy, odsetki')}
+    </table>${r.summerReputationEnd !== undefined ? `<div class="muted small">Reputacja letnia na koniec roku: ${f1(r.summerReputationEnd)} ★ (osobno od zimowej).</div>` : ''}`;
 }
 
 export interface StartChoice {

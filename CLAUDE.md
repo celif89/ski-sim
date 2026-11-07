@@ -451,7 +451,62 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
     źródła; `npm run water-check` – sieć cieków, przepływy, czas napełniania; potoki na mapie
     (`ResortLayer.setStreams`); testy `tests/water.test.ts`; bez modelu wody (testy etapu 7, raport
     ekonomii) zostaje uproszczony dopływ z ujęcia (`water` w `snowmaking.json`).
-- **Następny: etap 7b – sezon letni (albo etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja).**
+- **Etap 7b – zrobiony** (listopad 2026): sezon letni i karty obiektów.
+  - poprawka 6b: raport ekonomii na modelu wody (ujęcie na potoku Kamienny z rurą zasilającą,
+    `cropStreamNet` – zlewnie z całej mapy w oknie raportu; ok. 45 tys. m³/rok, 8,6 tys. zł/rok);
+  - dane `data/summer.json` (źródła przy każdej liczbie): sezon V–X, wakacje 27 VI–31 VIII, święta i Boże
+    Ciało (Wielkanoc + 60 dni, most w piątek), przeglądy (kolej 7 dni, orczyk 2, ważne rok, domyślnie 3 XI),
+    burze z IMGW (`npm run import-storms` → `data/calibration/imgw-storms.json`: Bielsko-Biała 2001–2025,
+    25 dni/rok, lipiec 6,2; P(burza | dzień z opadem / bez) w miesiącach, czas trwania), upał od 27 °C,
+    wieszaki na rowery (25 % krzeseł, pół miejsca na rower), ceny (w górę 40 zł, góra-dół 55 – Jaworzyna
+    Krynicka 2026: 41/58, wakacje 43/62; Pilsko–Szczawiny 35/40; karnet rowerowy 150 – Słotwiny/Kasina
+    129–169; tor 15 – Czantoria; wypożyczenie roweru 180 „do kalibracji”), bike park (klasy IMBA: średnio
+    ≤ 5/10/15 %, 125 zł/m – trasa pod Chrzanowem), ścieżki 60 zł/m, tor (1,5 mln + 2500 zł/m, nachylenie
+    4–40 %, do 1500 m, 300 przejazdów/h; Równica ok. 2 mln zł), odblokowania (reputacja, saldo), koszenie
+    350 zł/ha w lipcu, popyt (pula 4500/dzień w wakacyjną sobotę – dobrana tak, by Pilsko miało ~90 tys.
+    gości latem, „do kalibracji”), reputacja letnia osobna, 4 typy gości (turysta, rodzina, rowerzysta,
+    wycieczka szkolna V–VI i IX), plac zabaw 250 tys., punkt widokowy 400 tys., model zgrubny
+    (współczynniki dobrane na symulacji gości);
+  - `sim/summer.ts`: kalendarz (`easterSunday`, `summerDayInfo`), pogoda (`summerWeather` – burza
+    losowana z ziarnem, częściej w cieplejsze dni; `stormAt`), trasy letnie (`TrailDesign`, `analyzeTrail` –
+    rower od góry w dół, klasa ze średniego nachylenia, ostrzeżenia; tor – zakres nachylenia i długości),
+    `summerFacts` (koleje linowe zbudowane, nie zamknięte, kursujące latem, z ważnym przeglądem; wyciągi
+    powierzchniowe stoją; wieszaki zmniejszają przepustowość dla pieszych), `summerPlan` (popyt osobno dla
+    typów: oferta^0,8 × reputacja × cena; deszcz × (1 − 0,7·P), burze, słońce, upał; parking),
+    `quickSummerDay`, `summerDayFlows`, `summerFixedFlows` (utrzymanie tras, koszenie),
+    `tobogganWinterFlows` (tor zimą), `seasonExtras` (wszystko dla dnia gry), `attractionUnlocked`;
+  - `sim/summerGuests.ts` (`SummerDay`): sieć pieszych ze szlaków PTTK (OSM) i ścieżek gracza (Tobler,
+    osobno w górę i w dół, Dijkstra między miejscami), grupy z celami (kolej w górę, schronisko / szczyt
+    / punkt widokowy, jedzenie, tor, plac zabaw, zjazdy rowerem, powrót koleją w dół albo pieszo),
+    kolejki do kolei w obie strony i do wieszaków, tor, restauracje (miejsca, kolejka), parkingi (zajęte
+    w każdej chwili do pojemności, odjechali bez miejsca), burza/wiatr zatrzymują kolej i tor, deszcz
+    skraca wycieczki, upał męczy; statystyki co 15 min (`SummerStats`) dla kart; ramki do rysowania
+    (`DRAW_BIKE`, `DRAW_SLED`); `osmDestinations`, `summerNetFor`;
+  - `sim/inspections.ts`: przegląd planowany przez gracza (`scheduleInspection`), w przeglądzie i bez
+    ważnego przeglądu wyciąg nie wozi (`operationalLayout`, `resortFacts`), koszt w dniu rozpoczęcia;
+  - ekonomia: nowe przychody (bilety kolei, karnety rowerowe, tor) i koszty (utrzymanie tras letnich,
+    koszenie), `SeasonFlows` (zima / lato / poza sezonem / koszty wspólne), `setSummerOpen`, raport roku
+    z wynikiem zimy i lata osobno, reputacja letnia, przychody wg obiektu (`objectRevenue`);
+    `HeadlessGame` – dzień letni (model zgrubny albo `summerAgents`);
+  - karty obiektów: `sim/objectCards.ts` (dane: status, liczby, wykres dnia co 15 min, akcje; parkingi
+    w modelu dnia – `presenceProfile`, `parkingProfiles`), `render/objectCardView.ts` (okno po kliknięciu
+    obiektu; akcje: otwórz/zamknij, kolej latem, wieszaki, termin przeglądu, cena, wodociąg, rozbiórka);
+  - widok: łąki latem w shaderze (`uSummer`, koszone trasy jaśniejsze), szlaki PTTK przerywane w kolorach
+    znakowania (`osm-trails.json` z `npm run import-osm-resort`), trasy rowerowe (kolor trudności,
+    przerywane), ścieżki, tor; trasy narciarskie latem blade; postacie letnie (piechur z plecakiem,
+    rowerzysta, sanki) – goście letni w wątku gości (`summerDay` w protokole); panel „Sezon letni”
+    w Finansach (otwarcie, ceny); narzędzia X / Q / C, przycisk „Lato”; latem przy otwartym sezonie
+    dni płyną jak zimą;
+  - raport `npm run summer-report` (`raport-lata.html`, ok. 2 min): Pilsko z OSM, przeciętna zima 2052/53;
+    bez lata +0,23 mln zł, z latem +2,98 mln zł (lato +2,75 mln): 184 dni, 86,7 tys. gości (turyści 37 tys.,
+    rodziny 40, rowerzyści 6, szkoły 3), ocena 4,46; lato: bilety kolei 2,27 mln, karnety rowerowe 0,78,
+    tor 0,61, gastronomia 0,57, parking 0,60; koszty dni letnich ok. 2,6 mln; inwestycja w atrakcje
+    6,79 mln (restauracja 3, tor 2,9) → prosty zwrot ok. 2,5 roku; 27 dni z burzą; model zgrubny zgodny
+    z agentami w ok. 10 %;
+  - testy: `tests/summer.test.ts` (kalendarz, burze, orczyk latem nie wozi, kanapa w obie strony,
+    wieszaki, burza zatrzymuje kolej i tor, deszczowy weekend mniej gości, przegląd, parkingi, pełny
+    rok zima + lato), `tests/objectCards.test.ts`.
+- **Następny: etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja.**
 
 Uwagi techniczne:
 - Przed wypchnięciem uruchamiać `npm run build` (nie tylko `npm test` i `tsc -p tsconfig.json`):
@@ -514,6 +569,12 @@ Uwagi techniczne:
 
 ## Na później
 
+- Lato (7b): popyt letni, udziały typów gości, ceny i koszty atrakcji do kalibracji (frekwencja Pilska,
+  Babiej Góry, dane kolei); wynik lata w raporcie raczej optymistyczny (cała kanapa i restauracja
+  przy górnej stacji, brak konkurencji letniej poza stałym „A_inne”); zimowi goście w agentach nadal
+  z dzienną pojemnością parkingów (karty – model dnia), latem pojemność chwilowa; wypożyczalnia rowerów
+  bez własnej kolejki; burza – piesi na górze czekają w schronisku; brak oświetlenia i wydarzeń.
+
 - Woda (6b): raport ekonomii nadal z uproszczonym dopływem z ujęcia – przestawić na model potoków
   (ujęcie na Buczynce, rura zasilająca); współczynnik odpływu, przepływ nienaruszalny, wydajności studni
   i wodociąg (limit, cena dla Korbielowa) do kalibracji; rowy zlewni bez strat na infiltrację zimą;
@@ -555,7 +616,7 @@ Uwagi techniczne:
 - Jeden dzień sezonu przy ×1 to ok. 10 minut realnych; dostępne ×5 i ×20, noc przewija się sama.
 - Jeden ośrodek naraz; nowa lokalizacja = nowa rozgrywka.
 - Pozwolenia środowiskowe pomijamy. Wycinka kosztuje i trwa.
-- Sezon letni – później.
+- Sezon letni (etap 7b): od maja do października, gracz otwiera i zamyka; dni jak zimą.
 - Grafika 2D z góry. **Styl obowiązujący: A – „ilustrowana mapa narciarska”** (od etapu 4b):
   biały śnieg z niebieskawym cieniowaniem rzeźby, świerki rysowane z boku, trasy jako kolorowe
   linie z białą obwódką, wyciąg jako ciemna linia z podporami i stacjami, etykiety z białą obwódką,
