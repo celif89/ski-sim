@@ -8,7 +8,7 @@ import type { PisteParams } from '../sim/pistes';
 import type { RealPisteComparison, ResortAnalysis, ResortLayout } from '../sim/resort';
 import type { ThinSegment } from '../sim/snowRiding';
 
-export type BuildTool = 'select' | 'lift' | 'pisteBrush' | 'pisteAxis' | 'base' | 'pipeline' | 'supply' | 'gun' | 'road' | 'catwalk';
+export type BuildTool = 'select' | 'lift' | 'pisteBrush' | 'pisteAxis' | 'base' | 'pipeline' | 'supply' | 'gun' | 'road' | 'catwalk' | 'bikeTrail' | 'walkTrail' | 'toboggan';
 
 export interface BuildPanelHandlers {
   onTool(tool: BuildTool): void;
@@ -22,7 +22,7 @@ export interface BuildPanelHandlers {
   onClearAll(): void;
   onToggleNetwork(): void;
   onToggleReality(): void;
-  onSelect(kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road', id: string): void;
+  onSelect(kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road' | 'trail', id: string): void;
   /** Nowe trasy z wyrównaniem terenu (koszt, łąka wyrównana – mniej śniegu potrzeba). */
   onGradeNew(on: boolean): void;
   /** Etap 6: typ budynku do postawienia. */
@@ -42,7 +42,7 @@ export interface BuildPanelState {
   showReality: boolean;
   layout: ResortLayout;
   analysis: ResortAnalysis;
-  selection: { kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road'; id: string } | null;
+  selection: { kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road' | 'trail'; id: string } | null;
   real: RealPisteComparison[] | null;
   message: string;
   gradeNew: boolean;
@@ -67,6 +67,9 @@ const TOOLS: { tool: BuildTool; key: string; label: string; title: string }[] = 
   { tool: 'pipeline', key: 'H', label: 'Rurociąg', title: 'Rurociąg naśnieżania z hydrantami: klikaj punkty od pompowni wzdłuż trasy, Enter – koniec. Wykop tylko latem' },
   { tool: 'supply', key: 'F', label: 'Rura zasilająca', title: 'Rura zasilająca: od źródła wody (ujęcie, studnia, wodociąg) do zbiornika; pod górę – pompa (energia). Wykop tylko latem' },
   { tool: 'gun', key: 'J', label: 'Armatka', title: 'Armatka lub lanca na hydrancie: kliknij kropkę na rurociągu' },
+  { tool: 'bikeTrail', key: 'X', label: 'Trasa rowerowa', title: 'Bike park (lato): klikaj punkty od górnej stacji kolei z wieszakami w dół; trudność z nachylenia, Enter – koniec' },
+  { tool: 'walkTrail', key: 'Q', label: 'Ścieżka', title: 'Ścieżka spacerowa (lato): klikaj punkty; łączy się ze szlakami, Enter – koniec' },
+  { tool: 'toboggan', key: 'C', label: 'Tor saneczkowy', title: 'Tor całoroczny: od góry do dolnej stacji, nachylenie w granicach toru; Enter – koniec' },
   { tool: 'base', key: 'B', label: 'Budynek', title: 'Parking (baza – tu przyjeżdżają goście), gastronomia, wypożyczalnia, szkółka – wybierz typ i kliknij na mapie' },
 ];
 

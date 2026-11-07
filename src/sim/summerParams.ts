@@ -136,6 +136,7 @@ export interface SummerParams {
     summerFoodSeatsPerBuilding: number;
   };
   buildings: SummerBuildingType[];
+  quickModel: { mealFactor: number; tobogganFactor: number; liftFactor: number; bikeFactor: number };
 }
 
 function all<K extends string>(sec: Sec, keys: readonly K[]): Record<K, number> {
@@ -222,6 +223,7 @@ export function parseSummerParams(raw: unknown): SummerParams {
       ...all(gu, ['arrivalMeanH', 'arrivalSdH', 'arrivalMinH', 'arrivalMaxH', 'stayMinH', 'staySdH', 'mealMin', 'summitStayMin', 'playMin', 'fatiguePerWalkH', 'heatFatigueFactor', 'rainLeaveProbabilityPerH', 'queuePatienceMin', 'ratingQueueRefMin', 'mealSpendPln', 'summerFoodSeatsPerBuilding'] as const),
       ratingWeights: readNumberArray(gu, 'ratingWeights', FILE, { length: 4, min: 0 }),
     },
+    quickModel: all(readSection(raw, 'quickModel', FILE), ['mealFactor', 'tobogganFactor', 'liftFactor', 'bikeFactor'] as const),
     buildings: (bRaw as Sec[]).map((b, i): SummerBuildingType => {
       if (typeof b.id !== 'string' || typeof b.name !== 'string') throw new Error(`${FILE}: budynek ${i} bez id/nazwy`);
       return { id: b.id, name: b.name, ...all(b, ['costPln', 'buildDays', 'capacity', 'maintenanceRatePerYear'] as const) };

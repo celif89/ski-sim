@@ -26,7 +26,8 @@
     "pilsko-economy": "tsx src/tools/pilskoEconomy.ts",
     "import-hydro": "tsx src/tools/importHydro.ts",
     "water-check": "tsx src/tools/waterCheck.ts",
-    "import-storms": "tsx src/tools/importStorms.ts"
+    "import-storms": "tsx src/tools/importStorms.ts",
+    "summer-report": "tsx src/tools/summerReport.ts"
   },
   "engines": {
     "node": ">=22"

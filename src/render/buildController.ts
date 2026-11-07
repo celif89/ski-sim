@@ -10,7 +10,9 @@ import type { GroundParams } from '../sim/ground';
 import type { Hydrant } from '../sim/snowmaking';
 import { pipelineCost, pipelineHydrants } from '../sim/snowmaking';
 import type { WaterContext } from '../sim/operations';
+import type { SummerParams } from '../sim/summerParams';
 import { reservoirCatchment, streamAt, villageCoverage } from '../sim/water';
+import { BIKE_CLASS_NAMES, TRAIL_KIND_NAMES, analyzeTrail } from '../sim/summer';
 import type { RoadParams } from '../sim/resort';
 import { analyzeRoads } from '../sim/resort';
 import type { SnowmakingParams } from '../sim/snowmakingParams';
@@ -68,10 +70,14 @@ export interface BuildControllerOptions {
   snowmaking?: SnowmakingParams | null;
   /** Etap 6b: drogi – parametry i drogi publiczne (OSM, lokalne współrzędne). */
   roads?: RoadParams | null;
+  /** Etap 7b: sezon letni (trasy rowerowe, ścieżki, tor saneczkowy, budynki letnie). */
+  summer?: SummerParams | null;
+  /** Etap 7b: zaznaczenie obiektu (karta obiektu). */
+  onSelect?: (sel: { kind: SelKind; id: string } | null) => void;
   publicRoads?: PointM[][] | null;
 }
 
-export type SelKind = 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road';
+export type SelKind = 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road' | 'trail';
 
 export interface SnowWarning {
   pisteId: string;
@@ -121,6 +127,7 @@ export class BuildController {
   private water: WaterContext | null = null;
   /** Etap 6b: droga w trakcie rysowania. */
   private roadPoints: PointM[] = [];
+  private trailPoints: PointM[] = [];
   private gunTypeId = 'fan';
   private readonly panel: BuildPanel;
   private readonly profile: BuildProfile;
@@ -201,6 +208,15 @@ export class BuildController {
     this.water = w;
   }
 
+  /** Etap 7b: szlaki PTTK (lato) i wygląd lata. */
+  setHikingTrails(lines: Parameters<ResortLayer['setHikingTrails']>[0]): void {
+    this.layer.setHikingTrails(lines);
+  }
+
+  setSummerLook(on: boolean): void {
+    this.layer.setSummer(on);
+  }
+
   /** Etap 6b: potoki na mapie. */
   setStreams(lines: Parameters<ResortLayer['setStreams']>[0]): void {
     this.layer.setStreams(lines);
@@ -241,7 +257,7 @@ export class BuildController {
   }
 
   private reanalyze(): void {
-    this.analysis = analyzeResort(this.layout, { grid: this.o.grid, lifts: this.o.liftParams, pistes: this.o.pisteParams, clearing: this.o.clearing, forest: this.o.forest, shrub: this.o.shrub, ground: this.o.ground, roads: this.o.roads, publicRoads: this.o.publicRoads });
+    this.analysis = analyzeResort(this.layout, { grid: this.o.grid, lifts: this.o.liftParams, pistes: this.o.pisteParams, clearing: this.o.clearing, forest: this.o.forest, shrub: this.o.shrub, ground: this.o.ground, roads: this.o.roads, publicRoads: this.o.publicRoads, summer: this.o.summer ?? null });
     this.recomputeWarnings();
     this.version++;
     this.drawVersion++;
@@ -275,7 +291,7 @@ export class BuildController {
   /** Powód odmowy zmiany (etap 6: np. brak pieniędzy w karierze) albo null. */
   private refusal(next: ResortLayout): string | null {
     if (!this.o.beforeCommit) return null;
-    const a = analyzeResort(next, { grid: this.o.grid, lifts: this.o.liftParams, pistes: this.o.pisteParams, clearing: this.o.clearing, forest: this.o.forest, shrub: this.o.shrub, ground: this.o.ground, roads: this.o.roads, publicRoads: this.o.publicRoads });
+    const a = analyzeResort(next, { grid: this.o.grid, lifts: this.o.liftParams, pistes: this.o.pisteParams, clearing: this.o.clearing, forest: this.o.forest, shrub: this.o.shrub, ground: this.o.ground, roads: this.o.roads, publicRoads: this.o.publicRoads, summer: this.o.summer ?? null });
     return this.o.beforeCommit(next, a);
   }
 
@@ -373,6 +389,12 @@ export class BuildController {
               ? `Droga: klikaj punkty od drogi publicznej (szara) albo innej drogi do parkingu; Enter lub podwójne kliknięcie – koniec. Nachylenie do ${this.o.roads?.maxSlopePercent ?? 12} %, koszt ${Math.round(this.o.roads?.costPlnPerM ?? 0)} zł/m, zimą odśnieżanie.`
               : tool === 'catwalk'
                 ? `Nartostrada: klikaj punkty osi łatwego łącznika (szerokość ${this.o.pisteParams.catwalkWidthM} m, nachylenie do ${this.o.pisteParams.catwalkMaxSlopePercent} %); Enter – koniec.`
+            : tool === 'bikeTrail'
+              ? `Trasa rowerowa: klikaj punkty od górnej stacji kolei (z wieszakami na rowery) w dół; Enter – koniec. Trudność z nachylenia (IMBA): do ${this.o.summer?.bike.classMaxAvgSlopePercent.join(' / ')} %. ${Math.round(this.o.summer?.bike.buildPlnPerM ?? 0)} zł/m.`
+            : tool === 'walkTrail'
+              ? `Ścieżka spacerowa: klikaj punkty (łączy szlaki, schroniska, stacje kolei); Enter – koniec. ${Math.round(this.o.summer?.walk.buildPlnPerM ?? 0)} zł/m.`
+            : tool === 'toboggan'
+              ? `Tor saneczkowy całoroczny: klikaj od góry do dołu (stacja startowa na dole); nachylenie ${this.o.summer?.toboggan.minSlopePercent}–${this.o.summer?.toboggan.maxSlopePercent} %, do ${this.o.summer?.toboggan.maxLengthM} m; Enter – koniec.`
             : tool === 'supply'
               ? `Rura zasilająca: klikaj punkty od źródła wody (ujęcie, studnia, wodociąg) do zbiornika; Enter – koniec. ${Math.round(this.o.snowmaking?.pipe.supplyCostPlnPerM ?? 0)} zł/m; pod górę woda jest pompowana (energia).`
             : tool === 'pipeline'
@@ -389,6 +411,7 @@ export class BuildController {
   private cancelDraft(): void {
     this.pipePoints = [];
     this.roadPoints = [];
+    this.trailPoints = [];
     this.liftBottom = null;
     this.draftLift = null;
     this.axisPoints = [];
@@ -475,6 +498,11 @@ export class BuildController {
       this.drawVersion++;
       return true;
     }
+    if (this.tool === 'bikeTrail' || this.tool === 'walkTrail' || this.tool === 'toboggan') {
+      this.trailPoints.push({ xM: p.xM, yM: p.yM });
+      this.drawVersion++;
+      return true;
+    }
     if (this.tool === 'road') {
       this.roadPoints.push({ xM: p.xM, yM: p.yM });
       this.drawVersion++;
@@ -520,6 +548,7 @@ export class BuildController {
   handleDoubleClick(): void {
     if (this.tool === 'pipeline' || this.tool === 'supply') this.finishPipeline();
     else if (this.tool === 'road') this.finishRoad();
+    else if (this.tool === 'bikeTrail' || this.tool === 'walkTrail' || this.tool === 'toboggan') this.finishTrail();
     else if (this.tool === 'pisteAxis' || this.tool === 'catwalk') this.finishAxis();
     else if (this.tool === 'select' && this.hoverHandle?.kind === 'liftBend') this.toggleBendMid(this.hoverHandle.index);
   }
@@ -615,6 +644,19 @@ export class BuildController {
         if (this.tool === 'pisteAxis' || this.tool === 'catwalk') this.finishAxis();
         if (this.tool === 'pipeline' || this.tool === 'supply') this.finishPipeline();
         if (this.tool === 'road') this.finishRoad();
+        if (this.tool === 'bikeTrail' || this.tool === 'walkTrail' || this.tool === 'toboggan') this.finishTrail();
+        return true;
+      case 'KeyX':
+        if (!this.o.summer) return false;
+        this.setTool('bikeTrail');
+        return true;
+      case 'KeyQ':
+        if (!this.o.summer) return false;
+        this.setTool('walkTrail');
+        return true;
+      case 'KeyC':
+        if (!this.o.summer) return false;
+        this.setTool('toboggan');
         return true;
       case 'KeyE':
         if (!this.o.roads) return false;
@@ -655,7 +697,7 @@ export class BuildController {
         return true;
       }
       case 'Escape':
-        if (this.liftBottom || this.axisPoints.length || this.pipePoints.length || this.roadPoints.length) this.cancelDraft();
+        if (this.liftBottom || this.axisPoints.length || this.pipePoints.length || this.roadPoints.length || this.trailPoints.length) this.cancelDraft();
         else if (this.selection) this.select(null);
         else this.setTool('select');
         return true;
@@ -737,6 +779,33 @@ export class BuildController {
     (next.pipelines ??= []).push({ id, name: `Rurociąg ${n}`, points: pts });
     const c = pipelineCost(next.pipelines[next.pipelines.length - 1], this.o.snowmaking!);
     if (this.commit(next, `Rurociąg ${n}: ${Math.round(c.lengthM)} m, ${c.hydrants} hydrantów. Wykop tylko latem (V–X). Początek musi być przy pompowni albo innym rurociągu.`)) this.select({ kind: 'pipeline', id });
+  }
+
+  /** Etap 7b: trasa letnia (rower, ścieżka, tor) z narysowanych punktów. */
+  private finishTrail(): void {
+    const kind = this.tool === 'bikeTrail' ? 'bike' : this.tool === 'walkTrail' ? 'walk' : 'toboggan';
+    const pts = this.trailPoints.filter((q, i, a) => i === 0 || Math.hypot(q.xM - a[i - 1].xM, q.yM - a[i - 1].yM) > 1);
+    this.trailPoints = [];
+    this.drawVersion++;
+    if (pts.length < 2 || !this.o.summer) {
+      this.message = 'Trasa potrzebuje co najmniej dwóch punktów.';
+      this.refreshPanel();
+      return;
+    }
+    const next = this.clone();
+    const id = `S${next.nextId++}`;
+    const base = kind === 'bike' ? 'Trasa rowerowa' : kind === 'walk' ? 'Ścieżka' : 'Tor saneczkowy';
+    const n = (next.trails ?? []).filter((t) => t.kind === kind).length + 1;
+    const t = { id, name: `${base} ${n}`, kind, points: pts } as const;
+    const a = analyzeTrail(t, this.o.grid, this.o.summer);
+    if (kind === 'toboggan' && !a.ok) {
+      this.message = `Tor saneczkowy tu się nie zmieści: ${a.issues.join('; ')}.`;
+      this.refreshPanel();
+      return;
+    }
+    (next.trails ??= []).push({ ...t, points: pts });
+    const info = kind === 'bike' ? `trasa ${BIKE_CLASS_NAMES[a.classIndex]} (średnio ${Math.round(a.meanSlopePercent)} %)` : kind === 'toboggan' ? `spadek ${Math.round(a.dropM)} m` : '';
+    if (this.commit(next, `${base} ${n}: ${Math.round(a.lengthM)} m${info ? `, ${info}` : ''}, koszt ${Math.round(a.costPln / 1000)} tys. zł${a.issues.length ? ` – ${a.issues.join('; ')}` : ''}.`)) this.select({ kind: 'trail', id });
   }
 
   private finishRoad(): void {
@@ -894,6 +963,17 @@ export class BuildController {
       }
     }
     if (best) return { kind: 'lift', id: best.id };
+    for (const tr of this.layout.trails ?? []) {
+      const path = tr.points.map((q) => cam.worldToScreen(q.xM, q.yM));
+      for (let i = 0; i < path.length - 1; i++) {
+        const a = path[i];
+        const b = path[i + 1];
+        const dx = b.xPx - a.xPx;
+        const dy = b.yPx - a.yPx;
+        const t = Math.min(1, Math.max(0, ((xPx - a.xPx) * dx + (yPx - a.yPx) * dy) / (dx * dx + dy * dy || 1)));
+        if (Math.hypot(xPx - a.xPx - t * dx, yPx - a.yPx - t * dy) <= 6) return { kind: 'trail', id: tr.id };
+      }
+    }
     for (const road of this.layout.roads ?? []) {
       const path = road.points.map((q) => cam.worldToScreen(q.xM, q.yM));
       for (let i = 0; i < path.length - 1; i++) {
@@ -964,6 +1044,14 @@ export class BuildController {
       const water = typeId ? this.checkWaterSite(typeId, b.xM, b.yM, this.layout) : {};
       return { title: b.name, lines: [t ? t.name : 'baza (miejsce przyjazdu)', `status: ${building !== undefined ? `w budowie (${Math.round(building * 100)} %)` : 'gotowy'}`, ...(water.info ? [water.info] : water.error ? [water.error] : [])] };
     }
+    if (hit.kind === 'trail') {
+      const t = (this.layout.trails ?? []).find((x) => x.id === hit.id);
+      const a = this.analysis.trails?.get(hit.id);
+      if (!t || !a) return null;
+      const lines = [`${TRAIL_KIND_NAMES[t.kind]}${t.kind === 'bike' ? ` ${BIKE_CLASS_NAMES[a.classIndex]}` : ''} · ${f0(a.lengthM)} m, średnio ${f0(a.meanSlopePercent)} % (maks. ${f0(a.maxSlopePercent)} %)`, `status: ${building !== undefined ? `w budowie (${Math.round(building * 100)} %)` : t.closed ? 'zamknięta' : 'czynna'}`];
+      if (a.issues.length) lines.push(a.issues.join('; '));
+      return { title: t.name, lines };
+    }
     if (hit.kind === 'road') {
       const r = (this.layout.roads ?? []).find((x) => x.id === hit.id);
       const a = this.analysis.roads?.get(hit.id);
@@ -993,6 +1081,7 @@ export class BuildController {
     if (s.kind === 'piste') return this.layout.pistes.find((p) => p.id === s.id) ?? null;
     if (s.kind === 'pipeline') return (this.layout.pipelines ?? []).find((p) => p.id === s.id) ?? null;
     if (s.kind === 'road') return (this.layout.roads ?? []).find((p) => p.id === s.id) ?? null;
+    if (s.kind === 'trail') return (this.layout.trails ?? []).find((p) => p.id === s.id) ?? null;
     if (s.kind === 'gun') return (this.layout.snowGuns ?? []).find((g) => g.id === s.id) ?? null;
     return this.layout.bases.find((b) => b.id === s.id) ?? this.layout.buildings?.find((b) => b.id === s.id) ?? null;
   }
@@ -1028,6 +1117,7 @@ export class BuildController {
 
   private select(sel: { kind: SelKind; id: string } | null): void {
     this.selection = sel;
+    this.o.onSelect?.(sel);
     this.drawVersion++;
     this.refreshProfile();
     this.refreshPanel();
@@ -1056,6 +1146,7 @@ export class BuildController {
     if (s.kind === 'lift') next.lifts = next.lifts.filter((l) => l.id !== s.id);
     else if (s.kind === 'piste') next.pistes = next.pistes.filter((p) => p.id !== s.id);
     else if (s.kind === 'road') next.roads = (next.roads ?? []).filter((r) => r.id !== s.id);
+    else if (s.kind === 'trail') next.trails = (next.trails ?? []).filter((r) => r.id !== s.id);
     else if (s.kind === 'pipeline') {
       next.pipelines = (next.pipelines ?? []).filter((p) => p.id !== s.id);
       next.snowGuns = (next.snowGuns ?? []).filter((g) => g.pipelineId !== s.id);
@@ -1303,6 +1394,44 @@ export class BuildController {
     this.commit(next, `${s.kind === 'piste' ? 'Trasa' : 'Wyciąg'} ${obj.name} ${obj.closed ? 'zamknięt' + (s.kind === 'piste' ? 'a' : 'y') : 'otwart' + (s.kind === 'piste' ? 'a' : 'y')}.`);
   }
 
+  /** Etap 7b – akcje z karty obiektu: otwórz/zamknij, kolej latem, wieszaki, rozbiórka. */
+  cardAction(kind: SelKind, id: string, action: 'toggleOpen' | 'toggleSummer' | 'toggleRacks' | 'demolish'): void {
+    if (action === 'demolish') {
+      this.selection = { kind, id };
+      this.deleteSelected();
+      return;
+    }
+    const next = this.clone();
+    if (action === 'toggleOpen') {
+      const obj = kind === 'piste' ? next.pistes.find((x) => x.id === id) : kind === 'lift' ? next.lifts.find((x) => x.id === id) : kind === 'trail' ? (next.trails ?? []).find((x) => x.id === id) : null;
+      if (!obj) return;
+      if (obj.closed) delete obj.closed;
+      else obj.closed = true;
+      this.commit(next, `${obj.name}: ${obj.closed ? 'zamknięte' : 'otwarte'}.`);
+      return;
+    }
+    const l = next.lifts.find((x) => x.id === id);
+    if (!l) return;
+    if (liftTypeById(this.o.liftParams, l.typeId).kind !== 'aerial') {
+      this.message = 'Latem wożą tylko koleje linowe (kanapy, gondole).';
+      this.refreshPanel();
+      return;
+    }
+    if (action === 'toggleSummer') {
+      if (l.summerOff) delete l.summerOff;
+      else l.summerOff = true;
+      this.commit(next, `${l.name}: latem ${l.summerOff ? 'nie kursuje' : 'kursuje'}.`);
+    } else {
+      if (l.bikeRacks) delete l.bikeRacks;
+      else l.bikeRacks = true;
+      this.commit(next, `${l.name}: ${l.bikeRacks ? 'wieszaki na rowery – mniej miejsc dla pieszych' : 'bez wieszaków na rowery'}.`);
+    }
+  }
+
+  get currentSelection(): { kind: SelKind; id: string } | null {
+    return this.selection;
+  }
+
   /** Wyrównanie terenu na zaznaczonej trasie (usunięcie kamieni i pniaków, niwelacja – koszt). */
   private toggleGraded(): void {
     const s = this.selection;
@@ -1449,6 +1578,7 @@ export class BuildController {
       buildingTypes: this.o.buildingTypes ?? null,
       snowNet: this.o.snowmaking ? { hydrants: this.hydrants(), draftPipe: this.pipePoints, plumes: this.plumes, cursor: this.hoverPoint } : null,
       roadDraft: this.roadPoints.length ? { points: this.roadPoints, cursor: this.hoverPoint } : null,
+      trailDraft: this.trailPoints.length ? { kind: this.tool === 'bikeTrail' ? 'bike' : this.tool === 'walkTrail' ? 'walk' : 'toboggan', points: this.trailPoints, cursor: this.hoverPoint } : null,
       version: this.version,
       drawVersion: this.drawVersion,
       timeS,

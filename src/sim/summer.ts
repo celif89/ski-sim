@@ -13,7 +13,7 @@ import { liftPath, liftTypeById } from './lifts';
 import type { ResortLayout } from './resort';
 import { Rng } from './rng';
 import type { SummerParams } from './summerParams';
-import { T_CYCLIST, T_FAMILY, T_HIKER, T_SCHOOL } from './summerParams';
+import { T_CYCLIST, T_FAMILY, T_SCHOOL } from './summerParams';
 import { addDays, daysBetween, formatIsoDate } from './time';
 import type { CalendarDate } from './weather';
 import { dailyAtElevation } from './weather';
@@ -607,7 +607,7 @@ export function quickSummerDay(plan: SummerPlan, sf: SummerFacts, sp: SummerPara
   // Przyjazdy rano: ok. połowa wjazdów w 3 szczytowych godzinach.
   const peakUp = (wantUp * 0.5) / 3;
   const wait = pedCap > 0 ? Math.min(90, Math.max(0, ((peakUp - pedCap) / pedCap) * 60 * 1.5)) : 0;
-  const servedShare = pedCap > 0 ? Math.min(1, (pedCap * Heff * 0.85) / Math.max(1, wantUp)) * Math.exp(-wait / 60) : 0;
+  const servedShare = pedCap > 0 ? sp.quickModel.liftFactor * Math.min(1, (pedCap * Heff * 0.85) / Math.max(1, wantUp)) * Math.exp(-wait / 60) : 0;
   const up = wantUp * servedShare;
   const round = wantRound * servedShare;
   out.ticketsUp = up - round;
@@ -626,7 +626,7 @@ export function quickSummerDay(plan: SummerPlan, sf: SummerFacts, sp: SummerPara
     const lapMin = sf.bikeTrails.reduce((a, b) => a + b.descentMin, 0) / sf.bikeTrails.length + op.reduce((a, x) => a + x.l.rideMin, 0) / Math.max(1, op.length) + 5;
     const wantLaps = riders * Math.min(sp.bike.lapsMax, ((types[T_CYCLIST].stayMeanH * 0.7) * 60) / lapMin);
     const laps = Math.min(wantLaps, bikeCap * Heff);
-    out.bikePasses = riders * (wantLaps > 0 ? Math.min(1, laps / wantLaps + 0.3) : 0);
+    out.bikePasses = riders * sp.quickModel.bikeFactor * (wantLaps > 0 ? Math.min(1, laps / wantLaps + 0.3) : 0);
     out.bikeLaps = laps;
     out.bikeRentals = sf.rental ? out.bikePasses * types[T_CYCLIST].rentalShare : 0;
     op.forEach((x) => {
@@ -637,16 +637,16 @@ export function quickSummerDay(plan: SummerPlan, sf: SummerFacts, sp: SummerPara
   if (sf.toboggan && w.windTopMs < sp.toboggan.windStopMs) {
     let want = 0;
     for (let t = 0; t < types.length; t++) want += g[t] * types[t].wToboggan * types[t].tobogganRides;
-    out.tobogganRides = Math.min(want, sf.toboggan.capacityPerHour * Heff);
+    out.tobogganRides = Math.min(want * sp.quickModel.tobogganFactor, sf.toboggan.capacityPerHour * Heff);
   }
   // Gastronomia: miejsca × rotacja.
+  // Gastronomia ośrodka: na górze jedzą ci, którzy wjechali koleją; na dole – rodziny i szkoły
+  // (piesi turyści jedzą w schroniskach na szlaku, nie u nas). Limit: miejsca × rotacja.
   if (sf.foodSeats > 0) {
     let want = 0;
-    for (let t = 0; t < types.length; t++) {
-      const where = t === T_HIKER ? (sf.foodTop > 0 ? 1 : 0.3) : 1;
-      want += g[t] * types[t].foodShare * where;
-    }
-    out.meals = Math.min(want, sf.foodSeats * H * (60 / sp.guests.mealMin) * 0.6);
+    if (sf.foodTop > 0) for (let t = 0; t < types.length; t++) if (t !== T_CYCLIST) want += g[t] * types[t].liftUseShare * servedShare * types[t].foodShare;
+    if (sf.foodBase > 0) want += (g[T_FAMILY] * types[T_FAMILY].foodShare + g[T_SCHOOL] * types[T_SCHOOL].foodShare + g[T_CYCLIST] * types[T_CYCLIST].foodShare) * 0.5;
+    out.meals = Math.min(want * sp.quickModel.mealFactor, sf.foodSeats * H * (60 / sp.guests.mealMin) * 0.6);
   }
   if (sf.playgrounds > 0) out.playgroundVisits = Math.min(g[T_FAMILY] * types[T_FAMILY].childShare, sf.playgrounds * 60 * H);
   const school2 = g[T_SCHOOL];

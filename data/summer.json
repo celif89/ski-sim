@@ -476,9 +476,9 @@
   "demand": {
     "_opis": "Goście dnia = pula regionu × dzień × miesiąc × prognoza × szum; każdy typ osobno: udział = A/(A + A_inne); A = oferta^w × (reputacja/ref)^r × cena^−e.",
     "regionPoolPerDay": {
-      "value": 9000,
+      "value": 4500,
       "unit": "osób/dzień",
-      "source": "osoby na jednodniowej wycieczce w Beskidzie Żywieckim w letnią sobotę (wakacje); do kalibracji – frekwencja Pilska, Babiej Góry"
+      "source": "osoby na jednodniowej wycieczce w górach w zasięgu Korbielowa w letnią sobotę w wakacje; dobrane tak, by ośrodek wielkości Pilska z koleją miał rzędu 80–100 tys. gości latem (raport lata) – do kalibracji frekwencją Pilska i Babiej Góry"
     },
     "monthFactors": {
       "value": [
@@ -648,7 +648,7 @@
         "source": "punkt widokowy"
       },
       "other": {
-        "value": 4,
+        "value": 6,
         "unit": "-",
         "source": "konkurencja: inne szlaki w regionie; do kalibracji"
       },
@@ -746,7 +746,7 @@
         "source": "-"
       },
       "other": {
-        "value": 3,
+        "value": 5,
         "unit": "-",
         "source": "do kalibracji"
       },
@@ -849,9 +849,9 @@
         "source": "-"
       },
       "other": {
-        "value": 3,
+        "value": 8,
         "unit": "-",
-        "source": "konkurencja: Szczyrk, Kasina, Słotwiny; do kalibracji"
+        "source": "konkurencja bike parków: Szczyrk (16 km tras), Kasina, Słotwiny – nowy, mały bike park przyciąga niewielu; do kalibracji"
       },
       "walkSpeedFactor": {
         "value": 1.0,
@@ -1138,5 +1138,28 @@
         "source": "do kalibracji"
       }
     }
-  ]
+  ],
+  "quickModel": {
+    "_opis": "Model zgrubny dnia letniego (dni przewijane bez symulacji gości) – współczynniki dobrane tak, by zgadzał się z symulacją gości (raport lata: npm run summer-report, porównanie z SUMMER_AGENTS=0).",
+    "mealFactor": {
+      "value": 0.3,
+      "unit": "×",
+      "source": "część chętnych na posiłek, którzy faktycznie jedzą w restauracji ośrodka (pora, kolejki, czas); dobrane na symulacji gości"
+    },
+    "tobogganFactor": {
+      "value": 0.45,
+      "unit": "×",
+      "source": "część zamierzonych przejazdów torem, które się odbywają; dobrane na symulacji gości"
+    },
+    "liftFactor": {
+      "value": 0.9,
+      "unit": "×",
+      "source": "część chętnych na kolej, którzy wjechali; dobrane na symulacji gości"
+    },
+    "bikeFactor": {
+      "value": 0.8,
+      "unit": "×",
+      "source": "część rowerzystów, którzy kupili karnet (reszta zrezygnowała przez kolejki do wieszaków); dobrane na symulacji gości"
+    }
+  }
 }

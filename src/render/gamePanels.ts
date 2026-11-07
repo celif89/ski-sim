@@ -24,6 +24,8 @@ export interface FinanceView {
   marketPricePln: number;
   /** Postęp przewijania dni (dni do policzenia) – null, gdy nic. */
   catchingUp: number | null;
+  /** Etap 7b: sezon letni – dostępny, otwarty, można otworzyć teraz, reputacja letnia, opis dnia. */
+  summer?: { open: boolean; allowed: boolean; reputation: number; prices: { liftUpPln: number; liftRoundTripPln: number; bikeDayPln: number; tobogganRidePln: number }; window: string } | null;
 }
 
 export interface FinanceHandlers {
@@ -33,6 +35,9 @@ export interface FinanceHandlers {
   onLoad(file: File): void;
   onNewGame(): void;
   onLoan(amountPln: number, years: number): void;
+  /** Etap 7b: sezon letni i ceny lata. */
+  onSummerOpen?(open: boolean): void;
+  onSummerPrices?(prices: { liftUpPln: number; liftRoundTripPln: number; bikeDayPln: number; tobogganRidePln: number }): void;
   onRepay(loanId: number): void;
 }
 
@@ -51,6 +56,7 @@ export class FinancePanel {
       <button type="button" class="build-toggle">Finanse ▾</button>
       <div class="build-content">
         <div class="fin-body"></div>
+        <div class="fin-summer"></div>
         <div class="build-row build-buttons">
           <button type="button" class="f-prices" title="Ceny karnetów i godziny pracy wyciągów">Cennik i godziny</button>
           <button type="button" class="f-report" title="Raport roku gry: wynik, przepływy, frekwencja, konkurencja">Raport sezonu</button>
@@ -91,9 +97,37 @@ export class FinancePanel {
       this.root.querySelector('.build-toggle')!.textContent = this.collapsed ? 'Finanse ▸' : 'Finanse ▾';
     });
     this.root.addEventListener('keydown', (e) => e.stopPropagation());
+    const summer = this.root.querySelector<HTMLElement>('.fin-summer')!;
+    summer.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-summer]');
+      if (b) h.onSummerOpen?.(b.dataset.summer === '1');
+    });
+    summer.addEventListener('change', () => {
+      const val = (n: string) => Number(summer.querySelector<HTMLInputElement>(`input[name="${n}"]`)?.value);
+      h.onSummerPrices?.({ liftUpPln: val('liftUpPln'), liftRoundTripPln: val('liftRoundTripPln'), bikeDayPln: val('bikeDayPln'), tobogganRidePln: val('tobogganRidePln') });
+    });
   }
 
+  private summerHtml = '';
+
   update(v: FinanceView): void {
+    const sm = v.summer;
+    const box = this.root.querySelector<HTMLElement>('.fin-summer')!;
+    const sh = sm
+      ? `<div class="build-section">Sezon letni</div>
+        <div class="small">${sm.open ? '<b>otwarty</b>' : 'zamknięty'} · ${sm.window} · reputacja letnia ${f1(sm.reputation)} ★
+        <button type="button" data-summer="${sm.open ? '0' : '1'}" ${!sm.open && !sm.allowed ? 'disabled title="Poza okresem sezonu letniego"' : ''}>${sm.open ? 'Zamknij sezon letni' : 'Otwórz sezon letni'}</button></div>
+        <div class="gm-grid small fin-summer-prices">
+          <label>W górę <input type="number" name="liftUpPln" min="0" max="400" value="${sm.prices.liftUpPln}"> zł</label>
+          <label>Góra-dół <input type="number" name="liftRoundTripPln" min="0" max="400" value="${sm.prices.liftRoundTripPln}"> zł</label>
+          <label>Rower (dzień) <input type="number" name="bikeDayPln" min="0" max="400" value="${sm.prices.bikeDayPln}"> zł</label>
+          <label>Tor (przejazd) <input type="number" name="tobogganRidePln" min="0" max="400" value="${sm.prices.tobogganRidePln}"> zł</label>
+        </div>`
+      : '';
+    if (sh !== this.summerHtml && !box.contains(document.activeElement)) {
+      this.summerHtml = sh;
+      box.innerHTML = sh;
+    }
     const s = v.state;
     const d = s.lastDay;
     const y = s.year.flows;

@@ -21,11 +21,12 @@ import liftsJson from '../data/lifts.json';
 import pistesJson from '../data/pistes.json';
 import constructionJson from '../data/construction.json';
 import economyJson from '../data/economy.json';
-import { parseEconomyParams, withRoads, withSnowmaking } from './sim/economyParams';
+import { parseEconomyParams, withRoads, withSnowmaking, withSummer } from './sim/economyParams';
 import { parkingCapacityPersons } from './sim/economy';
 import snowmakingJson from '../data/snowmaking.json';
 import winterClassesJson from '../data/winter-classes.json';
 import waterJson from '../data/water.json';
+import summerJson from '../data/summer.json';
 import { careerSeed, parseWinterClasses, winterClass, winterPercentile, winterSkiDays } from './sim/winterClass';
 import { parseSnowmakingParams } from './sim/snowmakingParams';
 import { wetBulbC } from './sim/snowmaking';
@@ -34,6 +35,13 @@ import type { PlanPiste } from './render/snowPanels';
 import { OpsView, plumesAt } from './render/opsView';
 import { WeatherBook } from './sim/weatherBook';
 import { parseClimateProfile } from './sim/climate';
+import { parseSummerParams } from './sim/summerParams';
+import type { SummerStats } from './sim/summerGuests';
+import type { CardKind } from './sim/objectCards';
+import { objectCard } from './sim/objectCards';
+import { ObjectCardView } from './render/objectCardView';
+import { SNOW_QUALITY_NAMES } from './sim/snow';
+import { osmDestinations } from './sim/summerGuests';
 import { annualPrecipitationMm, buildStreamNet, flowFactor, normalPrecipMm, parseWaterParams, streamAt as findStream } from './sim/water';
 import type { WaterContext } from './sim/operations';
 import { parseWeatherParams } from './sim/weather';
@@ -105,6 +113,7 @@ const MAP_JSONS = import.meta.glob('../data/maps/*/map.json', { eager: true, imp
 const MAP_BINARY_URLS = import.meta.glob('../data/maps/*/*.{f32,u8}', { eager: true, query: '?url', import: 'default' });
 const CLIMATE_JSONS = import.meta.glob('../data/climate/*.json', { eager: true, import: 'default' });
 const OSM_RESORTS = import.meta.glob('../data/maps/*/osm-resort.json', { eager: true, import: 'default' });
+const OSM_TRAILS = import.meta.glob('../data/maps/*/osm-trails.json', { eager: true, import: 'default' });
 const OSM_WATERS = import.meta.glob('../data/maps/*/osm-water.json', { eager: true, import: 'default' });
 const OSM_CONTEXTS = import.meta.glob('../data/maps/*/osm-context.json', { eager: true, import: 'default' });
 const MAP_LABELS = import.meta.glob('../data/maps/*/labels.json', { eager: true, import: 'default' });
@@ -349,12 +358,15 @@ async function start(): Promise<void> {
     const ridingParams = parseRidingParams(snowJson);
     const snowmakingParams = parseSnowmakingParams(snowmakingJson);
     const roadParams = parseRoadParams(constructionJson);
-    const economyParams = withRoads(withSnowmaking(parseEconomyParams(economyJson), snowmakingParams), roadParams);
+    const summerParams = parseSummerParams(summerJson);
+    const economyParams = withSummer(withRoads(withSnowmaking(parseEconomyParams(economyJson), snowmakingParams), roadParams), summerParams);
     // Etap 6b: drogi publiczne z OSM (dojazd do parkingów).
     const publicRoads: PointM[][] = (((OSM_CONTEXTS[`../data/maps/${simSettings.mapName}/osm-context.json`] as { roads?: { kind: string; points: [number, number][] }[] } | undefined)?.roads) ?? [])
       .filter((r) => roadParams.publicRoadKinds.includes(r.kind))
       .map((r) => r.points.map(([e, n]) => grid.puwg92ToLocal(e, n)).filter((q): q is PointM => q !== null))
       .filter((l) => l.length >= 2);
+    // Etap 7b: karta obiektu – otwierana po kliknięciu obiektu (ustawiane niżej, gdy gra gotowa).
+    let onCardSelect: (sel: { kind: string; id: string } | null) => void = () => {};
     // Ostrzeżenia „za mało śniegu” → panel gości (ustawiane niżej, gdy kontroler gości gotowy).
     let onSnowWarnings: (w: SnowWarning[]) => void = () => {};
     const build = new BuildController({
@@ -371,11 +383,14 @@ async function start(): Promise<void> {
       riding: ridingParams,
       onSnowWarnings: (w) => onSnowWarnings(w),
       beforeCommit: (next, a) => game?.beforeCommit(next, a) ?? null,
+      onSelect: (sel) => onCardSelect(sel),
       buildingTypes: [
         ...economyParams.buildings.map((b) => ({ id: b.id, name: b.name, base: b.base, costPln: b.costPln })),
         ...snowmakingParams.buildings.map((b) => ({ id: b.id, name: `${b.name}${b.summerOnly ? ' (budowa V–X)' : ''}`, base: false, costPln: b.costPln })),
+        ...summerParams.buildings.map((b) => ({ id: b.id, name: `${b.name} (lato)`, base: false, costPln: b.costPln })),
       ],
       snowmaking: snowmakingParams,
+      summer: summerParams,
       roads: roadParams,
       publicRoads: publicRoads.length ? publicRoads : null,
       forest: landCover?.forest ?? null,
@@ -826,6 +841,7 @@ async function start(): Promise<void> {
       cardParent: document.body,
       initialGuests: Number.isFinite(urlGuests) && urlGuests > 0 ? urlGuests : guestParams.scenario.guestsPerDay,
       onDaySummary: (date, summary) => game?.onDaySummary(date, summary),
+      onSummerDay: (date, outcome, stats) => game?.onSummerDay(date, outcome, stats),
       manualGuests: () => !game?.state || game.mode === 'sandbox',
       onDayTraffic: (date, passes) => {
         // Przejazdy dnia → model śniegu (ubijanie, zsuwanie, muldy); śnieg na mapie od nowa.
@@ -911,7 +927,17 @@ async function start(): Promise<void> {
     const waitMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
     const winterTable = parseWinterClasses(winterClassesJson);
     const winterDeps = { profile: climateProfile, weatherParams: weatherParamsMain, snowParams: parseSnowParams(snowJson), radiationParams: parseRadiationParams(radiationJson), riding: ridingParams, location };
+    // Etap 7b: szlaki PTTK z OSM i cele wycieczek (szczyty, schroniska) dla gości letnich.
+    const osmTrails = ((OSM_TRAILS[`../data/maps/${simSettings.mapName}/osm-trails.json`] as { trails?: { colour: string; name: string; points: [number, number][] }[] } | undefined)?.trails ?? []).map((t) => ({
+      colour: t.colour,
+      name: t.name,
+      points: t.points.map(([e, n]) => (grid.georef ? grid.puwg92ToLocal(e, n) : null)).filter((q): q is PointM => q !== null),
+    })).filter((t) => t.points.length >= 2);
+    build.setHikingTrails(osmTrails);
+    const ctxData = OSM_CONTEXTS[`../data/maps/${simSettings.mapName}/osm-context.json`] as MapContextData | undefined;
+    const destinations = ctxData && grid.georef ? osmDestinations(ctxData.places, ctxData.buildings, (e, n) => grid.puwg92ToLocal(e, n), (q) => !Number.isNaN(grid.sampleElevationM(q.xM, q.yM)), summerParams) : [];
     game = new GameController({
+      summer: { summerJson, walkLines: osmTrails.map((t) => t.points), destinations },
       water: waterCtx,
       ep: economyParams,
       gp: guestParams,
@@ -1139,8 +1165,76 @@ async function start(): Promise<void> {
 
     app.renderer.on('resize', (width: number, height: number) => camera.setViewport(width, height));
 
+    // ---------------------------------------------------------------- karta obiektu (etap 7b)
+    let cardSel: { kind: string; id: string } | null = null;
+    let cardStats: SummerStats | null = null;
+    let cardRefreshMs = 0;
+    const cardView = new ObjectCardView(document.body, {
+      onAction: (a, value) => {
+        if (!cardSel) return;
+        const sel = cardSel;
+        if (a.id === 'toggleOpen' || a.id === 'toggleSummer' || a.id === 'toggleRacks' || a.id === 'demolish') {
+          build.cardAction(sel.kind as Parameters<typeof build.cardAction>[0], sel.id, a.id);
+          if (a.id === 'demolish') {
+            cardSel = null;
+            cardView.hide();
+          }
+        } else if (a.id === 'inspection' && value) game?.scheduleInspection(sel.id, value);
+        else if (a.id === 'price' && a.priceKey && value !== null) game?.setSummerPrices({ [a.priceKey]: Number(value) });
+        else if (a.id === 'mains') game?.setMainsOn(!game.state?.ops?.mainsOn);
+        cardRefreshMs = 0;
+      },
+      onClose: () => (cardSel = null),
+    });
+    const pisteSnowOf = (id: string) => {
+      const a = build.current.analysis.pistes.get(id);
+      if (!a || !lastSnow) return null;
+      let sum = 0;
+      let n = 0;
+      const qs = new Map<number, number>();
+      for (const q of a.axis) {
+        const c = grid.cellAt(q.xM, q.yM);
+        if (!c) continue;
+        const k = grid.index(c.i, c.j);
+        sum += (lastSnow.sweMm[k] / ridingParams.packedDensityKgM3) * 100;
+        qs.set(lastSnow.quality[k], (qs.get(lastSnow.quality[k]) ?? 0) + 1);
+        n++;
+      }
+      const top = [...qs].sort((x, y) => y[1] - x[1])[0];
+      return n ? { baseCm: sum / n, quality: top ? (SNOW_QUALITY_NAMES as unknown as Record<number, string>)[top[0]] : '' } : null;
+    };
+    onCardSelect = (sel) => {
+      cardSel = sel && game?.state ? sel : null;
+      if (!cardSel) cardView.hide();
+      cardRefreshMs = 0;
+    };
+    function refreshCard(nowMs: number): void {
+      if (!cardSel || !game?.state) return;
+      if (nowMs - cardRefreshMs < 1000) return;
+      cardRefreshMs = nowMs;
+      if (guestCtl.isSummerDay) void guestCtl.liveSummerStats().then((st) => (cardStats = st));
+      else cardStats = null;
+      const ctx = game.cardContext(timePanel.hour, cardStats, guestCtl.liveLifts(), pisteSnowOf);
+      if (!ctx) return;
+      const card = objectCard(cardSel.kind as CardKind, cardSel.id, ctx);
+      if (card) cardView.show(card);
+      else cardView.hide();
+    }
+    // Etap 7b: wygląd lata (zielone łąki, szlaki PTTK) w miesiącach bez modelu śniegu.
+    let summerLook = false;
+    function refreshSeasonLook(): void {
+      const m = timePanel.date.month;
+      const on = m >= 5 && m <= 9;
+      if (on === summerLook) return;
+      summerLook = on;
+      terrain.setSummer(on);
+      build.setSummerLook(on);
+    }
+
     app.ticker.add((ticker) => {
       const frameStart = performance.now();
+      refreshSeasonLook();
+      refreshCard(performance.now());
       timePanel.tick(performance.now());
       seasonTick(performance.now());
       clockTick(ticker.deltaMS / 1000);

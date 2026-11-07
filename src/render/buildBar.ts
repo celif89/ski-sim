@@ -39,6 +39,7 @@ const ITEMS: BarItem[] = [
     disabled: 'Wycinka jest liczona sama pod wyciągami i trasami (przecinki widać na mapie). Ręczna wycinka – później.',
   },
   { id: 'snow', label: 'Naśnieżanie', key: 'H', tool: 'pipeline', title: 'Rurociąg z hydrantami (H) od pompowni wzdłuż trasy, potem armatki na hydrantach (J). Rura zasilająca od źródła wody do zbiornika (F). Ujęcie (tylko na potoku), studnia, wodociąg (tylko przy wsi), rowy, zbiornik, pompownia, przyłącze, garaż ratraków i kotwy – narzędzie „Budynki”' },
+  { id: 'summer', label: 'Lato', key: 'X', tool: 'bikeTrail', title: 'Atrakcje letnie: trasa rowerowa (X), ścieżka spacerowa (Q), tor saneczkowy (C); plac zabaw i punkt widokowy – narzędzie „Budynki”. Kolej latem i wieszaki na rowery – w profilu kanapy' },
   { id: 'buildings', label: 'Budynki', key: 'B', tool: 'base', title: 'Budynki: parking (tu przyjeżdżają goście), gastronomia, wypożyczalnia, szkółka – typ wybierz w panelu budowy, kliknij na mapie' },
   { id: 'layers', label: 'Nakładki', title: 'Nakładki danych: nachylenie, ekspozycja, słońce, temperatura, śnieg; mapa topograficzna; sieć tras' },
 ];
@@ -88,6 +89,7 @@ export class BuildBar {
     this.buttons.get('lift')!.classList.toggle('active', tool === 'lift');
     this.buttons.get('piste')!.classList.toggle('active', tool === 'pisteBrush' || tool === 'pisteAxis');
     this.buttons.get('buildings')!.classList.toggle('active', tool === 'base');
+    this.buttons.get('summer')?.classList.toggle('active', tool === 'bikeTrail' || tool === 'walkTrail' || tool === 'toboggan');
     this.buttons.get('snow')!.classList.toggle('active', tool === 'pipeline' || tool === 'supply' || tool === 'gun');
   }
 

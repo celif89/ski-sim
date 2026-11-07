@@ -48,6 +48,7 @@ uniform float uTime;
 uniform int uSeed;
 uniform vec3 uLod;
 uniform float uHasSnow;
+uniform float uSummer;
 uniform vec3 uSurfT;
 uniform vec4 uTreeA;
 uniform vec4 uTreeB;
@@ -264,9 +265,9 @@ void main() {
 
   vec2 jit = (vec2(fbm(p * 0.06, 1u), fbm(p * 0.06, 2u)) - 0.5) * 22.0;
   vec4 cell = cellAt(p + jit);
-  float depthCm = uHasSnow > 0.5 ? cell.r * 255.0 : 120.0;
+  float depthCm = uSummer > 0.5 ? 0.0 : uHasSnow > 0.5 ? cell.r * 255.0 : 120.0;
   // Kanał G: stan śniegu × 16 + muldy (0–15) – stan w górnych 4 bitach.
-  int q = uHasSnow > 0.5 ? (int(cell.g * 255.0 + 0.5) >> 4) : 3;
+  int q = uSummer > 0.5 ? 0 : uHasSnow > 0.5 ? (int(cell.g * 255.0 + 0.5) >> 4) : 3;
   vec4 msk = texture(uMask, uv);
 
   // Pokrycie śniegiem: gruby – biały, cienki – płaty, brak – trawa.
@@ -279,6 +280,14 @@ void main() {
   vec3 grass = mix(vec3(0.66, 0.65, 0.48), vec3(0.55, 0.57, 0.40), fbm(p * 0.25, 17u)) * clamp(0.72 + 0.32 * shade, 0.5, 1.2);
   float rock = smoothstep(0.70, 0.76, fbm(p * 0.3, 19u));
   grass = mix(grass, vec3(0.55, 0.53, 0.50) * clamp(shade, 0.6, 1.2), rock * 0.85);
+  // Lato (etap 7b): soczysta łąka (styl A), na trasach koszona – jaśniejsze pasy.
+  if (uSummer > 0.5) {
+    vec3 meadow = mix(vec3(0.56, 0.72, 0.38), vec3(0.44, 0.62, 0.30), fbm(p * 0.22, 17u)) * clamp(0.74 + 0.30 * shade, 0.5, 1.2);
+    meadow = mix(meadow, vec3(0.62, 0.66, 0.42) * clamp(shade, 0.6, 1.2), smoothstep(0.66, 0.8, fbm(p * 0.05, 23u)) * 0.35);
+    meadow = mix(meadow, vec3(0.58, 0.58, 0.54) * clamp(shade, 0.6, 1.2), rock * 0.85);
+    float mown = msk.g * (0.85 + 0.15 * step(0.5, fract((p.x + p.y) * 0.08)));
+    grass = mix(meadow, vec3(0.70, 0.82, 0.50) * clamp(0.78 + 0.25 * shade, 0.5, 1.2), mown * 0.6);
+  }
   vec3 col = mix(grass, snow, cover);
 
   // Faktury śniegu (poziom 3, częściowo 2).
@@ -294,6 +303,7 @@ void main() {
   // Dno lasu: ze śniegiem – szaroniebieskie (cień koron), bez śniegu – brązowe (igliwie).
   vec3 floorSnow = col * vec3(0.80, 0.85, 0.91);
   vec3 floorBare = mix(vec3(0.45, 0.38, 0.29), vec3(0.37, 0.31, 0.24), fbm(p * 0.4, 29u)) * clamp(0.7 + 0.35 * shade, 0.5, 1.2);
+  if (uSummer > 0.5) floorBare = mix(vec3(0.30, 0.40, 0.22), vec3(0.24, 0.33, 0.18), fbm(p * 0.4, 29u)) * clamp(0.7 + 0.35 * shade, 0.5, 1.2);
   col = mix(col, mix(floorBare, floorSnow, cover), forest * 0.85);
   col = mix(col, mix(col, vec3(0.98, 0.99, 1.0), 0.3), msk.g * cover);
 

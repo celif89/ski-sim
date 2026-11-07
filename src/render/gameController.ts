@@ -8,7 +8,7 @@ import type { CalendarDate } from '../sim';
 import { PHASE_NAMES, yearPhase } from '../sim/calendar';
 import type { CompetitionInput, CompetitorSeason } from '../sim/competition';
 import { competitorSeason, competitorsOn } from '../sim/competition';
-import type { DayContext, DayOutcome, GameMode, GameState, ResortFacts, SeasonReport } from '../sim/economy';
+import type { DayContext, DayOutcome, Flows, GameMode, GameState, ResortFacts, SeasonReport } from '../sim/economy';
 import {
   agentOutcome,
   closeDay,
@@ -31,6 +31,7 @@ import {
   setHours,
   setPrices,
   setSeasonOpen,
+  setSummerOpen,
   skiSeasonYear,
   takeLoan,
 } from '../sim/economy';
@@ -53,6 +54,13 @@ import type { RidingParams } from '../sim/snowRiding';
 import type { TerrainGrid } from '../sim/terrainGrid';
 import { addDays, daysBetween, formatIsoDate } from '../sim/time';
 import type { WeatherBook } from '../sim/weatherBook';
+import type { PointM } from '../sim/lifts';
+import type { SummerFacts, SummerOutcome, SummerPlan, SummerPrices } from '../sim/summer';
+import { attractionUnlocked, ensureSummer, seasonExtras, summerFacts, summerPlan, summerReputationOf, summerSeasonAllowed } from '../sim/summer';
+import type { SummerNet, SummerStats } from '../sim/summerGuests';
+import { summerNetFor } from '../sim/summerGuests';
+import { inspectionStatus, scheduleInspection } from '../sim/inspections';
+import type { CardContext } from '../sim/objectCards';
 import type { BuildController } from './buildController';
 import { FinancePanel, PricesDialog, SeasonReportView, StartScreen } from './gamePanels';
 import type { GuestController } from './guestController';
@@ -108,6 +116,8 @@ export interface GameControllerOptions {
   onCaughtUp?(): void;
   /** Etap 6b: model wody (potoki, wodociąg, studnie, zlewnia zbiornika). */
   water?: WaterContext | null;
+  /** Etap 7b: sezon letni – surowe dane (dla wątku gości), szlaki OSM i cele wycieczek. */
+  summer?: { summerJson: unknown; walkLines: PointM[][]; destinations: { kind: 'hut' | 'peak'; name: string; xM: number; yM: number }[] } | null;
 }
 
 const AUTOSAVE_DB = 'ski-sim-gra';
@@ -169,6 +179,13 @@ export class GameController {
   preview: DayOpsResult | null = null;
   /** Ostatnio policzony śnieg bieżącego dnia (do podglądu). */
   private todaySnow: { date: CalendarDate; snow: GameSnow | null } | null = null;
+  /** Etap 7b: wyniki dni letnich z wątku gości i statystyki (karty obiektów), sieć pieszych. */
+  private readonly summerOutcomes = new Map<string, SummerOutcome>();
+  summerStats: { date: string; stats: SummerStats } | null = null;
+  private summerNetCache: { key: string; net: SummerNet } | null = null;
+  /** Etap 7b: fakty lata dla bieżącego dnia (karty obiektów). */
+  summerFactsNow: SummerFacts | null = null;
+  summerPlanNow: SummerPlan | null = null;
 
   constructor(private readonly o: GameControllerOptions) {
     this.book = o.book;
@@ -179,6 +196,8 @@ export class GameController {
       onLoad: (f) => void this.loadFile(f),
       onNewGame: () => void this.showStart(),
       onLoan: (amount, years) => this.loan(amount, years),
+      onSummerOpen: (open) => this.setSummerOpen(open),
+      onSummerPrices: (p) => this.setSummerPrices(p),
       onRepay: (id) => this.repay(id),
     });
     this.finance.setVisible(false);
@@ -262,6 +281,7 @@ export class GameController {
 
   private afterStateLoaded(): void {
     const s = this.state!;
+    if (this.o.ep.summer) ensureSummer(s, this.o.ep.summer); // starsze zapisy – bez stanu lata
     this.finance.setVisible(true);
     this.o.guests.setManualGuests(s.mode === 'sandbox');
     this.o.guests.setResortOpen(s.seasonOpen);
@@ -347,6 +367,22 @@ export class GameController {
     const s = this.state;
     if (!s || s.mode !== 'career') return null;
     if (s.bankrupt) return 'Ośrodek zbankrutował – nie można budować.';
+    // Etap 7b: atrakcje letnie odblokowują się z reputacją i kapitałem.
+    const sp = this.o.ep.summer;
+    if (sp) {
+      const had = new Set([...(this.layout.trails ?? []).map((t) => t.id), ...(this.layout.buildings ?? []).map((b) => b.id)]);
+      const rep = reputationOf(s, this.o.ep);
+      for (const t of next.trails ?? []) {
+        if (had.has(t.id)) continue;
+        const u = attractionUnlocked(t.kind, s, rep, sp);
+        if (!u.ok) return `${t.kind === 'bike' ? 'Bike park' : t.kind === 'toboggan' ? 'Tor saneczkowy' : 'Ścieżki'} jeszcze niedostępny: ${u.why}.`;
+      }
+      for (const b of next.buildings ?? []) {
+        if (had.has(b.id) || (b.typeId !== 'playground' && b.typeId !== 'viewpoint')) continue;
+        const u = attractionUnlocked(b.typeId, s, rep, sp);
+        if (!u.ok) return `${b.typeId === 'playground' ? 'Plac zabaw' : 'Punkt widokowy'} jeszcze niedostępny: ${u.why}.`;
+      }
+    }
     const charge = constructionChargePreview(s, objectCosts(next, analysis, this.o.ep), this.o.ep);
     if (charge > 0 && charge > s.balancePln) return `Brak pieniędzy: ta zmiana kosztuje ${fmtPln(charge)}, na koncie ${fmtPln(s.balancePln)}. Weź kredyt (panel „Finanse”).`;
     return null;
@@ -428,6 +464,12 @@ export class GameController {
   /** Dane z gości: koniec dnia (podsumowanie) i przejazdy. */
   onDaySummary(date: CalendarDate, summary: GuestEconomySummary): void {
     this.summaries.set(formatIsoDate(date), summary);
+  }
+
+  /** Etap 7b: wynik dnia letniego z wątku gości. */
+  onSummerDay(date: CalendarDate, outcome: SummerOutcome, stats: SummerStats | null): void {
+    this.summerOutcomes.set(formatIsoDate(date), outcome);
+    if (stats) this.summerStats = { date: formatIsoDate(date), stats };
   }
 
   onDayTraffic(date: CalendarDate, passes: Float32Array): void {
@@ -558,6 +600,28 @@ export class GameController {
         this.opsSaved.set(formatIsoDate(date), encodeOps(res.ops));
       }
     }
+    // Etap 7b: dzień letni (gdy sezon letni otwarty), tor zimą, utrzymanie tras letnich, koszenie.
+    if (this.o.ep.summer && this.analysis) {
+      const done = this.summerOutcomes.get(formatIsoDate(date)) ?? null;
+      const ex = seasonExtras({
+        state: s,
+        layout: this.layout,
+        trails: this.analysis.trails ?? new Map(),
+        facts: ctx.facts,
+        lp: this.o.lp,
+        ep: this.o.ep,
+        book: this.book,
+        date,
+        winterGuests: plan.open ? outcome.guests : 0,
+        winterHours: Math.max(0, plan.hours.closeH - plan.hours.openH),
+        agents: done ? () => done : null,
+      });
+      extra ??= { flows: {}, snowM3: 0, waterM3: 0, snowKWh: 0, fuelL: 0, groomed: 0, unfinished: 0 };
+      for (const [k, v] of Object.entries(ex.flows)) extra.flows[k as keyof Flows] = (extra.flows[k as keyof Flows] ?? 0) + (v ?? 0);
+      extra.summer = ex.summer;
+      extra.objectRevenue = ex.objectRevenue;
+      this.summerOutcomes.delete(formatIsoDate(date));
+    }
     const r = closeDay(s, ctx, plan, outcome, this.o.ep, { ids: ids.map((x) => x.id), names: ids.map((x) => x.name) }, extra);
     this.summaries.delete(formatIsoDate(date));
     if (r.finishedConstruction.length) {
@@ -677,8 +741,111 @@ export class GameController {
         ? 'Sezon otwarty, ale żaden wyciąg nie pracuje (budowa, brak otwartej trasy w dół).'
         : `Sezon zamknięty (${PHASE_NAMES[yearPhase(date, this.o.ep)]}). ${yearPhase(date, this.o.ep) === 'summer' ? 'Czas budowy – zegar latem idzie tygodniami.' : ''}`;
     this.o.guests.setDayPlan({ date, guests: p.guests, typeShares: p.typeShares, hours: p.hours, note: this.planNote });
+    this.planSummerToday(date);
     this.refreshPreview();
     this.refreshPanel(true);
+  }
+
+  /** Etap 7b: dzień letni – plan (goście wg typu, burza), sieć pieszych, goście letni w wątku. */
+  private planSummerToday(date: CalendarDate): void {
+    const s = this.state;
+    const sp = this.o.ep.summer;
+    this.summerFactsNow = null;
+    this.summerPlanNow = null;
+    if (!s || !sp || !this.analysis || !this.facts || !this.o.summer) {
+      this.o.guests.setSummerDay(null);
+      return;
+    }
+    const sf = summerFacts(this.layout, this.analysis.trails ?? new Map(), this.facts, s, this.o.lp, sp, this.o.ep, (id) => inspectionStatus(s, id, date) === 'ok');
+    this.summerFactsNow = sf;
+    if (!s.summer?.open || !summerSeasonAllowed(date, sp)) {
+      this.o.guests.setSummerDay(null);
+      return;
+    }
+    const plan = summerPlan(s, date, sf, this.book, sp, this.o.ep);
+    this.summerPlanNow = plan;
+    const key = JSON.stringify([sf.lifts.map((x) => [x.id, x.operating]), sf.bikeTrails.map((x) => x.id), sf.toboggan?.id ?? '', this.facts.buildings.filter((b) => b.built).map((b) => b.id), (this.layout.trails ?? []).map((t) => t.id + (s.construction[t.id] ? '*' : ''))]);
+    if (!this.summerNetCache || this.summerNetCache.key !== key) {
+      const g = this.o.grid;
+      this.summerNetCache = { key, net: summerNetFor(this.layout, this.analysis.trails ?? new Map(), sf, this.facts, (id) => !s.construction[id], { walkLines: this.o.summer.walkLines, destinations: this.o.summer.destinations }, (x, y) => g.sampleElevationM(x, y), sp) };
+    }
+    const w = plan.weather;
+    const names = ['turyści', 'rodziny', 'rowerzyści', 'szkoły'];
+    const note = plan.open
+      ? `Lato, ${plan.info.label}: ${plan.guests} gości (${plan.byType.map((n, i) => (n ? `${names[i]} ${n}` : '')).filter(Boolean).join(', ')}) · prognoza ×${plan.factors.forecast.toFixed(2)}${w.storm ? ` · burza ${Math.floor(w.stormFromH)}:00–${Math.ceil(w.stormToH)}:00 – kolej i tor staną` : ''}${w.heat ? ` · upał ${Math.round(w.tmaxBottomC)} °C` : ''}${w.precipMm > 1 ? ` · deszcz ${w.precipMm.toFixed(0)} mm` : ''}.`
+      : 'Sezon letni zamknięty.';
+    this.planNote = note;
+    this.o.guests.setSummerDay({ plan, net: this.summerNetCache.net, sf, summerJson: this.o.summer.summerJson, personsPerCar: this.o.ep.demand.personsPerCar, seed: s.seed, note, netKey: key });
+  }
+
+  get summerNetNow(): SummerNet | null {
+    return this.summerNetCache?.net ?? null;
+  }
+
+  /** Etap 7b: termin przeglądu wyciągu. */
+  scheduleInspection(liftId: string, iso: string): void {
+    const s = this.state;
+    if (!s) return;
+    const d = parseIsoDate(iso);
+    const err = scheduleInspection(s, liftId, d, s.date);
+    this.o.toast(err ?? `Przegląd zaplanowany na ${iso} – w tym czasie wyciąg nie wozi.`);
+    this.refreshPanel(true);
+  }
+
+  /** Etap 7b: kontekst karty obiektu. */
+  cardContext(hour: number, stats: SummerStats | null, liveLifts: CardContext['winter'] extends infer W ? (W extends { liveLifts: infer L } ? L : never) : never, pisteSnow: CardContext['pisteSnow']): CardContext | null {
+    const s = this.state;
+    if (!s || !this.analysis || !this.facts) return null;
+    const net = this.summerNetCache?.net ?? null;
+    const plan = this.summerPlanNow;
+    const sf = this.summerFactsNow;
+    const poiOf = (kind: string, id: string): number => {
+      if (!net) return -1;
+      if (kind === 'lift') return net.lifts.findIndex((l) => l.id === id);
+      if (kind === 'parking') return net.parkings.findIndex((p) => p.id === id);
+      if (kind === 'food') return net.foods.findIndex((p) => p.id === id);
+      if (kind === 'bike') return net.bikeTrails.findIndex((p) => p.id === id);
+      return -1;
+    };
+    const wp = this.o.guests.dayPlan;
+    return {
+      state: s,
+      layout: this.layout,
+      analysis: this.analysis,
+      facts: this.facts,
+      ep: this.o.ep,
+      lp: this.o.lp,
+      gp: this.o.gp,
+      hour,
+      winter: !plan?.open ? { open: s.seasonOpen && this.facts.lifts.some((l) => l.operating), guests: wp?.guests ?? 0, openH: s.hours.openH, closeH: s.hours.closeH, liveLifts } : null,
+      summer: plan?.open && sf ? { plan, sf, stats, poiOf } : null,
+      ops: this.preview?.summary ?? s.ops?.last ?? null,
+      infra: this.infra(),
+      pisteSnow,
+    };
+  }
+
+  /** Etap 7b: sezon letni – otwarcie i zamknięcie, ceny lata. */
+  setSummerOpen(open: boolean): void {
+    const s = this.state;
+    if (!s) return;
+    const err = setSummerOpen(s, open, this.o.ep);
+    if (err) this.o.toast(err);
+    else this.o.toast(open ? 'Sezon letni otwarty – koleje wożą pieszych, działają atrakcje letnie.' : 'Sezon letni zamknięty.');
+    void this.planToday();
+    this.refreshPanel(true);
+  }
+
+  setSummerPrices(p: Partial<SummerPrices>): void {
+    const s = this.state;
+    const sp = this.o.ep.summer;
+    if (!s || !sp) return;
+    const sum = ensureSummer(s, sp);
+    for (const k of Object.keys(p) as (keyof SummerPrices)[]) {
+      const v = p[k];
+      if (typeof v === 'number' && Number.isFinite(v)) sum.prices[k] = Math.min(sp.prices.maxPricePln, Math.max(sp.prices.minPricePln, Math.round(v)));
+    }
+    void this.planToday();
   }
 
   // ------------------------------------------------------------ panel
@@ -700,11 +867,23 @@ export class GameController {
       planNote: this.planNote,
       marketPricePln: this.marketPrice(),
       catchingUp: this.catching,
+      summer: this.o.ep.summer
+        ? {
+            open: !!s.summer?.open,
+            allowed: summerSeasonAllowed(s.date, this.o.ep.summer),
+            reputation: summerReputationOf(s, this.o.ep.summer),
+            prices: ensureSummer(s, this.o.ep.summer).prices,
+            window: `${this.o.ep.summer.season.earliestOpenMonth}.–${this.o.ep.summer.season.latestCloseMonth}. miesiąc, koleje ${this.o.ep.summer.season.openH}–${this.o.ep.summer.season.closeH}`,
+          }
+        : null,
     });
   }
 
   /** Przyspieszenie zegara latem (kroki tygodniowe). */
   speedFactor(date: CalendarDate): number {
+    // Etap 7b: przy otwartym sezonie letnim dni idą jak zimą.
+    const sp = this.o.ep.summer;
+    if (this.state?.summer?.open && sp && summerSeasonAllowed(date, sp)) return 1;
     return this.state && yearPhase(date, this.o.ep) === 'summer' ? this.o.ep.calendar.summerWeekDays : 1;
   }
 

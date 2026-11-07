@@ -485,6 +485,8 @@ export class SummerDay {
     let bd = maxS;
     this.net.pois.forEach((p, i) => {
       if (!kinds.includes(p.kind)) return;
+      // Stacje kolei, która latem nie kursuje (albo bez miejsc dla pieszych), pomijamy.
+      if ((p.kind === 'liftBottom' || p.kind === 'liftTop') && (!this.net.lifts[p.ref].operating || this.net.lifts[p.ref].pedCapPerH <= 0)) return;
       const d = this.walkTime(from, i, g);
       if (d < bd) {
         bd = d;
@@ -684,7 +686,8 @@ export class SummerDay {
       return this.leave(g);
     }
     // Głód po kilku godzinach albo na celu ze schroniskiem.
-    const hungryNow = this.gHungry[g] && !this.gAte[g] && this.t - this.gArrive[g] > 2.5 * 3600;
+    // Głodni po ok. 1,5 h albo od razu, gdy restauracja jest przy górnej stacji, na którą wjechali.
+    const hungryNow = this.gHungry[g] && !this.gAte[g] && (this.t - this.gArrive[g] > 1.5 * 3600 || (p.kind === 'liftTop' && this.nearest(here, ['food'], g, 300) >= 0));
     if (hungryNow) {
       const f = this.nearest(here, ['food'], g, 1200);
       if (f >= 0) return here === f ? this.eat(g, net.pois[f].ref) : void this.walk(g, f);
@@ -693,6 +696,17 @@ export class SummerDay {
         this.startLeg(g, L_STAY, here, here, gu.mealMin * 60);
         return;
       }
+    }
+    // Rodziny: tor saneczkowy na początek, gdy stacja toru jest blisko (do 10 min).
+    if ((t === T_FAMILY || t === T_SCHOOL) && this.gTobRides[g] === 0 && this.gTobLeft[g] > 0 && net.toboggan && this.tobRunning()) {
+      const tp = net.toboggan.poi;
+      if (here === tp) {
+        this.gLeg[g] = L_TOB_QUEUE;
+        this.gT0[g] = this.t;
+        this.tobQueue.push(g);
+        return;
+      }
+      if (this.walkTime(here, tp, g) < 600 && this.walk(g, tp)) return;
     }
     // Cel wycieczki: kolej w górę, potem spacer do schroniska / szczytu / punktu widokowego.
     if (!this.gDestDone[g] && (t === T_HIKER || t === T_SCHOOL || t === T_FAMILY)) {

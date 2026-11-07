@@ -1,4 +1,6 @@
 /** Wątek główny: komunikacja z wątkiem gości. */
+import type { SummerOutcome } from '../sim/summer';
+import type { SummerStats } from '../sim/summerGuests';
 import type { CalendarDate } from '../sim';
 import type { GuestNet } from '../sim/guestNetwork';
 import type { GuestCard, GuestConditions, GuestDayReport, GuestEconomySummary } from '../sim/guests';
@@ -70,6 +72,13 @@ export class GuestClient {
   }
   async economy(): Promise<{ date: CalendarDate | null; summary: GuestEconomySummary | null }> {
     return this.ask<{ type: 'economy'; requestId: number; date: CalendarDate | null; summary: GuestEconomySummary | null }>((requestId) => ({ type: 'economy', requestId }));
+  }
+  /** Etap 7b: dzień letni w wątku gości (null – powrót do dnia zimowego). */
+  setSummerDay(day: Extract<GuestRequest, { type: 'summerDay' }>['day']): void {
+    this.post({ type: 'summerDay', day });
+  }
+  async summerEconomy(): Promise<{ date: CalendarDate | null; outcome: SummerOutcome | null; stats: SummerStats | null }> {
+    return this.ask<{ type: 'summerEconomy'; requestId: number; date: CalendarDate | null; outcome: SummerOutcome | null; stats: SummerStats | null }>((requestId) => ({ type: 'summerEconomy', requestId }));
   }
   async dayTraffic(): Promise<{ date: CalendarDate | null; passes: Float32Array | null }> {
     return this.ask<{ type: 'dayTraffic'; requestId: number; date: CalendarDate | null; passes: Float32Array | null }>((requestId) => ({ type: 'dayTraffic', requestId }));
