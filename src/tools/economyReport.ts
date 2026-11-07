@@ -28,6 +28,11 @@ import { COST_KEYS, FLOW_NAMES, REVENUE_KEYS, debtOf, fmtPln, objectCosts, reput
 import { parseEconomyParams, withSnowmaking } from '../sim/economyParams';
 import { acquireGroomer, infraFacts } from '../sim/operations';
 import { pipelineHydrants } from '../sim/snowmaking';
+import type { WaterContext } from '../sim/operations';
+import { annualPrecipitationMm, buildStreamNet, cropStreamNet, parseWaterParams } from '../sim/water';
+import waterJson from '../../data/water.json';
+import osmWaterJson from '../../data/maps/pilsko/osm-water.json';
+import osmContextJson from '../../data/maps/pilsko/osm-context.json';
 import { parseSnowmakingParams } from '../sim/snowmakingParams';
 import { puwg92ToLatLon } from '../sim/geo';
 import { parseGroundParams } from '../sim/ground';
@@ -88,6 +93,19 @@ for (let j = 0; j < H; j++) {
   }
 }
 const grid = new TerrainGrid(W, H, full.cellSizeM, z);
+// Etap 6b/7b: model wody – sieć cieków z całej mapy (pełne zlewnie), wycięta do okna raportu.
+const waterParams = parseWaterParams(waterJson);
+const osmWater = (osmWaterJson as unknown as { streams: { name: string; points: [number, number][] }[] }).streams.map((st) => ({
+  name: st.name,
+  points: st.points.map(([e, n]) => full.puwg92ToLocal(e, n)).filter((q): q is { xM: number; yM: number } => q !== null),
+}));
+const climateProfileW = parseClimateProfile(climateJson);
+const fullNet = buildStreamNet({ grid: full, osm: osmWater, annualPrecipMm: (zz) => annualPrecipitationMm(climateProfileW, zz), params: waterParams });
+const villageBuildings = (osmContextJson as unknown as { buildings: { points: [number, number][] }[] }).buildings
+  .map((b) => b.points.map(([e, n]) => full.puwg92ToLocal(e, n)).filter((q): q is { xM: number; yM: number } => q !== null))
+  .filter((pts) => pts.length > 0)
+  .map((pts) => ({ xM: pts.reduce((a, q) => a + q.xM, 0) / pts.length - X0, yM: pts.reduce((a, q) => a + q.yM, 0) / pts.length - Y0 }));
+const waterCtx: WaterContext = { net: cropStreamNet(fullNet, Math.floor(X0 / full.cellSizeM), Math.floor(Y0 / full.cellSizeM), W, H), wp: waterParams, villageBuildings, elevationM: z };
 computeSlopeAndAspect(grid);
 const off = (p: { xM: number; yM: number }) => ({ xM: p.xM - i0 * full.cellSizeM, yM: p.yM - j0 * full.cellSizeM });
 const center = puwg92ToLatLon(full.georef!.westEastingM + full.widthM / 2, full.georef!.northNorthingM - full.heightM / 2);
@@ -222,9 +240,11 @@ const epS = withSnowmaking(ep, sp);
 function snowLayout(): ResortLayout {
   const l = JSON.parse(JSON.stringify(layout)) as ResortLayout;
   const b = along(-0.03, -20);
+  const res = { xM: b.xM - 20, yM: b.yM + 50 };
+  const intake = intakeSite(res);
   l.buildings = [
-    { id: 'S1', typeId: 'intake', name: 'Ujęcie z potoku', xM: b.xM - 40, yM: b.yM + 20 },
-    { id: 'S2', typeId: 'reservoir50', name: 'Zbiornik', xM: b.xM - 20, yM: b.yM + 50 },
+    { id: 'S1', typeId: 'intake', name: `Ujęcie – ${intake.name}`, xM: intake.xM, yM: intake.yM },
+    { id: 'S2', typeId: 'reservoir50', name: 'Zbiornik', ...res },
     { id: 'S3', typeId: 'pump300', name: 'Pompownia', xM: b.xM, yM: b.yM },
     { id: 'S4', typeId: 'grid1000', name: 'Przyłącze', xM: b.xM + 30, yM: b.yM + 30 },
     { id: 'S5', typeId: 'garage', name: 'Garaż ratraków', xM: b.xM + 60, yM: b.yM + 10 },
@@ -233,6 +253,10 @@ function snowLayout(): ResortLayout {
   ];
   l.pipelines = [];
   l.snowGuns = [];
+  // Rura zasilająca ujęcie → zbiornik (etap 6b), gdy ujęcie dalej niż bezpośrednie połączenie.
+  if (Math.hypot(intake.xM - res.xM, intake.yM - res.yM) > waterParams.supply.directRadiusM) {
+    l.pipelines.push({ id: 'R49', name: 'Rura zasilająca', points: [{ xM: intake.xM, yM: intake.yM }, res], supply: true });
+  }
   let id = 50;
   for (const [i, a] of pa.entries()) {
     const ax = [...a.axis].filter((q) => !Number.isNaN(q.elevationM));
@@ -258,17 +282,37 @@ function snowLayout(): ResortLayout {
   l.nextId = id + 10;
   return l;
 }
+/** Ujęcie: najbliższy zbiornikowi punkt potoku o średnim przepływie co najmniej 30 l/s w oknie raportu. */
+function intakeSite(near: { xM: number; yM: number }): { xM: number; yM: number; name: string; meanFlowM3s: number } {
+  let best: { xM: number; yM: number; name: string; meanFlowM3s: number } | null = null;
+  let bd = Infinity;
+  for (const l of waterCtx.net.lines) {
+    l.points.forEach((p, n) => {
+      if (l.meanFlowM3s[n] < 0.03) return;
+      const d = Math.hypot(p.xM - near.xM, p.yM - near.yM);
+      if (d < bd) {
+        bd = d;
+        best = { ...p, name: l.name, meanFlowM3s: l.meanFlowM3s[n] };
+      }
+    });
+  }
+  if (!best) throw new Error('Brak potoku o przepływie ≥ 30 l/s w oknie raportu');
+  return best;
+}
 const snowL = snowLayout();
+const intakeInfo = intakeSite({ xM: along(-0.03, -20).xM - 20, yM: along(-0.03, -20).yM + 50 });
 interface WinterRun {
   seasons: SeasonReport[];
   investPln: number;
   snowInvestPln: number;
   snowHa: number;
+  /** Woda ze źródeł (potok przez model wody): suma, koszt, rozkład na miesiące. */
+  water: { m3: number; costPln: number; byMonth: number[]; years: number };
 }
 /** Piaskownica (budowa od razu, bez limitu pieniędzy), te same zasady otwierania sezonu, model zgrubny dni. */
 function runWinters(withSnow: boolean): WinterRun {
   const e = withSnow ? epS : ep;
-  const g = new HeadlessGame({ ...game.o, economy: e, mode: 'sandbox', agentsOn: undefined });
+  const g = new HeadlessGame({ ...game.o, economy: e, mode: 'sandbox', agentsOn: undefined, water: withSnow ? waterCtx : null });
   const L = withSnow ? snowL : layout;
   g.setLayout(L);
   const costs = objectCosts(L, (g as unknown as { analysis: Parameters<typeof objectCosts>[1] }).analysis, e);
@@ -283,8 +327,17 @@ function runWinters(withSnow: boolean): WinterRun {
     for (const [i, p] of [piste1, piste2].entries()) if (pistesWithGuns.has(p.id)) snowHa += pa[i].areaM2 / 10000;
   }
   openSince = 0;
-  g.runUntil({ year: 2026 + WINTERS, month: 5, day: 1 });
-  return { seasons: g.state.history, investPln, snowInvestPln, snowHa };
+  const water = { m3: 0, costPln: 0, byMonth: new Array<number>(12).fill(0), years: 0 };
+  g.runUntil({ year: 2026 + WINTERS, month: 5, day: 1 }, () => {
+    for (const so of g.lastOps?.summary.sources ?? []) {
+      water.m3 += so.m3;
+      water.costPln += so.costPln;
+      const m = Number(g.lastOps!.summary.date.slice(5, 7));
+      water.byMonth[m - 1] += so.m3;
+    }
+  });
+  water.years = WINTERS;
+  return { seasons: g.state.history, investPln, snowInvestPln, snowHa, water };
 }
 log(`${WINTERS} zim bez naśnieżania…`);
 const winA = runWinters(false);
@@ -506,7 +559,7 @@ ${compRows}</tbody></table><p class="small muted">Konkurenci naśnieżają (${fm
 <p class="small">Średnio: ocena ${fmt(meanRatingA, 2)} (symulacja) wobec ${fmt(meanRatingQ, 2)} (zgrubny); przychód na gościa ${fmt(revPerGuestA, 0)} zł wobec ${fmt(revPerGuestQ, 0)} zł. Liczba gości jest ta sama (wynika z popytu), różnią się wynik dnia i ocena. Dni przewijane w grze liczą się modelem zgrubnym, dni oglądane – symulacją gości.</p></div>
 
 <h2>6. Naśnieżanie i ratraki – ten sam ośrodek, ${nW} zim z naśnieżaniem i bez</h2>
-<p>Ośrodek jak wyżej + system naśnieżania: ujęcie z potoku (${fmt(sp.buildings.find((b) => b.id === 'intake')!.capacity, 0)} m³/h latem), zbiornik ${fmt(sp.buildings.find((b) => b.id === 'reservoir50')!.capacity, 0)} m³, pompownia ${fmt(sp.buildings.find((b) => b.id === 'pump300')!.capacity, 0)} m³/h, przyłącze ${fmt(sp.buildings.find((b) => b.id === 'grid1000')!.capacity, 0)} kW, rurociągi wzdłuż obu tras z hydrantami co ${sp.pipe.hydrantSpacingM} m i ${gunsN} armatek (${fansN} śmigłowych, ${gunsN - fansN} lanc), garaż, punkt kotwienia przy górnej stacji i jeden ratrak z wyciągarką (strome odcinki przy stacjach). Naśnieżana powierzchnia ${fmt(winB.snowHa, 1)} ha. Inwestycja w naśnieżanie ${fmtPln(winB.snowInvestPln)} (cały ośrodek ${fmtPln(winB.investPln)}; ratrak ${fmtPln(sp.groomers.types.find((t) => t.winch)!.pricePln)} osobno). Plan naśnieżania domyślny (docelowa baza 50 cm, automat od listopada do marca), plan nocy automatyczny. Te same zasady otwierania sezonu co wyżej; tryb piaskownicy (budowa od razu, bez limitu pieniędzy), dni liczone modelem zgrubnym.</p>
+<p>Ośrodek jak wyżej + system naśnieżania: ujęcie na potoku ${esc(intakeInfo.name)} (średni przepływ ${fmt(intakeInfo.meanFlowM3s * 1000, 0)} l/s; pobór do ${fmt(sp.buildings.find((b) => b.id === 'intake')!.capacity, 0)} m³/h, ale tylko ponad przepływ nienaruszalny i najwyżej połowę bieżącego przepływu – model wody z rytmem rocznym IMGW), rura zasilająca do zbiornika; woda z potoku średnio ${fmt(winB.water.m3 / Math.max(1, winB.water.years), 0)} m³/rok, koszt ${fmtPln(winB.water.costPln / Math.max(1, winB.water.years))}/rok (opłata za pobór i pompowanie), najwięcej w miesiącach: ${winB.water.byMonth.map((v, m) => [v, m] as const).sort((a, c) => c[0] - a[0]).slice(0, 3).map(([, m]) => ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][m]).join(', ')}, zbiornik ${fmt(sp.buildings.find((b) => b.id === 'reservoir50')!.capacity, 0)} m³, pompownia ${fmt(sp.buildings.find((b) => b.id === 'pump300')!.capacity, 0)} m³/h, przyłącze ${fmt(sp.buildings.find((b) => b.id === 'grid1000')!.capacity, 0)} kW, rurociągi wzdłuż obu tras z hydrantami co ${sp.pipe.hydrantSpacingM} m i ${gunsN} armatek (${fansN} śmigłowych, ${gunsN - fansN} lanc), garaż, punkt kotwienia przy górnej stacji i jeden ratrak z wyciągarką (strome odcinki przy stacjach). Naśnieżana powierzchnia ${fmt(winB.snowHa, 1)} ha. Inwestycja w naśnieżanie ${fmtPln(winB.snowInvestPln)} (cały ośrodek ${fmtPln(winB.investPln)}; ratrak ${fmtPln(sp.groomers.types.find((t) => t.winch)!.pricePln)} osobno). Plan naśnieżania domyślny (docelowa baza 50 cm, automat od listopada do marca), plan nocy automatyczny. Te same zasady otwierania sezonu co wyżej; tryb piaskownicy (budowa od razu, bez limitu pieniędzy), dni liczone modelem zgrubnym.</p>
 <div class="kpis">
 <div><span class="muted small">dni otwarte – bez naśnieżania</span><b>${fmt(meanOf(pairs.map((p) => p.a.openDays)), 1)}</b></div>
 <div><span class="muted small">dni otwarte – z naśnieżaniem</span><b>${fmt(meanOf(pairs.map((p) => p.b.openDays)), 1)}</b></div>
