@@ -546,6 +546,68 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
     4 m; drżenie co próbkę; serpentyna; łuk przez punkty; gładkość 0 = łamana), `tests/advisor.test.ts`
     (reguły doradcy, skala automatyczna 1366/1920/2560 px);
   - pomiar: rysowanie 300 próbek 0,4 s, uproszczenie po puszczeniu ok. 0,2 s (kontener, 1 wątek).
+- **Etap 7d – zrobiony** (listopad 2026): szczegóły z bliska – trasy, ludzie, maszyny, śnieg.
+  - warstwa detalu 1 m (`src/sim/detailLayer.ts`, parametry `data/detail.json` sekcja `layer`): bloki
+    10 × 10 komórek 1 m tylko w korytarzach tras (komórki tras + pierścień sąsiadów; latem także trasy
+    rowerowe), tablice: kierunek (bajt, oś 0–π) i czas ostatniego ratrakowania [h gry], ślady nart,
+    świeży śnieg, muldy [m], lód, pryzmy [mm w.e.], przetarcia; zasilanie: ratrak na mapie
+    (`groomSegment` – te same pasy co sztruks na `TrackBuffer`), noc przewinięta (`groomWholeJob`
+    z zadań `OpsSummary`), narciarze na ekranie (`skiSegment`), przejazdy całego dnia (`applyPasses` –
+    ślady, muldy rosną szybciej na zakrętach trasy `turnField`), armatki (`addPile` – pryzma w miejscu
+    opadu z przesunięciem z wiatrem), opad (`weather` – zasypuje ślady i sztruks); bilans masy liczy
+    siatka 10 m, warstwa 1 m tylko rozkłada (`syncTo10m` po każdym kroku modelu: średnia muld = indeks ·
+    0,8 m / 2, średnia pryzm = pryzmy 10 m, lód = stan „zlodzony”, przetarcia = `wornFraction` z „za
+    cienkiej bazy” × udział powierzchni trasy w komórce (`onPiste` – obrys z osi i szerokości, brzeg
+    ±1,5 m; pierścień poza trasą bez przetarć), plamy trawy dopiero przy bazie < 50 % wymaganej, kształt
+    z gładkiego szumu interpolowanego między komórkami, średnia dopasowana bisekcją; kształt muld –
+    pole garbów cos · cos w układzie mapy, odstęp 5 m – ten sam wzór liczy shader);
+  - śnieg z bliska (`src/render/detailRenderer.ts`, `detailView.ts`, sekcja `render`): okno tekstur
+    1024 × 1024 m wokół widoku (wypełniane przy przesunięciu > 20 % okna, zmianie danych, co 20 min gry;
+    ok. 50 ms), shader w dwóch warstwach – mnożenie (rzeźba: sztruks – prążki co 1 m w poprzek
+    przejazdu, głębokość 5 cm, bledną w ciągu 18 h, zacierane śladami; ślady nart, puch, firn, breja,
+    muldy i pryzmy z cieniem: marsz w stronę Słońca z modelu – cienie zmieniają się w ciągu dnia;
+    noc i pochmurno – ciemniejsze rowki) i zwykła (trawa i kamienie w przetarciach, połysk lodu,
+    iskrzenie puchu); stan powierzchni, lód i brzeg korytarza przenikają się dwuliniowo między
+    komórkami 10 m (bez kwadratów); detal od 0,5 m/px, pełny od 0,35 m/px; największe przybliżenie
+    zmienione z 0,25 na 0,125 m/px (`settings.json` `view.minMetersPerPixel`; kafle terenu nadal
+    najdrobniejsze 0,25 m/px – niżej powiększane); muldy w shaderze ze wzoru (wysokość z warstwy 1 m,
+    gradient i cień liczone wprost – bez fasetek); normalne z pochodnych
+    ekranowych (jedno liczenie rzeźby na piksel), szum tylko tam, gdzie dany stan występuje, cień
+    muld miękki; z bliska linie tras cieńsze i półprzezroczyste (`ResortLayer.propsActive`), stara
+    nakładka śladów 2 m/px (etap 4b) wygasa (`TerrainRenderer.detailFade`); w kaflach terenu grubość
+    śniegu i stan „przetarty” interpolowane między komórkami (`depthThinAt` – bez schodków 10 m);
+  - atlas postaci i maszyn: opis `data/atlas.json` (jeden plik do podmiany: kształty SVG w polu
+    100 jednostek, przód = góra, warstwy cień / ciało / kurtka barwiona z ziarnem, fazy ruchu),
+    generator `src/render/atlasGen.ts` uruchamiany przy budowaniu (wtyczka Vite, moduł
+    `virtual:sprite-atlas`), 22 obiekty × fazy × 8 kierunków × 3 poziomy szczegółowości (16/32/64 px,
+    ratrak i koło zwrotne 32/64/128) w jednym SVG 2048 px, wczytanie w przeglądarce ok. 0,35 s
+    (`atlasTexture.ts`); narciarz (fazy skrętu), snowboardzista, dziecko (×0,7), ratownik, siedzący,
+    stojący w kolejce, pieszy, turysta, rowerzysta, sanki, ratrak (gąsienice, pług, frez, kabina,
+    światła), skuter, armatka śmigłowa i lanca, krzesełka 2/4/6, gondola, orczyk, talerzyk, głowica
+    podpory z rolkami, koło zwrotne, bramka;
+  - `src/render/propLayer.ts` (od 1,2 m/px zamiast uproszczonych wektorów): podpory z rolkami, koła
+    zwrotne, bramki, szpalery kolejki (taśmy), krzesełka / orczyki / talerzyki jadące po linie (pozycja
+    jak odjazdy w symulacji), siedzący wg zajętych miejsc (`movers.ts`), armatki, lina wyciągarki ratraka
+    do punktu kotwienia (nachylenie ≥ 40 %, kotwa w zasięgu), skuter i ratownik przy wypadku, skuter
+    zaparkowany przy dolnej stacji; `particleFx.ts` – chmura armatki (160 cząstek, znoszona wiatrem
+    z modelu, 3 m na 1 m/s) i pył spod nart w puchu (sekcja `particles`);
+  - kolejka w szpalerach (`queueLayout`, `queueSlot` w `guests.ts`, `data/guests.json`:
+    `queueRowSize` = 6 szpalerów, `queueLaneLengthM` 12 m) – zygzakiem, dalej rzędy za taśmami;
+  - poprawki przy okazji: podgląd doby (plan naśnieżania i nocy) nie przeliczał się po przewinięciu
+    dni (`refreshPreview` blokowane w `catchUp`) – chmur armatek nie było widać;
+  - testy: `tests/detailLayer.test.ts` (przejazd ratraka zmienia kierunek sztruksu tylko na swojej
+    drodze; 500 przejazdów na 40 % tworzy muldy, na 10 % nie, zakręt przyspiesza; średnie 1 m = 10 m;
+    świeży śnieg zaciera ślady), `tests/atlas.test.ts` (wszystkie obiekty × fazy × 8 kierunków ×
+    3 LOD, bez nakładania, kierunek z kąta, maski kurtek; szpalery kolejki);
+  - zrzuty `docs/ui/detal/` (piaskownica, Pilsko z OSM, 1920 × 1080, opis w README.md): sztruks rano,
+    ratrak nocą, armatka przy wietrze, muldy po południu, kolejka w szpalerach (widok pomiaru);
+  - pomiar (kontener bez karty graficznej – grafika liczona przez procesor, SwiftShader; 1920 × 1080,
+    0,125 m/px przy dolnej stacji najbardziej obleganego wyciągu, 8000 gości w planie dnia – przyjechało
+    2876, na stoku naraz ok. 1180, w kadrze ok. 520 postaci): praca kodu gry na klatkę 4–8 ms (z tego
+    detal 0,4–0,5 ms; wypełnienie okna tekstur 50–100 ms raz na 20 min gry lub po przesunięciu widoku
+    o > 20 % okna), mieści się w 20 ms (50 kl./s); czas klatki w kontenerze 540–680 ms z detalem, 170–420 ms
+    bez (procesor zamiast karty graficznej) – samych kl./s nie da się tu zmierzyć; pierwsza wersja shadera
+    była 6× droższa od reszty sceny (2263 wobec 347 ms) – przepisana; do sprawdzenia na Macu (menu `Dev`).
 - **Następny: etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja.**
 
 Uwagi techniczne:
@@ -648,6 +710,15 @@ Uwagi techniczne:
   model śniegu (np. kamienie szybciej przebijają się przy topnieniu); limity kąta i koszty stacji
   kątowych – z kart producentów; profil panelu zasłania dolną część mapy (przesuń mapę).
 
+- Detal z bliska (7d): płynność na Macu z kartą graficzną do sprawdzenia (menu `Dev` – kl./s);
+  w kontenerze bez GPU shader detalu ok. 1,5–3× wydłuża czas klatki z bliska; długa kolejka (> ok. 55 osób)
+  stoi rzędami za szpalerami w linii prostej – także w lesie i przez potok (bez dopasowania do terenu);
+  przetarcia (trawa) zależą od „za cienkiej bazy do jazdy”, więc na trasie widać trawę, choć obok
+  (ten sam śnieg, nieubity) jest biało – do kalibracji; ślady nart z przejazdów
+  dnia mają stały wzór (rowki wzdłuż linii spadku), nie z prawdziwych torów gości; muldy – pole
+  garbów w układzie mapy (zaburzone szumem), nie wzdłuż linii spadku; sztruks nocą ledwie widoczny (światło
+  reflektorów nie oświetla faktury); pył spod nart tylko w stanie „puch”; atlas rysowany wektorowo
+  (styl prosty) – do wymiany na rysunki w stylu docelowym bez zmian w kodzie (`data/atlas.json`).
 - **Docelowa oprawa graficzna o szczegółowości w stylu The Settlers** – ręcznie rysowane lub gotowe
   sprite'y i animacje (narciarze, ratraki, budynki, drzewa), do wymiany w warstwie rysowania
   (`src/render`: atlas w `movers.ts`, drzewa w shaderze terenu, budynki w `resortLayer.ts`) po etapie 6.

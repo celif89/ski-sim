@@ -92,6 +92,7 @@ export interface GuestParams {
     groupGapM: number;
     queueRowSize: number;
     queueSpacingM: number;
+    queueLaneLengthM: number;
   };
   satisfaction: {
     rideRatioWeight: number;
@@ -175,7 +176,7 @@ export function parseGuestParams(raw: unknown): GuestParams {
       comfortTempC: readNumber(ne, 'comfortTempC', FILE),
     },
     choice: readAll(ch, ['temperature', 'queuePenaltyPerMin', 'overPatiencePenalty', 'easierClassValue', 'harderClassValue', 'lengthRefM', 'longPreferenceWeight', 'powderWeight', 'quietWeight', 'badSnowWeight', 'foodBonus', 'homeBonus', 'badWeatherLeavePerH', 'badSnowLeavePerH'] as const, { min: 0 }),
-    movement: readAll(mo, ['lateralMarginM', 'minGapM', 'lookAheadM', 'turnLengthMinM', 'turnLengthMaxM', 'turnAmplitudeM', 'flatSlopePercent', 'minSpeedMs', 'groupGapM', 'queueRowSize', 'queueSpacingM'] as const, { min: 0 }),
+    movement: readAll(mo, ['lateralMarginM', 'minGapM', 'lookAheadM', 'turnLengthMinM', 'turnLengthMaxM', 'turnAmplitudeM', 'flatSlopePercent', 'minSpeedMs', 'groupGapM', 'queueRowSize', 'queueSpacingM', 'queueLaneLengthM'] as const, { min: 0 }),
     satisfaction: {
       ...sat,
       noSkiSatisfaction: readNumber(sa, 'noSkiSatisfaction', FILE, { min: 0, max: 1 }),

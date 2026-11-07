@@ -1,0 +1,1134 @@
+{
+  "_opis": "Etap 7d: opis atlasu postaci, maszyn i części wyciągów (jeden plik – do podmiany na ręcznie rysowane grafiki). Kształty to ścieżki SVG w polu 100 × 100 (środek 0,0; przód obiektu w górę, czyli −y); 100 jednostek = sizeM metrów. Kolor „jacket” – kurtka (rysowana osobno na biało i barwiona kolorem z ziarna). Pola: over – leży nad kurtką (kask, plecak), minLod – kształt od tego poziomu szczegółowości (0 – mały, 2 – duży), group – część ruchoma w fazach (skis – obrót w stopniach, body – przesunięcie w bok, legs – przesunięcie wzdłuż, z sign). Generator: src/render/atlasGen.ts (przy budowaniu – wtyczka Vite „virtual:sprite-atlas”).",
+  "directions": {
+    "value": 8,
+    "unit": "kierunki",
+    "source": "polecenie etapu 7d: 8 kierunków (co 45°)"
+  },
+  "lods": {
+    "value": 3,
+    "unit": "poziomy",
+    "source": "polecenie etapu 7d: 3 poziomy szczegółowości"
+  },
+  "shadowColor": "rgba(30,41,59,0.38)",
+  "outline": "#1e293b",
+  "sprites": [
+    {
+      "id": "ski",
+      "sizeM": {
+        "value": 1.9,
+        "unit": "m",
+        "source": "narciarz z nartami (narty ok. 1,6–1,8 m)"
+      },
+      "shadowM": {
+        "value": 0.6,
+        "unit": "m",
+        "source": "cień w prawo w dół (styl A)"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {
+          "skis": "-18",
+          "body": "-6"
+        },
+        {},
+        {
+          "skis": "18",
+          "body": "6"
+        }
+      ],
+      "shapes": [
+        {
+          "d": "M-16 -46 q3.5 -6 7 0 v92 h-7 z",
+          "fill": "#334155",
+          "group": "skis"
+        },
+        {
+          "d": "M9 -46 q3.5 -6 7 0 v92 h-7 z",
+          "fill": "#334155",
+          "group": "skis"
+        },
+        {
+          "d": "M-26 -4 L-33 26 M26 -4 L33 26",
+          "stroke": "#64748b",
+          "sw": "3",
+          "minLod": "1",
+          "group": "body"
+        },
+        {
+          "d": "M-13 -6 h26 v20 h-26 z",
+          "fill": "#1e293b",
+          "group": "body"
+        },
+        {
+          "d": "M-19 -1 a19 14 0 1 0 38 0 a19 14 0 1 0 -38 0 z",
+          "fill": "jacket",
+          "group": "body"
+        },
+        {
+          "d": "M-9 -12 a9 9 0 1 0 18 0 a9 9 0 1 0 -18 0 z",
+          "fill": "#f1f5f9",
+          "stroke": "#1e293b",
+          "sw": "2",
+          "over": true,
+          "group": "body"
+        },
+        {
+          "d": "M-7 -20 h14 v4 h-14 z",
+          "fill": "#f59e0b",
+          "over": true,
+          "minLod": "2",
+          "group": "body"
+        }
+      ]
+    },
+    {
+      "id": "board",
+      "sizeM": {
+        "value": 1.8,
+        "unit": "m",
+        "source": "snowboardzista (deska ok. 1,5 m)"
+      },
+      "shadowM": {
+        "value": 0.6,
+        "unit": "m",
+        "source": "cień w prawo w dół (styl A)"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {
+          "skis": "-10",
+          "body": "-4"
+        },
+        {
+          "skis": "10",
+          "body": "4"
+        }
+      ],
+      "shapes": [
+        {
+          "d": "M-11 -42 a11 11 0 0 1 22 0 v84 a11 11 0 0 1 -22 0 z",
+          "fill": "#0f172a",
+          "group": "skis"
+        },
+        {
+          "d": "M-8 -14 h16 v4 h-16 z M-8 12 h16 v4 h-16 z",
+          "fill": "#94a3b8",
+          "minLod": "1",
+          "group": "skis"
+        },
+        {
+          "d": "M-13 0 a13 20 0 1 0 26 0 a13 20 0 1 0 -26 0 z",
+          "fill": "jacket",
+          "group": "body"
+        },
+        {
+          "d": "M-6 -2 a9 9 0 1 0 18 0 a9 9 0 1 0 -18 0 z",
+          "fill": "#f1f5f9",
+          "stroke": "#1e293b",
+          "sw": "2",
+          "over": true,
+          "group": "body"
+        }
+      ]
+    },
+    {
+      "id": "stand",
+      "sizeM": {
+        "value": 1.9,
+        "unit": "m",
+        "source": "narciarz w kolejce (narty równolegle)"
+      },
+      "shadowM": {
+        "value": 0.6,
+        "unit": "m",
+        "source": "cień w prawo w dół (styl A)"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M-13 -44 h7 v88 h-7 z M6 -44 h7 v88 h-7 z",
+          "fill": "#334155"
+        },
+        {
+          "d": "M-22 -6 L-24 18 M22 -6 L24 18",
+          "stroke": "#64748b",
+          "sw": "3",
+          "minLod": "1"
+        },
+        {
+          "d": "M-18 0 a18 13 0 1 0 36 0 a18 13 0 1 0 -36 0 z",
+          "fill": "jacket"
+        },
+        {
+          "d": "M-9 -4 a9 9 0 1 0 18 0 a9 9 0 1 0 -18 0 z",
+          "fill": "#f1f5f9",
+          "stroke": "#1e293b",
+          "sw": "2",
+          "over": true
+        }
+      ]
+    },
+    {
+      "id": "seated",
+      "sizeM": {
+        "value": 1.5,
+        "unit": "m",
+        "source": "pasażer krzesełka (nogi i narty do przodu)"
+      },
+      "shadowM": {
+        "value": 3.5,
+        "unit": "m",
+        "source": "lina kilka metrów nad ziemią – cień daleko (styl A)"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M-16 -48 h7 v30 h-7 z M9 -48 h7 v30 h-7 z",
+          "fill": "#334155",
+          "minLod": "1"
+        },
+        {
+          "d": "M-13 -24 h10 v22 h-10 z M3 -24 h10 v22 h-10 z",
+          "fill": "#1e293b"
+        },
+        {
+          "d": "M-20 6 a20 15 0 1 0 40 0 a20 15 0 1 0 -40 0 z",
+          "fill": "jacket"
+        },
+        {
+          "d": "M-9 6 a9 9 0 1 0 18 0 a9 9 0 1 0 -18 0 z",
+          "fill": "#f1f5f9",
+          "stroke": "#1e293b",
+          "sw": "2",
+          "over": true
+        }
+      ]
+    },
+    {
+      "id": "walk",
+      "sizeM": {
+        "value": 1.7,
+        "unit": "m",
+        "source": "narciarz idący pieszo z nartami na ramieniu"
+      },
+      "shadowM": {
+        "value": 0.6,
+        "unit": "m",
+        "source": "cień w prawo w dół (styl A)"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {
+          "legs": "-7"
+        },
+        {
+          "legs": "7"
+        }
+      ],
+      "shapes": [
+        {
+          "d": "M-12 -8 h9 v18 h-9 z",
+          "fill": "#1e293b",
+          "group": "legs",
+          "sign": "1"
+        },
+        {
+          "d": "M3 -8 h9 v18 h-9 z",
+          "fill": "#1e293b",
+          "group": "legs",
+          "sign": "-1"
+        },
+        {
+          "d": "M-18 0 a18 13 0 1 0 36 0 a18 13 0 1 0 -36 0 z",
+          "fill": "jacket"
+        },
+        {
+          "d": "M15 -44 h6 v88 h-6 z",
+          "fill": "#334155",
+          "over": true,
+          "minLod": "1"
+        },
+        {
+          "d": "M-9 -3 a9 9 0 1 0 18 0 a9 9 0 1 0 -18 0 z",
+          "fill": "#f1f5f9",
+          "stroke": "#1e293b",
+          "sw": "2",
+          "over": true
+        }
+      ]
+    },
+    {
+      "id": "hiker",
+      "sizeM": {
+        "value": 1.6,
+        "unit": "m",
+        "source": "piechur latem z plecakiem"
+      },
+      "shadowM": {
+        "value": 0.6,
+        "unit": "m",
+        "source": "cień w prawo w dół (styl A)"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {
+          "legs": "-8"
+        },
+        {
+          "legs": "8"
+        }
+      ],
+      "shapes": [
+        {
+          "d": "M-12 -8 h9 v18 h-9 z",
+          "fill": "#3f3f46",
+          "group": "legs",
+          "sign": "1"
+        },
+        {
+          "d": "M3 -8 h9 v18 h-9 z",
+          "fill": "#3f3f46",
+          "group": "legs",
+          "sign": "-1"
+        },
+        {
+          "d": "M-17 -1 a17 12 0 1 0 34 0 a17 12 0 1 0 -34 0 z",
+          "fill": "jacket"
+        },
+        {
+          "d": "M-11 6 h22 v12 h-22 z",
+          "fill": "#a16207",
+          "stroke": "#713f12",
+          "sw": "1.5",
+          "over": true
+        },
+        {
+          "d": "M-8 -6 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0 z",
+          "fill": "#fde7c8",
+          "stroke": "#1e293b",
+          "sw": "2",
+          "over": true
+        },
+        {
+          "d": "M-8 -8 a8 5 0 0 1 16 0 z",
+          "fill": "#7c2d12",
+          "over": true,
+          "minLod": "2"
+        }
+      ]
+    },
+    {
+      "id": "bike",
+      "sizeM": {
+        "value": 1.9,
+        "unit": "m",
+        "source": "rowerzysta na rowerze górskim"
+      },
+      "shadowM": {
+        "value": 0.6,
+        "unit": "m",
+        "source": "cień w prawo w dół (styl A)"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {
+          "body": "-2"
+        },
+        {
+          "body": "2"
+        }
+      ],
+      "shapes": [
+        {
+          "d": "M0 -48 V-22 M0 22 V48",
+          "stroke": "#111827",
+          "sw": "6"
+        },
+        {
+          "d": "M0 -24 V24 M-16 -26 H16",
+          "stroke": "#374151",
+          "sw": "3"
+        },
+        {
+          "d": "M-16 0 a16 12 0 1 0 32 0 a16 12 0 1 0 -32 0 z",
+          "fill": "jacket",
+          "group": "body"
+        },
+        {
+          "d": "M-8 -10 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0 z",
+          "fill": "#f1f5f9",
+          "stroke": "#1e293b",
+          "sw": "2",
+          "over": true,
+          "group": "body"
+        }
+      ]
+    },
+    {
+      "id": "sled",
+      "sizeM": {
+        "value": 1.5,
+        "unit": "m",
+        "source": "sanki toru saneczkowego z pasażerem"
+      },
+      "shadowM": {
+        "value": 0.4,
+        "unit": "m",
+        "source": "cień w prawo w dół (styl A)"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M-20 -40 h40 v80 h-40 z",
+          "fill": "#dc2626",
+          "stroke": "#7f1d1d",
+          "sw": "2"
+        },
+        {
+          "d": "M-16 4 a16 13 0 1 0 32 0 a16 13 0 1 0 -32 0 z",
+          "fill": "jacket"
+        },
+        {
+          "d": "M-8 -4 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0 z",
+          "fill": "#f1f5f9",
+          "stroke": "#1e293b",
+          "sw": "2",
+          "over": true
+        }
+      ]
+    },
+    {
+      "id": "patrol",
+      "sizeM": {
+        "value": 1.9,
+        "unit": "m",
+        "source": "ratownik na nartach (czerwona kurtka z krzyżem)"
+      },
+      "shadowM": {
+        "value": 0.6,
+        "unit": "m",
+        "source": "cień w prawo w dół (styl A)"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M-16 -46 q3.5 -6 7 0 v92 h-7 z M9 -46 q3.5 -6 7 0 v92 h-7 z",
+          "fill": "#334155"
+        },
+        {
+          "d": "M-19 -1 a19 14 0 1 0 38 0 a19 14 0 1 0 -38 0 z",
+          "fill": "#dc2626",
+          "stroke": "#1e293b",
+          "sw": "2"
+        },
+        {
+          "d": "M-3 2 h6 v12 h-6 z M-6 5 h12 v6 h-12 z",
+          "fill": "#ffffff",
+          "minLod": "1"
+        },
+        {
+          "d": "M-9 -12 a9 9 0 1 0 18 0 a9 9 0 1 0 -18 0 z",
+          "fill": "#dc2626",
+          "stroke": "#1e293b",
+          "sw": "2"
+        }
+      ]
+    },
+    {
+      "id": "groomer",
+      "sizeM": {
+        "value": 8.5,
+        "unit": "m",
+        "source": "ratrak z pługiem i frezem (wzór PistenBully 600: ok. 8,5 m z osprzętem, 5,5 m frez)"
+      },
+      "shadowM": {
+        "value": 1.2,
+        "unit": "m",
+        "source": "cień w prawo w dół (styl A)"
+      },
+      "lodPx": [
+        32,
+        64,
+        128
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M-34 -27 h66 v6 h-66 z",
+          "fill": "#cbd5e1",
+          "stroke": "#475569",
+          "sw": "1.5"
+        },
+        {
+          "d": "M-31 -21 l4 -5 h54 l4 5 z",
+          "fill": "#94a3b8",
+          "minLod": "1"
+        },
+        {
+          "d": "M-30 -18 h14 v52 h-14 z M16 -18 h14 v52 h-14 z",
+          "fill": "#334155"
+        },
+        {
+          "d": "M-30 -14 h14 M-30 -6 h14 M-30 2 h14 M-30 10 h14 M-30 18 h14 M-30 26 h14 M16 -14 h14 M16 -6 h14 M16 2 h14 M16 10 h14 M16 18 h14 M16 26 h14",
+          "stroke": "#0f172a",
+          "sw": "1.5",
+          "minLod": "1"
+        },
+        {
+          "d": "M-15 -16 h30 v48 h-30 z",
+          "fill": "#d9480f",
+          "stroke": "#7c2d12",
+          "sw": "1.5"
+        },
+        {
+          "d": "M-12 -13 h24 v14 h-24 z",
+          "fill": "#1e3a5f",
+          "stroke": "#0f172a",
+          "sw": "1"
+        },
+        {
+          "d": "M-10 -11 h20 v5 h-20 z",
+          "fill": "#93c5fd",
+          "minLod": "1"
+        },
+        {
+          "d": "M-4 -18 h8 v3 h-8 z",
+          "fill": "#fbbf24",
+          "minLod": "1"
+        },
+        {
+          "d": "M-4 32 h8 v8 h-8 z",
+          "fill": "#475569"
+        },
+        {
+          "d": "M-34 40 h68 v8 h-68 z",
+          "fill": "#e2e8f0",
+          "stroke": "#475569",
+          "sw": "1.5"
+        },
+        {
+          "d": "M-32 48 v4 M-26 48 v4 M-20 48 v4 M-14 48 v4 M-8 48 v4 M-2 48 v4 M4 48 v4 M10 48 v4 M16 48 v4 M22 48 v4 M28 48 v4",
+          "stroke": "#94a3b8",
+          "sw": "1.5",
+          "minLod": "2"
+        },
+        {
+          "d": "M-14 -20 h5 v3 h-5 z M9 -20 h5 v3 h-5 z",
+          "fill": "#fef3c7",
+          "minLod": "1"
+        }
+      ],
+      "fit": {
+        "value": 130,
+        "unit": "jednostki rysunku na komórkę",
+        "source": "kształt wystaje poza ±50 – większe pole, by po obrocie zmieścił się w komórce"
+      }
+    },
+    {
+      "id": "snowmobile",
+      "sizeM": {
+        "value": 2.9,
+        "unit": "m",
+        "source": "skuter śnieżny ratowników (ok. 2,9 m)"
+      },
+      "shadowM": {
+        "value": 0.5,
+        "unit": "m",
+        "source": "cień w prawo w dół (styl A)"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M-22 -46 h6 v24 h-6 z M16 -46 h6 v24 h-6 z",
+          "fill": "#334155"
+        },
+        {
+          "d": "M-14 -30 q14 -14 28 0 v58 h-28 z",
+          "fill": "#dc2626",
+          "stroke": "#7f1d1d",
+          "sw": "2"
+        },
+        {
+          "d": "M-10 -16 h20 v6 h-20 z",
+          "fill": "#1e293b",
+          "minLod": "1"
+        },
+        {
+          "d": "M-9 6 h18 v22 h-18 z",
+          "fill": "#111827"
+        },
+        {
+          "d": "M-12 34 h24 v12 h-24 z",
+          "fill": "#334155",
+          "minLod": "1"
+        }
+      ]
+    },
+    {
+      "id": "fanGun",
+      "sizeM": {
+        "value": 3.2,
+        "unit": "m",
+        "source": "armatka śmigłowa na podwoziu (ok. 3 m, bęben ok. 1,2 m)"
+      },
+      "shadowM": {
+        "value": 0.9,
+        "unit": "m",
+        "source": "cień w prawo w dół (styl A)"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M-26 4 h52 v36 h-52 z",
+          "fill": "#475569",
+          "stroke": "#1e293b",
+          "sw": "2"
+        },
+        {
+          "d": "M-30 30 h8 v14 h-8 z M22 30 h8 v14 h-8 z",
+          "fill": "#1e293b",
+          "minLod": "1"
+        },
+        {
+          "d": "M-24 -24 a24 24 0 1 0 48 0 a24 24 0 1 0 -48 0 z",
+          "fill": "#f8fafc",
+          "stroke": "#1e293b",
+          "sw": "3"
+        },
+        {
+          "d": "M-16 -24 a16 16 0 1 0 32 0 a16 16 0 1 0 -32 0 z",
+          "fill": "#38bdf8",
+          "minLod": "1"
+        },
+        {
+          "d": "M0 -40 L0 -8 M-16 -24 L16 -24 M-11 -35 L11 -13 M11 -35 L-11 -13",
+          "stroke": "#0f172a",
+          "sw": "2",
+          "minLod": "2"
+        },
+        {
+          "d": "M-4 -28 h8 v8 h-8 z",
+          "fill": "#0f172a"
+        }
+      ],
+      "fit": {
+        "value": 120,
+        "unit": "jednostki rysunku na komórkę",
+        "source": "kształt wystaje poza ±50 – większe pole, by po obrocie zmieścił się w komórce"
+      }
+    },
+    {
+      "id": "lance",
+      "sizeM": {
+        "value": 2.4,
+        "unit": "m",
+        "source": "lanca na słupie (rzut słupa ok. 2 m, głowica z dyszami)"
+      },
+      "shadowM": {
+        "value": 1.6,
+        "unit": "m",
+        "source": "lanca wysoka – cień dalej"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M-8 30 h16 v14 h-16 z",
+          "fill": "#475569",
+          "stroke": "#1e293b",
+          "sw": "2"
+        },
+        {
+          "d": "M0 36 L0 -36",
+          "stroke": "#cbd5e1",
+          "sw": "6"
+        },
+        {
+          "d": "M0 36 L0 -36",
+          "stroke": "#475569",
+          "sw": "2"
+        },
+        {
+          "d": "M-9 -46 h18 v12 h-18 z",
+          "fill": "#1e293b"
+        },
+        {
+          "d": "M-5 -44 h3 v3 h-3 z M2 -44 h3 v3 h-3 z",
+          "fill": "#38bdf8",
+          "minLod": "2"
+        }
+      ]
+    },
+    {
+      "id": "chair2",
+      "sizeM": {
+        "value": 2.4,
+        "unit": "m",
+        "source": "krzesełko 2-osobowe (szerokość ok. 1,4 m + ramię)"
+      },
+      "shadowM": {
+        "value": 4,
+        "unit": "m",
+        "source": "krzesełko kilka metrów nad ziemią"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M0 -30 V-6",
+          "stroke": "#1e293b",
+          "sw": "4"
+        },
+        {
+          "d": "M-30 -6 h60 v18 h-60 z",
+          "fill": "#475569",
+          "stroke": "#1e293b",
+          "sw": "2"
+        },
+        {
+          "d": "M-30 12 h60 v6 h-60 z",
+          "fill": "#1e293b",
+          "minLod": "1"
+        },
+        {
+          "d": "M-26 -16 h52",
+          "stroke": "#94a3b8",
+          "sw": "3",
+          "minLod": "2"
+        }
+      ]
+    },
+    {
+      "id": "chair4",
+      "sizeM": {
+        "value": 3.2,
+        "unit": "m",
+        "source": "krzesełko 4-osobowe (szerokość ok. 2,4 m)"
+      },
+      "shadowM": {
+        "value": 4,
+        "unit": "m",
+        "source": "krzesełko kilka metrów nad ziemią"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M0 -30 V-6",
+          "stroke": "#1e293b",
+          "sw": "4"
+        },
+        {
+          "d": "M-40 -6 h80 v16 h-80 z",
+          "fill": "#475569",
+          "stroke": "#1e293b",
+          "sw": "2"
+        },
+        {
+          "d": "M-40 10 h80 v6 h-80 z",
+          "fill": "#1e293b",
+          "minLod": "1"
+        },
+        {
+          "d": "M-36 -16 h72",
+          "stroke": "#94a3b8",
+          "sw": "3",
+          "minLod": "2"
+        }
+      ]
+    },
+    {
+      "id": "chair6",
+      "sizeM": {
+        "value": 4.2,
+        "unit": "m",
+        "source": "krzesełko 6-osobowe z osłoną (szerokość ok. 3,4 m)"
+      },
+      "shadowM": {
+        "value": 4,
+        "unit": "m",
+        "source": "krzesełko kilka metrów nad ziemią"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M0 -30 V-6",
+          "stroke": "#1e293b",
+          "sw": "4"
+        },
+        {
+          "d": "M-44 -6 h88 v14 h-88 z",
+          "fill": "#475569",
+          "stroke": "#1e293b",
+          "sw": "2"
+        },
+        {
+          "d": "M-44 8 h88 v5 h-88 z",
+          "fill": "#1e293b",
+          "minLod": "1"
+        },
+        {
+          "d": "M-44 -24 h88 v8 h-88 z",
+          "fill": "rgba(125,211,252,0.45)",
+          "stroke": "#334155",
+          "sw": "1.5",
+          "minLod": "1"
+        }
+      ],
+      "fit": {
+        "value": 120,
+        "unit": "jednostki rysunku na komórkę",
+        "source": "kształt wystaje poza ±50 – większe pole, by po obrocie zmieścił się w komórce"
+      }
+    },
+    {
+      "id": "gondola",
+      "sizeM": {
+        "value": 2.8,
+        "unit": "m",
+        "source": "kabina gondoli 8-osobowej (ok. 2,1 × 1,8 m)"
+      },
+      "shadowM": {
+        "value": 5,
+        "unit": "m",
+        "source": "kabina wysoko nad ziemią"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M-34 -30 h68 a8 8 0 0 1 8 8 v44 a8 8 0 0 1 -8 8 h-68 a8 8 0 0 1 -8 -8 v-44 a8 8 0 0 1 8 -8 z",
+          "fill": "#f8fafc",
+          "stroke": "#1e293b",
+          "sw": "2.5"
+        },
+        {
+          "d": "M-36 -16 h72 v20 h-72 z",
+          "fill": "#7dd3fc",
+          "minLod": "1"
+        },
+        {
+          "d": "M-8 -4 h16 v8 h-16 z",
+          "fill": "#d9480f"
+        }
+      ],
+      "fit": {
+        "value": 120,
+        "unit": "jednostki rysunku na komórkę",
+        "source": "kształt wystaje poza ±50 – większe pole, by po obrocie zmieścił się w komórce"
+      }
+    },
+    {
+      "id": "tbar",
+      "sizeM": {
+        "value": 1.6,
+        "unit": "m",
+        "source": "orczyk – poprzeczka ok. 1 m na drążku"
+      },
+      "shadowM": {
+        "value": 0.8,
+        "unit": "m",
+        "source": "orczyk nisko nad śniegiem"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M0 -44 V20",
+          "stroke": "#475569",
+          "sw": "4"
+        },
+        {
+          "d": "M-30 20 h60 v7 h-60 z",
+          "fill": "#1e293b"
+        }
+      ]
+    },
+    {
+      "id": "platter",
+      "sizeM": {
+        "value": 1.2,
+        "unit": "m",
+        "source": "talerzyk – talerz ok. 0,25 m na drążku"
+      },
+      "shadowM": {
+        "value": 0.8,
+        "unit": "m",
+        "source": "talerzyk nisko nad śniegiem"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M0 -44 V14",
+          "stroke": "#475569",
+          "sw": "4"
+        },
+        {
+          "d": "M-12 22 a12 12 0 1 0 24 0 a12 12 0 1 0 -24 0 z",
+          "fill": "#1e293b"
+        }
+      ]
+    },
+    {
+      "id": "towerHead",
+      "sizeM": {
+        "value": 5,
+        "unit": "m",
+        "source": "głowica podpory z dwoma zestawami rolek (rozstaw lin ok. 4 m)"
+      },
+      "shadowM": {
+        "value": 6,
+        "unit": "m",
+        "source": "głowica podpory 8–15 m nad ziemią"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M-44 -4 h88 v8 h-88 z",
+          "fill": "#64748b",
+          "stroke": "#1e293b",
+          "sw": "2"
+        },
+        {
+          "d": "M-6 -6 h12 v12 h-12 z",
+          "fill": "#334155"
+        },
+        {
+          "d": "M-42 -22 h8 v44 h-8 z M34 -22 h8 v44 h-8 z",
+          "fill": "#334155",
+          "stroke": "#0f172a",
+          "sw": "1.5",
+          "minLod": "1"
+        },
+        {
+          "d": "M-38 -18 v0.01 M-38 -9 v0.01 M-38 0 v0.01 M-38 9 v0.01 M-38 18 v0.01 M38 -18 v0.01 M38 -9 v0.01 M38 0 v0.01 M38 9 v0.01 M38 18 v0.01",
+          "stroke": "#cbd5e1",
+          "sw": "5",
+          "minLod": "2"
+        }
+      ],
+      "fit": {
+        "value": 115,
+        "unit": "jednostki rysunku na komórkę",
+        "source": "kształt wystaje poza ±50 – większe pole, by po obrocie zmieścił się w komórce"
+      }
+    },
+    {
+      "id": "bullwheel",
+      "sizeM": {
+        "value": 7,
+        "unit": "m",
+        "source": "stacja: koło zwrotne ok. 4–5 m średnicy z obudową"
+      },
+      "shadowM": {
+        "value": 1.5,
+        "unit": "m",
+        "source": "cień w prawo w dół (styl A)"
+      },
+      "lodPx": [
+        32,
+        64,
+        128
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M-36 -36 a36 36 0 1 0 72 0 a36 36 0 1 0 -72 0 z",
+          "fill": "none",
+          "stroke": "#334155",
+          "sw": "6"
+        },
+        {
+          "d": "M0 -72 V0 M-36 -36 H36 M-25 -61 L25 -11 M25 -61 L-25 -11",
+          "stroke": "#64748b",
+          "sw": "2.5",
+          "minLod": "1"
+        },
+        {
+          "d": "M-8 -44 h16 v16 h-16 z",
+          "fill": "#1e293b"
+        },
+        {
+          "d": "M-46 -10 h92 v56 h-92 z",
+          "fill": "#e2e8f0",
+          "stroke": "#334155",
+          "sw": "2.5"
+        },
+        {
+          "d": "M-46 -10 L0 10 L46 -10",
+          "fill": "none",
+          "stroke": "#94a3b8",
+          "sw": "2",
+          "minLod": "1"
+        },
+        {
+          "d": "M-34 26 h68 v12 h-68 z",
+          "fill": "#d9480f",
+          "minLod": "1"
+        }
+      ],
+      "fit": {
+        "value": 150,
+        "unit": "jednostki rysunku na komórkę",
+        "source": "kształt wystaje poza ±50 – większe pole, by po obrocie zmieścił się w komórce"
+      }
+    },
+    {
+      "id": "gate",
+      "sizeM": {
+        "value": 1.6,
+        "unit": "m",
+        "source": "bramka biletowa (kołowrót) przy dolnej stacji"
+      },
+      "shadowM": {
+        "value": 0.4,
+        "unit": "m",
+        "source": "cień w prawo w dół (styl A)"
+      },
+      "lodPx": [
+        16,
+        32,
+        64
+      ],
+      "phases": [
+        {}
+      ],
+      "shapes": [
+        {
+          "d": "M-34 -14 h14 v28 h-14 z M20 -14 h14 v28 h-14 z",
+          "fill": "#334155",
+          "stroke": "#0f172a",
+          "sw": "2"
+        },
+        {
+          "d": "M-20 0 H20",
+          "stroke": "#f59e0b",
+          "sw": "4"
+        },
+        {
+          "d": "M-30 -10 h6 v4 h-6 z",
+          "fill": "#22c55e",
+          "minLod": "2"
+        }
+      ]
+    }
+  ]
+}

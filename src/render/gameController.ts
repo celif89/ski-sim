@@ -686,10 +686,13 @@ export class GameController {
     return infraFacts(this.layout, this.analysis, this.state, sp, this.o.grid, this.o.water ?? null);
   }
 
-  /** Etap 7: przelicz podgląd doby (po zmianie planu, armatek, floty). */
-  refreshPreview(): void {
+  /**
+   * Etap 7: przelicz podgląd doby (po zmianie planu, armatek, floty). Wewnątrz przewijania dni
+   * (catchUp) – tylko z planToday (fromPlan), inaczej podgląd zostawałby z dnia sprzed przewinięcia.
+   */
+  refreshPreview(fromPlan = false): void {
     const s = this.state;
-    if (!s || !this.o.ep.snowmaking || !this.analysis || !this.facts || this.running) return;
+    if (!s || !this.o.ep.snowmaking || !this.analysis || !this.facts || (this.running && !fromPlan)) return;
     const t = this.todaySnow;
     const snow = t && sameDate(t.date, s.date) ? t.snow : null;
     try {
@@ -761,7 +764,7 @@ export class GameController {
         : `Sezon zamknięty (${PHASE_NAMES[yearPhase(date, this.o.ep)]}). ${yearPhase(date, this.o.ep) === 'summer' ? 'Czas budowy – zegar latem idzie tygodniami.' : ''}`;
     this.o.guests.setDayPlan({ date, guests: p.guests, typeShares: p.typeShares, hours: p.hours, note: this.planNote });
     this.planSummerToday(date);
-    this.refreshPreview();
+    this.refreshPreview(true);
     this.refreshPanel(true);
   }
 

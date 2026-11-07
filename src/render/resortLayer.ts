@@ -350,6 +350,9 @@ export class ResortLayer {
     t.visible = true;
   }
 
+  /** Etap 7d: z bliska krzesełka, podpory i armatki rysuje warstwa obiektów z atlasu. */
+  propsActive = false;
+
   /** Co klatkę: przerysowuje, gdy zmieniła się kamera, dane albo jadą krzesełka. */
   update(st: ResortDrawState): void {
     const cam = this.camera;
@@ -366,7 +369,7 @@ export class ResortLayer {
     this.buildingsFar.visible = w.w1 > 0.01;
     this.buildingsNear.visible = w.w1 < 0.99;
     const chairsVisible = mpp < 5 && st.layout.lifts.length > 0;
-    const key = [st.version, st.drawVersion, cam.centerXM, cam.centerYM, mpp, cam.viewportWidthPx, cam.viewportHeightPx, cam.rotated, st.showNetwork, st.showReality, st.hoverPoint?.xM, st.hoverPoint?.yM, chairsVisible ? st.timeS : 0, st.snowNet?.plumes.length ? Math.floor(performance.now() / 50) : 0].join('|');
+    const key = [this.propsActive, st.version, st.drawVersion, cam.centerXM, cam.centerYM, mpp, cam.viewportWidthPx, cam.viewportHeightPx, cam.rotated, st.showNetwork, st.showReality, st.hoverPoint?.xM, st.hoverPoint?.yM, chairsVisible ? st.timeS : 0, st.snowNet?.plumes.length ? Math.floor(performance.now() / 50) : 0].join('|');
     if (key === this.lastKey) return;
     this.lastKey = key;
     const g = this.g;
@@ -492,9 +495,12 @@ export class ResortLayer {
         g.stroke({ width: 3, color, alpha: 0.35, cap: 'round', join: 'round' });
         continue;
       }
+      // Z bliska (detal śniegu) linia trasy cieńsza i półprzezroczysta – nie zasłania sztruksu i muld.
+      const fine = this.propsActive && !selected;
+      const fa = fine ? 0.45 : 1;
       g.moveTo(pts[0].xPx, pts[0].yPx);
       for (const q of pts) g.lineTo(q.xPx, q.yPx);
-      g.stroke({ width: 10, color: 0xffffff, alpha: closed ? 0.6 : 0.95, cap: 'round', join: 'round' });
+      g.stroke({ width: fine ? 6 : 10, color: 0xffffff, alpha: (closed ? 0.6 : 0.95) * fa, cap: 'round', join: 'round' });
       if (closed) {
         // Zamknięta – kreskowana, wyblakła.
         for (let i = 0; i < pts.length - 1; i++) {
@@ -507,11 +513,11 @@ export class ResortLayer {
             g.moveTo(a0.xPx + t0 * (a1.xPx - a0.xPx), a0.yPx + t0 * (a1.yPx - a0.yPx)).lineTo(a0.xPx + t1 * (a1.xPx - a0.xPx), a0.yPx + t1 * (a1.yPx - a0.yPx));
           }
         }
-        g.stroke({ width: 4, color, alpha: 0.55, cap: 'butt' });
+        g.stroke({ width: 4, color, alpha: 0.55 * fa, cap: 'butt' });
       } else {
         g.moveTo(pts[0].xPx, pts[0].yPx);
         for (const q of pts) g.lineTo(q.xPx, q.yPx);
-        g.stroke({ width: 5, color, cap: 'round', join: 'round' });
+        g.stroke({ width: fine ? 3 : 5, color, alpha: fa, cap: 'round', join: 'round' });
       }
       // Za mało śniegu: czerwone kreski na odcinkach ze zbyt cienką bazą.
       const thin = st.thinMarks?.get(p.id);
@@ -522,10 +528,10 @@ export class ResortLayer {
           if (part.length < 2) continue;
           g.moveTo(part[0].xPx, part[0].yPx);
           for (const q of part) g.lineTo(q.xPx, q.yPx);
-          g.stroke({ width: 13, color: ERROR_COLOR, alpha: 0.85, cap: 'round', join: 'round' });
+          g.stroke({ width: fine ? 7 : 13, color: ERROR_COLOR, alpha: 0.85 * fa, cap: 'round', join: 'round' });
           g.moveTo(part[0].xPx, part[0].yPx);
           for (const q of part) g.lineTo(q.xPx, q.yPx);
-          g.stroke({ width: 4, color, cap: 'round', join: 'round' });
+          g.stroke({ width: fine ? 3 : 4, color, alpha: fa, cap: 'round', join: 'round' });
         }
       }
       if (st.showNetwork || selected) {
@@ -578,9 +584,9 @@ export class ResortLayer {
         const len = Math.hypot(dx, dy) || 1;
         return { x: s0.xPx, y: s0.yPx, nx: -dy / len, ny: dx / len };
       };
-      // Podpory: krótkie poprzeczne kreski.
+      // Podpory: krótkie poprzeczne kreski (z bliska – głowice z rolkami z atlasu, etap 7d).
       for (const s of a.supports) {
-        if (s.kind !== 'tower') continue;
+        if (s.kind !== 'tower' || (this.propsActive && !opts.draft && a.type.kind === 'aerial')) continue;
         const q = at(s.distanceM);
         const half = Math.max(4, Math.min(8, 3 * pxPerM));
         g.moveTo(q.x - q.nx * half, q.y - q.ny * half).lineTo(q.x + q.nx * half, q.y + q.ny * half);
@@ -588,7 +594,7 @@ export class ResortLayer {
       g.stroke({ width: 2.5, color: bad ? ERROR_COLOR : INK, cap: 'round' });
       // Krzesełka jadące po linie (w górę z jednej strony, w dół z drugiej).
       const spacing = carrierSpacingM(a.type);
-      if (!opts.draft && !closed && mpp < 5 && spacing > 0 && a.type.towerMaxHeightM > 0) {
+      if (!opts.draft && !closed && mpp < 5 && spacing > 0 && a.type.towerMaxHeightM > 0 && !this.propsActive) {
         const offPx = Math.max(2.5, 2 * pxPerM);
         // Odległość po linie (po skosie) – tak samo liczy wątek gości: krzesełko k odjeżdża w chwili
         // k · odstęp, więc jest w odległości (czas · prędkość) mod odstęp (goście siedzą na krzesełkach).
@@ -738,7 +744,9 @@ export class ResortLayer {
       const showHydrants = mpp < 6;
       for (const h of st.snowNet.hydrants) {
         const p = toS(h.xM, h.yM);
-        if (h.gunId) {
+        if (h.gunId && this.propsActive && st.selection?.kind !== 'gun') {
+          // Z bliska armatki rysuje warstwa obiektów z atlasu (etap 7d).
+        } else if (h.gunId) {
           const sel = st.selection?.kind === 'gun' && st.selection.id === h.gunId;
           const gun = (st.layout.snowGuns ?? []).find((x) => x.id === h.gunId);
           // Widok z góry z cieniem w prawo w dół: armatka śmigłowa – okrągła obudowa wentylatora, lanca – smukła rura.
@@ -754,7 +762,7 @@ export class ResortLayer {
       }
       // Chmury śniegu: w stronę trasy i z wiatrem, ruchome (czas realny – tempo nie zależy od prędkości zegara gry).
       const t = performance.now() / 1000;
-      for (const pl of st.snowNet.plumes) {
+      for (const pl of this.propsActive ? [] : st.snowNet.plumes) {
         const p0 = toS(pl.xM, pl.yM);
         const ax = pl.aimXM - pl.xM;
         const ay = pl.aimYM - pl.yM;

@@ -54,9 +54,9 @@
   },
   "view": {
     "minMetersPerPixel": {
-      "value": 0.25,
+      "value": 0.125,
       "unit": "m/px",
-      "source": "etap 4b: największe przybliżenie ok. 0,25 m na piksel (detal faktury śniegu)"
+      "source": "etap 7d: największe przybliżenie 0,125 m na piksel – narciarz ok. 15 px, prążek sztruksu 8 px (kafle terenu najdrobniejsze 0,25 m/px, niżej powiększane; śnieg z bliska z warstwy 1 m)"
     },
     "wheelZoomFactorPerNotch": {
       "value": 1.2,

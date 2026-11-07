@@ -145,7 +145,7 @@ describe('Podziałka liniowa', () => {
 
 describe('Ustawienia widoku', () => {
   it('największe przybliżenie w data/settings.json to ok. 0,25 m/px (etap 4b), domyślnie mapa obrócona', () => {
-    expect(parseViewSettings(settingsJson).minMetersPerPixel).toBe(0.25);
+    expect(parseViewSettings(settingsJson).minMetersPerPixel).toBe(0.125);
     expect(parseViewSettings(settingsJson).rotatedByDefault).toBe(true);
   });
 });

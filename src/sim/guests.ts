@@ -1801,15 +1801,17 @@ export class GuestDay {
       const ux = dir.ux;
       const uy = dir.uy;
       const q = this.queues[bq];
-      const row = Math.max(1, m.queueRowSize);
+      // Szpalery: pierwsza osoba przy bramce, kolejka idzie zygzakiem między taśmami
+      // (pas parzysty – w stronę stacji, nieparzysty – od stacji); dalej – rzędy za szpalerami.
+      const sp = queueLayout(m);
       // Na stacji pośredniej kolejka z boku linii (żeby nie stała pod liną).
       const side = bd.stop > 0 ? 8 : 0;
       for (let k = this.qHead[bq]; k < q.length; k++) {
         const pos = k - this.qHead[bq];
-        const r = Math.floor(pos / row);
-        const c = (pos % row) - (row - 1) / 2;
-        const back = 4 + r * m.queueSpacingM;
-        put(q[k], st.xM - ux * back - uy * (c * m.queueSpacingM + side), st.yM - uy * back + ux * (c * m.queueSpacingM + side), 0, 0, Math.atan2(uy, ux), DRAW_STAND, 0);
+        const at = queueSlot(sp, pos);
+        const c = at.across + side;
+        const h = at.towardStation ? Math.atan2(uy, ux) : Math.atan2(-uy, -ux);
+        put(q[k], st.xM - ux * at.back - uy * c, st.yM - uy * at.back + ux * c, 0, 0, h, DRAW_STAND, 0);
       }
     }
     return n;
@@ -1999,4 +2001,36 @@ export class GuestDay {
       plan,
     };
   }
+}
+
+/** Układ kolejki przy stacji (rysowanie): szpalery z data/guests.json (movement). */
+export interface QueueLayout {
+  lanes: number;
+  perLane: number;
+  spacingM: number;
+  laneLengthM: number;
+  /** Odległość pierwszej osoby (bramki) od stacji [m]. */
+  frontM: number;
+}
+
+export function queueLayout(m: { queueRowSize: number; queueSpacingM: number; queueLaneLengthM: number }): QueueLayout {
+  const spacingM = Math.max(0.3, m.queueSpacingM);
+  return { lanes: Math.max(1, Math.round(m.queueRowSize)), perLane: Math.max(1, Math.floor(m.queueLaneLengthM / spacingM)), spacingM, laneLengthM: m.queueLaneLengthM, frontM: 4 };
+}
+
+/** Miejsce osoby nr pos w kolejce: odległość za stacją, przesunięcie w poprzek, zwrot. */
+export function queueSlot(l: QueueLayout, pos: number): { back: number; across: number; towardStation: boolean; lane: number } {
+  const inLanes = l.lanes * l.perLane;
+  if (pos < inLanes) {
+    const lane = Math.floor(pos / l.perLane);
+    const j = pos % l.perLane;
+    const even = lane % 2 === 0;
+    const back = l.frontM + (even ? j : l.perLane - 1 - j) * l.spacingM;
+    return { back, across: (lane - (l.lanes - 1) / 2) * l.spacingM, towardStation: even, lane };
+  }
+  // Za szpalerami: rzędy w poprzek (dłuższa kolejka).
+  const r = pos - inLanes;
+  const row = Math.floor(r / l.lanes);
+  const c = (r % l.lanes) - (l.lanes - 1) / 2;
+  return { back: l.frontM + l.laneLengthM + 1.5 + row * l.spacingM, across: c * l.spacingM, towardStation: true, lane: -1 };
 }

@@ -9,6 +9,8 @@
  */
 import { Container, Particle, ParticleContainer, Rectangle, Texture } from 'pixi.js';
 import type { Camera } from './camera';
+import type { SpriteAtlas } from './atlasTexture';
+import { directionIndex } from './atlasGen';
 
 /** Układ ramki (jak FRAME_STRIDE w src/sim/guests.ts). */
 const STRIDE = 9;
@@ -249,11 +251,17 @@ export class MoverLayer {
   private readonly shadows: ParticleContainer;
   private readonly bodies: ParticleContainer;
   private readonly lights: ParticleContainer;
+  /** Etap 7d: kurtki (biała klatka atlasu barwiona kolorem z ziarna). */
+  private readonly jackets: ParticleContainer;
+  private atlas: SpriteAtlas | null = null;
+  private readonly jacketTints = JACKETS.map((c) => parseInt(c.slice(1), 16));
+  /** Rozstaw lin kolei (połowa) [m] – siedzący na krzesełkach po stronie jazdy w górę. */
+  static readonly ROPE_HALF_M = 2;
   private data: Float32Array<ArrayBufferLike> = new Float32Array(0);
   private count = 0;
   private frameTimeS = 0;
   /** Ratraki (etap 7) – osobna lista: x, y, kierunek, światła. */
-  groomers: { xM: number; yM: number; headingRad: number; lightsOn: boolean }[] = [];
+  groomers: { id?: string; xM: number; yM: number; headingRad: number; lightsOn: boolean }[] = [];
   /** Liczba postaci narysowanych w ostatniej klatce (widocznych na ekranie). */
   visibleCount = 0;
   /** Etap 7b: ramka z gości letnich (piesi bez nart, rowerzyści, sanki). */
@@ -266,7 +274,13 @@ export class MoverLayer {
     this.bodies = new ParticleContainer({ dynamicProperties: dyn });
     this.lights = new ParticleContainer({ dynamicProperties: dyn });
     this.lights.blendMode = 'add';
-    world.addChild(this.shadows, this.bodies, this.lights);
+    this.jackets = new ParticleContainer({ dynamicProperties: dyn });
+    world.addChild(this.shadows, this.bodies, this.jackets, this.lights);
+  }
+
+  /** Etap 7d: atlas z opisu data/atlas.json (8 kierunków, fazy, 3 poziomy szczegółowości). */
+  setAtlas(a: SpriteAtlas): void {
+    this.atlas = a;
   }
 
   /** Nowa ramka z wątku gości (dane i czas gry, którego dotyczą). */
@@ -283,6 +297,27 @@ export class MoverLayer {
     return { id: this.data[o], xM: this.data[o + 1] + this.data[o + 3] * dt, yM: this.data[o + 2] + this.data[o + 4] * dt, kind: this.data[o + 6] };
   }
 
+  /** Etap 7d: narciarze i snowboardziści w widoku (pył spod nart w puchu). */
+  skiersInView(camera: Camera, renderTimeS: number, max: number): { xM: number; yM: number; vx: number; vy: number; seed: number }[] {
+    const a = camera.screenToWorld(0, 0);
+    const b = camera.screenToWorld(camera.viewportWidthPx, camera.viewportHeightPx);
+    const x0 = Math.min(a.xM, b.xM);
+    const x1 = Math.max(a.xM, b.xM);
+    const y0 = Math.min(a.yM, b.yM);
+    const y1 = Math.max(a.yM, b.yM);
+    const dt = Math.min(MAX_EXTRAPOLATION_S, Math.max(0, renderTimeS - this.frameTimeS));
+    const out: { xM: number; yM: number; vx: number; vy: number; seed: number }[] = [];
+    for (let k = 0; k < this.count && out.length < max; k++) {
+      const o = k * STRIDE;
+      const kind = this.data[o + 6];
+      if (this.summer || (kind !== KIND_SKI && kind !== KIND_BOARD)) continue;
+      const x = this.data[o + 1] + this.data[o + 3] * dt;
+      const y = this.data[o + 2] + this.data[o + 4] * dt;
+      if (x >= x0 && x <= x1 && y >= y0 && y <= y1) out.push({ xM: x, yM: y, vx: this.data[o + 3], vy: this.data[o + 4], seed: this.data[o] });
+    }
+    return out;
+  }
+
   get personCount(): number {
     return this.count;
   }
@@ -296,6 +331,11 @@ export class MoverLayer {
 
   /** Co klatkę: położenia, obroty, widoczność (tylko na ekranie), cienie, światła nocą. */
   update(camera: Camera, night: number, renderTimeS: number): void {
+    if (this.atlas?.ready) {
+      this.updateAtlas(camera, night, renderTimeS, this.atlas);
+      return;
+    }
+    this.jackets.visible = false;
     const mpp = camera.metersPerPixel;
     const show = mpp < 6 && (this.count > 0 || this.groomers.length > 0);
     this.shadows.visible = show;
@@ -429,4 +469,163 @@ export class MoverLayer {
     this.bodies.update();
     this.lights.update();
   }
+
+  /**
+   * Etap 7d: postacie i ratraki z atlasu – klatka wg kierunku na ekranie (8), fazy (skręt, krok)
+   * i poziomu szczegółowości (wielkość na ekranie); kurtka barwiona osobno; cień jako sylwetka
+   * przesunięta w prawo w dół ekranu (także przy obróconej mapie).
+   */
+  private updateAtlas(camera: Camera, night: number, renderTimeS: number, at: SpriteAtlas): void {
+    const mpp = camera.metersPerPixel;
+    const show = mpp < 6 && (this.count > 0 || this.groomers.length > 0);
+    this.shadows.visible = show;
+    this.bodies.visible = show;
+    this.jackets.visible = show;
+    this.lights.visible = show && night > 0.05;
+    if (!show) {
+      this.visibleCount = 0;
+      return;
+    }
+    const a = camera.screenToWorld(0, 0);
+    const b = camera.screenToWorld(camera.viewportWidthPx, camera.viewportHeightPx);
+    const margin = 30;
+    const x0 = Math.min(a.xM, b.xM) - margin;
+    const x1 = Math.max(a.xM, b.xM) + margin;
+    const y0 = Math.min(a.yM, b.yM) - margin;
+    const y1 = Math.max(a.yM, b.yM) + margin;
+    const d = this.data;
+    const dt = Math.min(MAX_EXTRAPOLATION_S, Math.max(0, renderTimeS - this.frameTimeS));
+    const vis: number[] = [];
+    // Siedzący na tym samym krzesełku – kolejne miejsca w poprzek.
+    const seats = new Map<string, number>();
+    for (let k = 0; k < this.count; k++) {
+      const o = k * STRIDE;
+      const x = d[o + 1] + d[o + 3] * dt;
+      const y = d[o + 2] + d[o + 4] * dt;
+      if (x >= x0 && x <= x1 && y >= y0 && y <= y1) vis.push(k);
+    }
+    const gVisible = this.groomers.filter((g) => g.xM >= x0 && g.xM <= x1 && g.yM >= y0 && g.yM <= y1);
+    const total = vis.length + gVisible.length;
+    this.visibleCount = total;
+    const sh = this.sync(this.shadows, total, Texture.EMPTY);
+    const bo = this.sync(this.bodies, total, Texture.EMPTY);
+    const ja = this.sync(this.jackets, total, Texture.EMPTY);
+    const s = camera.sign;
+    const counterRot = camera.rotated ? Math.PI : 0;
+    const tint = night > 0.3 ? 0x8899aa : 0xffffff;
+    let i = 0;
+    const place = (id: string, phase: number, x: number, y: number, headingRad: number, lengthM: number, jacket: number | null, shadowScale = 1) => {
+      const m = at.meta(id);
+      const lod = at.lodFor(lengthM / mpp);
+      const dir = directionIndex(headingRad + counterRot);
+      const sc = at.scaleFor(id, lengthM, lod);
+      const ph = Math.min(m.phases - 1, phase);
+      const p = bo[i];
+      p.texture = at.frame(id, 'b', ph, dir, lod);
+      p.x = x;
+      p.y = y;
+      p.rotation = counterRot;
+      p.scaleX = sc;
+      p.scaleY = sc;
+      p.tint = tint;
+      const q = sh[i];
+      q.texture = at.frame(id, 's', ph, dir, lod);
+      const off = m.shadowM * shadowScale * (lengthM / m.sizeM);
+      q.x = x + s * off;
+      q.y = y + s * off;
+      q.rotation = counterRot;
+      q.scaleX = sc;
+      q.scaleY = sc;
+      q.tint = 0x0f172a;
+      q.alpha = 0.32;
+      const jj = ja[i];
+      if (m.hasJacket && jacket !== null) {
+        jj.texture = at.frame(id, 'j', ph, dir, lod);
+        jj.x = x;
+        jj.y = y;
+        jj.rotation = counterRot;
+        jj.scaleX = sc;
+        jj.scaleY = sc;
+        jj.tint = night > 0.3 ? mixTint(jacket, 0x8899aa) : jacket;
+        jj.alpha = 1;
+      } else {
+        jj.texture = Texture.EMPTY;
+        jj.alpha = 0;
+      }
+      i++;
+    };
+    for (const k of vis) {
+      const o = k * STRIDE;
+      let x = d[o + 1] + d[o + 3] * dt;
+      let y = d[o + 2] + d[o + 4] * dt;
+      const kind = d[o + 6];
+      const variant = d[o + 7];
+      const child = variant >= 16;
+      const jacket = this.jacketTints[(variant % 16) % JACKETS.length];
+      const phase = d[o + 8];
+      const h = d[o + 5];
+      let id: string;
+      let ph = 0;
+      if (this.summer) {
+        if (kind === KIND_BIKE) id = 'bike';
+        else if (kind === KIND_SLED) id = 'sled';
+        else if (kind === KIND_SEATED) id = 'seated';
+        else {
+          id = 'hiker';
+          ph = kind === KIND_STAND ? 0 : phase < 0.5 ? 0 : 1;
+        }
+      } else if (kind === KIND_SKI) {
+        id = 'ski';
+        ph = phase < 0.33 ? 0 : phase < 0.66 ? 1 : 2;
+      } else if (kind === KIND_BOARD) {
+        id = 'board';
+        ph = phase < 0.5 ? 0 : 1;
+      } else if (kind === KIND_STAND) id = 'stand';
+      else if (kind === KIND_SEATED) id = 'seated';
+      else {
+        id = 'walk';
+        ph = phase < 0.5 ? 0 : 1;
+      }
+      if (id === 'seated') {
+        // Krzesełko po stronie jazdy (w poprzek od osi linii) i kolejne miejsca na siedzisku.
+        const key = `${Math.round(x * 2)}|${Math.round(y * 2)}`;
+        const seat = seats.get(key) ?? 0;
+        seats.set(key, seat + 1);
+        const nx = -Math.sin(h);
+        const ny = Math.cos(h);
+        const across = MoverLayer.ROPE_HALF_M + (seat % 4) * 0.65 - 0.95;
+        x += nx * across;
+        y += ny * across;
+      }
+      const m = at.meta(id);
+      const lengthM = Math.max(m.sizeM, MIN_PERSON_PX * mpp) * (child ? CHILD_SCALE : 1);
+      place(id, ph, x, y, h, lengthM, jacket);
+    }
+    const lightsList = gVisible.filter((g) => g.lightsOn);
+    const li = this.sync(this.lights, lightsList.length, this.frames.light);
+    for (const g of gVisible) place('groomer', 0, g.xM, g.yM, g.headingRad, Math.max(GROOMER_LENGTH_M, MIN_GROOMER_PX * mpp), null);
+    lightsList.forEach((g, k) => {
+      const l = li[k];
+      const scale = LIGHT_LENGTH_M / CELL;
+      l.x = g.xM + Math.cos(g.headingRad) * LIGHT_LENGTH_M * 0.5;
+      l.y = g.yM + Math.sin(g.headingRad) * LIGHT_LENGTH_M * 0.5;
+      l.rotation = g.headingRad + Math.PI / 2;
+      l.scaleX = scale * 0.8;
+      l.scaleY = scale;
+      l.tint = 0xffffff;
+      l.alpha = Math.min(1, night * 1.2);
+    });
+    this.shadows.update();
+    this.bodies.update();
+    this.jackets.update();
+    this.lights.update();
+  }
+}
+
+/** Mieszanie dwóch kolorów 0xRRGGBB (mnożenie – kurtka nocą). */
+function mixTint(a: number, b: number): number {
+  const r = (((a >> 16) & 255) * ((b >> 16) & 255)) / 255;
+  const g = (((a >> 8) & 255) * ((b >> 8) & 255)) / 255;
+  const bl = ((a & 255) * (b & 255)) / 255;
+  return (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(bl);
 }
