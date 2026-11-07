@@ -4,6 +4,7 @@
  */
 import type { GuestCard, GuestCounts, GuestDayReport, GuestEvent } from '../sim/guests';
 import { LEAVE_REASONS } from '../sim/guests';
+import { icon } from './ui/icons';
 
 const f0 = (v: number) => Math.round(v).toLocaleString('pl-PL');
 const f1 = (v: number) => v.toLocaleString('pl-PL', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
@@ -12,7 +13,6 @@ const hhmm = (s: number) => {
   return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 };
 const bar = (v: number, cls = '') => `<span class="g-bar ${cls}"><span style="width:${Math.round(Math.min(1, Math.max(0, v)) * 100)}%"></span></span>`;
-const stars = (r: number) => '★'.repeat(Math.round(r)) + '☆'.repeat(5 - Math.round(r));
 
 export interface LiftRow {
   name: string;
@@ -63,7 +63,7 @@ export class GuestPanel {
         </div>
         <div class="build-row g-row">
           <label title="Ilu gości przyjedzie danego dnia (parametr scenariusza – popyt i ceny w etapie 6)">Gości dziś <input type="number" class="g-count" min="0" max="8000" step="100"></label>
-          <button type="button" class="g-restart" title="Zacznij ten dzień od nowa (ten sam seed – ten sam przebieg)">↺ Od nowa</button>
+          <button type="button" class="g-restart" title="Zacznij ten dzień od nowa (ten sam seed – ten sam przebieg)">Od nowa</button>
           <button type="button" class="g-report" title="Raport dnia: przejazdy, kolejki, oceny, wypadki, zatłoczone miejsca">Raport dnia</button>
         </div>
         <div class="g-plan muted"></div>
@@ -136,7 +136,7 @@ export class GuestPanel {
   setEvents(events: GuestEvent[]): void {
     const last = events.slice(-4).reverse();
     this.events.innerHTML = last.length
-      ? `<div class="build-section">Dziennik zdarzeń</div>${last.map((e) => `<div class="g-event">🚑 ${hhmm(e.timeS)} – wypadek, ${e.place} (${e.cause})</div>`).join('')}${events.length > 4 ? `<div class="muted">…i ${events.length - 4} wcześniej (raport dnia)</div>` : ''}`
+      ? `<div class="build-section">Dziennik zdarzeń</div>${last.map((e) => `<div class="g-event">${icon('warn', 14)} ${hhmm(e.timeS)} – wypadek, ${e.place} (${e.cause})</div>`).join('')}${events.length > 4 ? `<div class="muted">…i ${events.length - 4} wcześniej (raport dnia)</div>` : ''}`
       : '';
   }
 
@@ -170,56 +170,120 @@ export class GuestPanel {
         .slice(0, 3)
         .map((g) => `${f0(g.fromM)}–${f0(g.toM)} m`)
         .join(', ');
-      return `<div class="g-warning">⚠ Za mało śniegu: <b>${r.pisteName}</b>, ${segs}${r.segments.length > 3 ? '…' : ''} – ${f0(worst.baseCm)} cm bazy, potrzebne ${f0(worst.neededCm)} cm</div>`;
+      return `<div class="g-warning">${icon('warn', 14)} Za mało śniegu: <b>${r.pisteName}</b>, ${segs}${r.segments.length > 3 ? '…' : ''} – ${f0(worst.baseCm)} cm bazy, potrzebne ${f0(worst.neededCm)} cm</div>`;
     });
     this.warnings.innerHTML = `<div class="build-section">Śnieg na otwartych trasach</div>${items.join('')}${rows.length > 6 ? `<div class="muted">…i ${rows.length - 6} innych tras</div>` : ''}<div class="muted">Zamknij trasę w profilu (klik na trasie) albo poczekaj na śnieg. Na zbyt cienkiej bazie: kamienie, więcej wypadków, uszkodzony sprzęt.</div>`;
   }
 }
 
-/** Karta gościa (po kliknięciu postaci na mapie). */
+/** Imiona do karty gościa (tylko wyświetlanie – gość w symulacji ma numer). */
+const NAMES_F = ['Marta', 'Anna', 'Kasia', 'Ola', 'Zosia', 'Magda', 'Ewa', 'Basia', 'Agnieszka', 'Julia', 'Natalia', 'Hania', 'Monika', 'Iza', 'Ula', 'Dorota'];
+const NAMES_M = ['Tomek', 'Piotr', 'Kuba', 'Marek', 'Bartek', 'Paweł', 'Michał', 'Janek', 'Wojtek', 'Adam', 'Krzysiek', 'Staszek', 'Maciek', 'Łukasz', 'Rafał', 'Grzegorz'];
+const AVATAR = ['#F2C14E', '#7CC4F2', '#5FD39A', '#FF9A4D', '#C9A7F5', '#FF8A8A'];
+
+/** Imię, wiek i rodzaj z numeru gościa (zawsze to samo dla tego samego numeru). */
+export function guestPersona(c: Pick<GuestCard, 'id' | 'child'>): { name: string; age: number; female: boolean; color: string } {
+  let h = (c.id * 2654435761) >>> 0;
+  h ^= h >>> 15;
+  const female = (h & 1) === 0;
+  const list = female ? NAMES_F : NAMES_M;
+  const name = list[(h >>> 3) % list.length];
+  const age = c.child ? 7 + ((h >>> 9) % 9) : 18 + ((h >>> 9) % 48);
+  return { name, age, female, color: AVATAR[(h >>> 13) % AVATAR.length] };
+}
+
+const lata = (n: number) => (n === 1 ? 'rok' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'lata' : 'lat');
+
+/** „Co myśli”: zdania z potrzeb i przebiegu dnia (+ dobrze, − źle). */
+export function guestThoughts(c: GuestCard, female: boolean): { good: boolean; text: string }[] {
+  const out: { good: boolean; text: string }[] = [];
+  const g = (m: string, f: string) => (female ? f : m);
+  if (c.queueMin > 10 && c.queueMin > c.skiMin * 0.5) out.push({ good: false, text: `W kolejkach ${g('stałem', 'stałam')} już ${f0(c.queueMin)} minut – prawie tyle, co jeżdżę.` });
+  if (c.damage > 0) out.push({ good: false, text: 'Kamienie spod śniegu – narty do serwisu.' });
+  if (c.cold > 0.6) out.push({ good: false, text: `${g('Zmarzłem', 'Zmarzłam')}, trzeba się ogrzać.` });
+  if (c.hunger > 0.6) out.push({ good: false, text: `${g('Zgłodniałem', 'Zgłodniałam')} – czas na obiad.` });
+  if (c.fatigue > 0.75) out.push({ good: false, text: 'Nogi już bolą, jeszcze jeden zjazd i koniec.' });
+  if (c.runs >= 3 && c.queueMin <= c.skiMin * 0.25) out.push({ good: true, text: 'Prawie bez kolejek – dużo jazdy.' });
+  if (c.verticalM >= 1500) out.push({ good: true, text: `Już ${f0(c.verticalM)} m w dół – świetny dzień.` });
+  if (c.satisfaction >= 0.75 && out.every((x) => x.good)) out.push({ good: true, text: 'Warto było przyjechać.' });
+  if (c.satisfaction < 0.4) out.push({ good: false, text: 'Chyba wybierzemy inny ośrodek następnym razem.' });
+  if (!out.length) out.push({ good: true, text: c.runs ? 'Jest dobrze, jeździmy dalej.' : 'Dopiero zaczynamy dzień.' });
+  return out.slice(0, 4);
+}
+
+/** Karta gościa (po kliknięciu postaci na mapie) – wygląd jak w makiecie ui-2-karty. */
 export class GuestCardView {
   private readonly root: HTMLElement;
-  private readonly body: HTMLElement;
   onClose: (() => void) | null = null;
+  onFollow: ((on: boolean) => void) | null = null;
+  /** Wydatki gościa dziś (karnet wg pobytu) – liczone w main z cennika gry. */
+  spendOf: ((c: GuestCard) => number | null) | null = null;
+  private following = false;
 
   constructor(parent: HTMLElement) {
-    this.root = document.createElement('div');
-    this.root.className = 'a-card guest-card hidden';
-    this.root.innerHTML = `<button type="button" class="profile-close" title="Zamknij">×</button><div class="gc-body"></div>`;
+    this.root = document.createElement('aside');
+    this.root.className = 'u-panel u-guestcard hidden';
+    this.root.setAttribute('aria-label', 'Karta gościa');
     parent.appendChild(this.root);
-    this.body = this.root.querySelector('.gc-body')!;
-    this.root.querySelector('.profile-close')!.addEventListener('click', () => {
-      this.hide();
-      this.onClose?.();
+    this.root.addEventListener('click', (e) => {
+      const t = e.target as HTMLElement;
+      if (t.closest('.u-close')) {
+        this.hide();
+        this.onClose?.();
+      } else if (t.closest('.u-follow')) {
+        this.following = !this.following;
+        this.onFollow?.(this.following);
+        t.closest('.u-follow')!.classList.toggle('active', this.following);
+        t.closest('.u-follow')!.textContent = this.following ? 'Kamera śledzi' : 'Śledź kamerą';
+      }
     });
   }
 
   hide(): void {
     this.root.classList.add('hidden');
+    if (this.following) {
+      this.following = false;
+      this.onFollow?.(false);
+    }
   }
 
   show(c: GuestCard): void {
     this.root.classList.remove('hidden');
-    const who = `${c.child ? 'dziecko – ' : ''}${c.snowboard ? 'snowboardzista' : 'narciarz'}, ${c.skillName}`;
-    this.body.innerHTML = `
-      <div class="gc-title">Gość nr ${c.id + 1}</div>
-      <div class="gc-sub">${who} · ${c.typeName}${c.groupSize > 1 ? ` (${c.groupSize} os.)` : ''}</div>
-      <div class="gc-doing">${c.doing}</div>
-      <div class="gc-plan">${c.plan}</div>
-      <div class="gc-grid">
-        <span>Zadowolenie</span><span>${bar(c.satisfaction, 'green')} ${stars(c.ratingNow)}</span>
-        <span>Zmęczenie</span><span>${bar(c.fatigue)} ${f0(c.fatigue * 100)} %</span>
-        <span>Głód</span><span>${bar(c.hunger)} ${f0(c.hunger * 100)} %</span>
-        <span>Zimno</span><span>${bar(c.cold, 'blue')} ${f0(c.cold * 100)} %</span>
+    const p = guestPersona(c);
+    const who = `${c.typeName}${c.groupSize > 1 ? ` (${c.groupSize} os.)` : ''}, ${c.child ? 'dziecko, ' : ''}${c.snowboard ? 'snowboard, ' : ''}${c.skillName}`;
+    const barRow = (label: string, v: number, color: string) => `<div class="u-need"><span>${label}</span><div class="u-bar thin"><div style="width:${Math.round(Math.max(0, Math.min(1, v)) * 100)}%;background:${color}"></div></div><b>${Math.round(Math.max(0, Math.min(1, v)) * 100)}%</b></div>`;
+    const thoughts = guestThoughts(c, p.female)
+      .map((t) => `<li><span class="u-sign ${t.good ? 'good' : 'bad'}" aria-label="${t.good ? 'dobrze' : 'źle'}">${t.good ? '+' : '−'}</span>${t.text}</li>`)
+      .join('');
+    const spend = this.spendOf?.(c) ?? null;
+    this.root.innerHTML = `
+      <div class="u-card-head"><div class="u-avatar" style="background:${p.color}">${p.name[0]}</div><div class="u-stack"><span class="u-card-title">${p.name}, ${p.age} ${lata(p.age)}</span><span class="u-sub">${who}</span></div><button type="button" class="u-icon-btn u-close" aria-label="Zamknij kartę">${icon('close', 18, 2)}</button></div>
+      <div class="u-doing">${icon(c.doing.includes('wyciąg') || c.doing.includes('kolejk') ? 'lift' : c.doing.includes('przerw') || c.doing.includes('posił') ? 'food' : 'piste', 20)}<span>${c.doing}${c.plan ? ` ${c.plan}` : ''}</span></div>
+      <div class="u-needs">
+        ${barRow('Zadowolenie', c.satisfaction, '#5FD39A')}
+        ${barRow('Energia', 1 - c.fatigue, '#7CC4F2')}
+        ${barRow('Sytość', 1 - c.hunger, '#F5C542')}
+        ${barRow('Ciepło', 1 - c.cold, '#7CC4F2')}
       </div>
-      <div class="gc-grid gc-small">
-        <span>Zjazdy / wjazdy</span><span>${c.runs} / ${c.liftRides}</span>
-        <span>Przejechał</span><span>${f1(c.distanceKm)} km, ${f0(c.verticalM)} m w dół</span>
-        <span>Jazda / kolejki</span><span>${f0(c.skiMin)} / ${f0(c.queueMin)} min</span>
-        <span>Cierpliwość w kolejce</span><span>ok. ${f0(c.patienceMin)} min</span>
-        <span>Lubi</span><span>długie trasy ${f0(c.prefs.long * 100)} %, puch ${f0(c.prefs.powder * 100)} %, spokój ${f0(c.prefs.quiet * 100)} %</span>
-        <span>Pobyt</span><span>${hhmm(c.arriveH * 3600)}–${hhmm(c.departH * 3600)} (plan)</span>
-      </div>`;
+      <div class="u-sec-title">Co myśli</div>
+      <ul class="u-thoughts">${thoughts}</ul>
+      <div class="u-guest-foot">
+        <div class="u-stack"><span class="u-label">${p.female ? 'Wydała' : 'Wydał'} dziś</span><span class="u-num-s">${spend === null ? '–' : `${f0(spend)} zł`}</span></div>
+        <div class="u-stack"><span class="u-label">Zjazdy</span><span class="u-num-s">${c.runs}</span></div>
+        <div class="u-stack"><span class="u-label">Ocena</span><span class="u-num-s">${c.ratingNow} / 5</span></div>
+        <button type="button" class="u-btn u-follow${this.following ? ' active' : ''}">${this.following ? 'Kamera śledzi' : 'Śledź kamerą'}</button>
+      </div>
+      <details class="u-more"><summary>Więcej o gościu</summary>
+        <table class="u-table u-rows"><tbody>
+          <tr><th>Wjazdy</th><td>${c.liftRides}</td></tr>
+          <tr><th>Przejechane</th><td>${f1(c.distanceKm)} km, ${f0(c.verticalM)} m w dół</td></tr>
+          <tr><th>Jazda / kolejki</th><td>${f0(c.skiMin)} / ${f0(c.queueMin)} min</td></tr>
+          <tr><th>Cierpliwość w kolejce</th><td>ok. ${f0(c.patienceMin)} min</td></tr>
+          <tr><th>Lubi</th><td>długie trasy ${f0(c.prefs.long * 100)} %, puch ${f0(c.prefs.powder * 100)} %, spokój ${f0(c.prefs.quiet * 100)} %</td></tr>
+          <tr><th>Pobyt (plan)</th><td>${hhmm(c.arriveH * 3600)}–${hhmm(c.departH * 3600)}</td></tr>
+          <tr><th>Numer w symulacji</th><td>${c.id + 1}</td></tr>
+        </tbody></table>
+      </details>`;
   }
 }
 
@@ -250,7 +314,7 @@ export class DayReportView {
     const d = `${r.date.day}.${String(r.date.month).padStart(2, '0')}.${r.date.year}`;
     const finished = r.counts.onHill === 0 && r.counts.arrived === r.counts.planned;
     const ratingBars = r.ratings
-      .map((n, i) => `<div class="dr-rate"><span>${'★'.repeat(i + 1)}</span>${bar(r.counts.arrived ? n / r.counts.arrived : 0, 'gold')}<span>${f0(n)}</span></div>`)
+      .map((n, i) => `<div class="dr-rate"><span>${i + 1} / 5</span>${bar(r.counts.arrived ? n / r.counts.arrived : 0, 'gold')}<span>${f0(n)}</span></div>`)
       .reverse()
       .join('');
     const reasons = r.leaveReasons
@@ -276,7 +340,7 @@ export class DayReportView {
         <div><b>${f0(r.liftRides)}</b><span>wjazdów</span></div>
         <div><b>${f0(r.descents)}</b><span>zjazdów</span></div>
         <div><b>${f1(r.meanQueueMin)} min</b><span>średnio w kolejce na wjazd</span></div>
-        <div><b>${f1(r.meanRating)} ★</b><span>średnia ocena</span></div>
+        <div><b>${f1(r.meanRating)} / 5</b><span>średnia ocena</span></div>
         <div><b>${f0(r.accidents.length)}</b><span>wypadków</span></div>
       </div>
       <div class="dr-cols">

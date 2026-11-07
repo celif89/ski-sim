@@ -1,140 +1,255 @@
 /**
- * Dolny pasek budowy w stylu A: duże przyciski z ikonami – Wyciąg, Trasa, Wycinka, Naśnieżanie,
- * Budynki, Nakładki. „Nakładki” otwiera okienko z dotychczasowymi nakładkami danych (nachylenie,
- * ekspozycja, słońce, temperatura, śnieg), mapą topograficzną, siecią tras, prawdziwym ośrodkiem
- * i profilem terenu. Funkcje z przyszłych etapów są widoczne, ale wyszarzone (z podpowiedzią).
- *
- * W prawym dolnym rogu: róża kierunków (strzałka N – kliknięcie obraca mapę o 180°) i zoom.
+ * Dolne menu budowy (etap 7c, makieta docs/ui/ui-1-mapa.html): kategorie (Wyciągi, Trasy,
+ * Naśnieżanie, Drogi, Budynki, Lato, Wycinka | Rozbiórka, Raporty) i nad nimi paleta kart:
+ * rysunek, nazwa, kluczowy parametr, cena; zablokowane – szare z powodem (np. „reputacja 4,5”).
+ * Pod paletą (w tym samym oknie): sposób rysowania linii (ręką / klikaniem punktów), szerokość
+ * trasy, wyrównanie terenu, cofnij / ponów. Nad paletą – krótkie komunikaty budowy.
  */
 import type { BuildTool } from './buildPanel';
+import { artSvg, icon } from './ui/icons';
+import { tipAttrs } from './ui/shell';
 
-const ICONS: Record<string, string> = {
-  lift: '<path d="M3 6 L21 3" /><path d="M8 5.2v5M16 3.9v5" /><rect x="5.5" y="10.2" width="5" height="4" rx="1" /><rect x="13.5" y="8.9" width="5" height="4" rx="1" /><path d="M4 21 L6 6.5M20 21 L18 3.6" />',
-  piste: '<path d="M6 3c5 3 -3 7 3 10s-1 6 4 8" stroke-width="2.4" /><path d="M14 4c4 3 -2 6 3 9" />',
-  clearing: '<path d="M7 20l3-9 3 9z" /><path d="M10 11V6" /><path d="M15 4l5 5-2.5 2.5-5-5z" /><path d="M16.3 9.7L11 15" />',
-  snow: '<path d="M4 15h7l3-6h4l2 3" /><circle cx="7" cy="18" r="2" /><path d="M17 5l2-2M20 7l2-1M15 4l0-2" />',
-  buildings: '<path d="M3 20V10l6-5 6 5v10z" /><path d="M15 20v-7l3-2.5 3 2.5v7" /><path d="M7.5 20v-4h3v4" />',
-  layers: '<path d="M12 3l9 5-9 5-9-5z" /><path d="M3 12l9 5 9-5" /><path d="M3 16l9 5 9-5" />',
-};
+export interface PaletteCard {
+  id: string;
+  art: string;
+  name: string;
+  param: string;
+  price: string;
+  tool?: BuildTool;
+  /** Typ wybierany w narzędziu (wyciąg, budynek, armatka). */
+  sub?: { kind: 'lift' | 'building' | 'gun'; id: string };
+  key?: string;
+  tip?: string;
+  /** Akcja spoza budowy (raporty, okna). */
+  action?: string;
+  /** Zawsze nieaktywna (np. ręczna wycinka). */
+  disabled?: string;
+  /** Powód blokady (null – dostępna) – pytany przy każdym otwarciu palety. */
+  lockKey?: string;
+}
 
-function icon(name: string): string {
-  return `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
+export interface BuildCategory {
+  id: string;
+  label: string;
+  icon: string;
+  key?: string;
+  tip: string;
+  cards: PaletteCard[];
+  /** Kreska przed kategorią. */
+  sep?: boolean;
+  /** Pasek opcji pod kartami: linie (sposób rysowania, gładkość), szerokość trasy. */
+  options?: ('draw' | 'width' | 'grade')[];
 }
 
 export interface BuildBarHandlers {
-  onTool(tool: BuildTool): void;
-  /** Kliknięcie wyszarzonego przycisku – podpowiedź (np. „etap 7”). */
-  onInfo(text: string): void;
+  onCard(card: PaletteCard): void;
+  /** Zamknięcie palety (narzędzie „wybierz”). */
+  onClose(): void;
+  onAction(action: string): void;
+  onDrawMode(mode: 'hand' | 'click'): void;
+  onWidth(widthM: number): void;
+  onGradeNew(on: boolean): void;
+  onUndo(): void;
+  onRedo(): void;
+  lockReason(lockKey: string): string | null;
 }
 
-type BarItem = { id: string; label: string; key?: string; tool?: BuildTool; disabled?: string; title: string };
-
-const ITEMS: BarItem[] = [
-  { id: 'lift', label: 'Wyciąg', key: 'L', tool: 'lift', title: 'Budowa wyciągu: kliknij dolną, potem górną stację' },
-  { id: 'piste', label: 'Trasa', key: 'T', tool: 'pisteBrush', title: 'Budowa trasy pędzlem (przeciągnij w dół stoku); oś punktami – klawisz O' },
-  {
-    id: 'clearing',
-    label: 'Wycinka',
-    title: 'Wycinka lasu',
-    disabled: 'Wycinka jest liczona sama pod wyciągami i trasami (przecinki widać na mapie). Ręczna wycinka – później.',
-  },
-  { id: 'snow', label: 'Naśnieżanie', key: 'H', tool: 'pipeline', title: 'Rurociąg z hydrantami (H) od pompowni wzdłuż trasy, potem armatki na hydrantach (J). Rura zasilająca od źródła wody do zbiornika (F). Ujęcie (tylko na potoku), studnia, wodociąg (tylko przy wsi), rowy, zbiornik, pompownia, przyłącze, garaż ratraków i kotwy – narzędzie „Budynki”' },
-  { id: 'summer', label: 'Lato', key: 'X', tool: 'bikeTrail', title: 'Atrakcje letnie: trasa rowerowa (X), ścieżka spacerowa (Q), tor saneczkowy (C); plac zabaw i punkt widokowy – narzędzie „Budynki”. Kolej latem i wieszaki na rowery – w profilu kanapy' },
-  { id: 'buildings', label: 'Budynki', key: 'B', tool: 'base', title: 'Budynki: parking (tu przyjeżdżają goście), gastronomia, wypożyczalnia, szkółka – typ wybierz w panelu budowy, kliknij na mapie' },
-  { id: 'layers', label: 'Nakładki', title: 'Nakładki danych: nachylenie, ekspozycja, słońce, temperatura, śnieg; mapa topograficzna; sieć tras' },
-];
+export interface BuildBarState {
+  tool: BuildTool;
+  liftTypeId: string;
+  buildingTypeId: string;
+  gunTypeId: string;
+  drawMode: 'hand' | 'click';
+  widthM: number;
+  minWidthM: number;
+  maxWidthM: number;
+  gradeNew: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+}
 
 export class BuildBar {
-  /** Okienko „Nakładki” – tu main wkłada przyciski nakładek. */
-  readonly layersPop: HTMLElement;
-  private readonly buttons = new Map<string, HTMLButtonElement>();
+  private readonly nav: HTMLElement;
+  private readonly palette: HTMLElement;
   private readonly toast: HTMLElement;
   private toastTimer = 0;
+  private open: string | null = null;
+  private state: BuildBarState | null = null;
+  private lastRender = '';
 
-  constructor(parent: HTMLElement, h: BuildBarHandlers) {
-    const bar = document.createElement('div');
-    bar.className = 'a-build-bar a-card';
-    for (const it of ITEMS) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'a-bar-btn' + (it.disabled ? ' soon' : '');
-      b.innerHTML = `${icon(it.id)}<span>${it.label}</span>${it.key ? `<kbd>${it.key}</kbd>` : ''}`;
-      b.title = it.title + (it.key ? ` (klawisz ${it.key})` : '') + (it.disabled ? ` – ${it.disabled}` : '');
-      b.addEventListener('click', () => {
-        if (it.disabled) h.onInfo(it.disabled);
-        else if (it.id === 'layers') this.toggleLayers();
-        else if (it.tool) h.onTool(b.classList.contains('active') ? 'select' : it.tool);
-      });
-      bar.appendChild(b);
-      this.buttons.set(it.id, b);
-    }
-    parent.appendChild(bar);
-    this.layersPop = document.createElement('div');
-    this.layersPop.className = 'a-card a-layers-pop hidden';
-    parent.appendChild(this.layersPop);
+  constructor(parent: HTMLElement, private readonly cats: BuildCategory[], private readonly h: BuildBarHandlers) {
+    this.palette = document.createElement('section');
+    this.palette.className = 'u-panel u-palette hidden';
+    parent.appendChild(this.palette);
+    this.nav = document.createElement('nav');
+    this.nav.className = 'u-panel u-build';
+    this.nav.setAttribute('aria-label', 'Budowa');
+    this.nav.innerHTML = cats
+      .map((c) => `${c.sep ? '<div class="u-build-sep"></div>' : ''}<button type="button" class="u-build-btn" data-c="${c.id}" ${tipAttrs(c.tip, c.key)} data-tip-side="top">${icon(c.icon, 22)}<span>${c.label}</span></button>`)
+      .join('');
+    parent.appendChild(this.nav);
     this.toast = document.createElement('div');
-    this.toast.className = 'a-toast hidden';
+    this.toast.className = 'u-toast hidden';
+    this.toast.setAttribute('role', 'status');
     parent.appendChild(this.toast);
-    this.layersPop.addEventListener('keydown', (e) => e.stopPropagation());
+    this.nav.addEventListener('click', (e) => {
+      const id = (e.target as HTMLElement).closest<HTMLElement>('[data-c]')?.dataset.c;
+      if (id) this.toggleCategory(id);
+    });
+    this.palette.addEventListener('click', (e) => this.onPaletteClick(e));
+    this.palette.addEventListener('input', (e) => {
+      const t = e.target as HTMLInputElement;
+      if (t.dataset.opt === 'width') {
+        h.onWidth(Number(t.value));
+        const out = this.palette.querySelector('.u-width-val');
+        if (out) out.textContent = `${t.value} m`;
+      } else if (t.dataset.opt === 'grade') h.onGradeNew(t.checked);
+    });
   }
 
-  toggleLayers(open?: boolean): void {
-    const show = open ?? this.layersPop.classList.contains('hidden');
-    this.layersPop.classList.toggle('hidden', !show);
-    this.buttons.get('layers')!.classList.toggle('active', show);
+  get openCategory(): string | null {
+    return this.open;
   }
 
-  /** Podświetlenie przycisku aktywnego narzędzia. */
-  setTool(tool: BuildTool): void {
-    this.buttons.get('lift')!.classList.toggle('active', tool === 'lift');
-    this.buttons.get('piste')!.classList.toggle('active', tool === 'pisteBrush' || tool === 'pisteAxis');
-    this.buttons.get('buildings')!.classList.toggle('active', tool === 'base');
-    this.buttons.get('summer')?.classList.toggle('active', tool === 'bikeTrail' || tool === 'walkTrail' || tool === 'toboggan');
-    this.buttons.get('snow')!.classList.toggle('active', tool === 'pipeline' || tool === 'supply' || tool === 'gun');
+  /** Otwiera kategorię (i wybiera jej pierwszą dostępną kartę) albo zamyka, gdy już otwarta. */
+  toggleCategory(id: string): void {
+    if (this.open === id) {
+      this.close();
+      return;
+    }
+    this.openCategory_(id, true);
   }
 
-  /** Krótka podpowiedź nad paskiem (znika po kilku sekundach). */
+  /** Otwarcie kategorii bez wyboru karty (np. skrót klawiszowy wybrał już narzędzie). */
+  showCategory(id: string): void {
+    if (this.open !== id) this.openCategory_(id, false);
+  }
+
+  private openCategory_(id: string, pick: boolean): void {
+    const c = this.cats.find((x) => x.id === id);
+    if (!c) return;
+    this.open = id;
+    this.lastRender = '';
+    this.render();
+    this.palette.classList.remove('hidden');
+    if (pick) {
+      const ok = (k: PaletteCard) => !k.disabled && !k.action && !(k.lockKey && this.h.lockReason(k.lockKey)) && !!k.tool;
+      const s = this.state;
+      const remembered = (k: PaletteCard) => !!s && !!k.sub && (k.sub.kind === 'lift' ? k.sub.id === s.liftTypeId : k.sub.kind === 'gun' ? k.sub.id === s.gunTypeId : k.sub.id === s.buildingTypeId);
+      const sel = c.cards.find((k) => this.isSelected(k)) ?? c.cards.find((k) => ok(k) && remembered(k)) ?? c.cards.find(ok);
+      if (sel) this.h.onCard(sel);
+    }
+  }
+
+  close(): void {
+    if (!this.open) return;
+    this.open = null;
+    this.palette.classList.add('hidden');
+    this.render();
+    this.h.onClose();
+  }
+
+  /** Stan budowy (narzędzie, typy) – podświetlenie kart i opcji. */
+  setState(s: BuildBarState): void {
+    this.state = s;
+    // Narzędzie spoza otwartej kategorii (np. klawisz) – przełącz kategorię.
+    if (s.tool !== 'select') {
+      const cat = this.cats.find((c) => c.cards.some((k) => this.isSelected(k)));
+      if (cat && cat.id !== this.open) this.showCategory(cat.id);
+    }
+    this.render();
+  }
+
+  private isSelected(k: PaletteCard): boolean {
+    const s = this.state;
+    if (!s || !k.tool) return false;
+    const toolMatch = k.tool === s.tool || (k.tool === 'pisteBrush' && s.tool === 'pisteAxis');
+    if (!toolMatch) return false;
+    if (!k.sub) return true;
+    if (k.sub.kind === 'lift') return k.sub.id === s.liftTypeId;
+    if (k.sub.kind === 'building') return k.sub.id === s.buildingTypeId;
+    return k.sub.id === s.gunTypeId;
+  }
+
+  private onPaletteClick(e: Event): void {
+    const t = e.target as HTMLElement;
+    const card = t.closest<HTMLElement>('[data-card]');
+    const c = this.cats.find((x) => x.id === this.open);
+    if (card && c) {
+      const k = c.cards.find((x) => x.id === card.dataset.card);
+      if (!k) return;
+      if (k.disabled) return this.showToast(k.disabled);
+      const lock = k.lockKey ? this.h.lockReason(k.lockKey) : null;
+      if (lock) return this.showToast(`${k.name}: ${lock}.`);
+      if (k.action) return this.h.onAction(k.action);
+      this.h.onCard(k);
+      return;
+    }
+    const b = t.closest<HTMLElement>('[data-opt]');
+    if (!b) return;
+    if (b.dataset.opt === 'hand' || b.dataset.opt === 'click') this.h.onDrawMode(b.dataset.opt);
+    else if (b.dataset.opt === 'undo') this.h.onUndo();
+    else if (b.dataset.opt === 'redo') this.h.onRedo();
+    else if (b.dataset.opt === 'close') this.close();
+  }
+
+  private render(): void {
+    for (const b of this.nav.querySelectorAll<HTMLElement>('[data-c]')) {
+      const on = b.dataset.c === this.open;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
+    const c = this.cats.find((x) => x.id === this.open);
+    if (!c) return;
+    const s = this.state;
+    const locks = c.cards.map((k) => (k.lockKey ? this.h.lockReason(k.lockKey) : null));
+    const key = JSON.stringify([this.open, s, locks]);
+    if (key === this.lastRender) return;
+    this.lastRender = key;
+    const cards = c.cards
+      .map((k, i) => {
+        const sel = this.isSelected(k);
+        const lock = locks[i];
+        const dis = k.disabled || lock;
+        return `<button type="button" class="u-card${sel ? ' sel' : ''}${dis ? ' locked' : ''}" data-card="${k.id}" aria-pressed="${sel}" ${dis ? 'aria-disabled="true"' : ''} ${tipAttrs(k.tip ?? k.name, k.key)} data-tip-side="top">
+          ${artSvg(k.art, dis ? '#6F8296' : sel ? '#FFB47A' : '#C9D6E3')}
+          <span class="u-card-name">${k.name}</span>
+          ${lock ? `<span class="u-card-param u-lock">${icon('lock', 13, 2)}${lock}</span>` : `<span class="u-card-param">${k.param}</span>`}
+          <span class="u-card-price">${k.price}</span>
+        </button>`;
+      })
+      .join('');
+    const opts = c.options ?? [];
+    const line = opts.includes('draw') && s
+      ? `<div class="u-seg" role="group" aria-label="Sposób rysowania"><button type="button" data-opt="hand" class="${s.drawMode === 'hand' ? 'active' : ''}" ${tipAttrs('Rysuj ręką: przeciągnij myszą – linia sama się upraszcza i wygładza', 'O')}>${icon('hand', 16)}Ręką</button><button type="button" data-opt="click" class="${s.drawMode === 'click' ? 'active' : ''}" ${tipAttrs('Klikaj punkty: klik = punkt, podwójny klik lub Enter = koniec', 'O')}>${icon('points', 16)}Punktami</button></div>`
+      : '';
+    const width = opts.includes('width') && s
+      ? `<label class="u-range" ${tipAttrs('Szerokość nowej trasy', '[ ]')}>Szerokość <input type="range" data-opt="width" min="${s.minWidthM}" max="${s.maxWidthM}" step="5" value="${s.widthM}"><span class="u-width-val">${s.widthM} m</span></label>`
+      : '';
+    const grade = opts.includes('grade') && s
+      ? `<label class="u-check" ${tipAttrs('Nowe trasy z wyrównaniem terenu (usunięte kamienie i pniaki): koszt, ale do jazdy wystarczy mniej śniegu')}><input type="checkbox" data-opt="grade" ${s.gradeNew ? 'checked' : ''}> wyrównanie terenu</label>`
+      : '';
+    const undo = s
+      ? `<div class="u-pal-undo"><button type="button" class="u-icon-btn" data-opt="undo" ${s.canUndo ? '' : 'disabled'} ${tipAttrs('Cofnij', 'Ctrl+Z')}>${icon('undo', 18)}</button><button type="button" class="u-icon-btn" data-opt="redo" ${s.canRedo ? '' : 'disabled'} ${tipAttrs('Ponów', 'Ctrl+Y')}>${icon('redo', 18)}</button></div>`
+      : '';
+    this.palette.setAttribute('aria-label', `Budowa: ${c.label.toLowerCase()}`);
+    const opts2 = line || width || grade;
+    this.palette.innerHTML = opts2 ? `<div class="u-cards">${cards}</div><div class="u-pal-opts">${line}${width}${grade}${undo}</div>` : `<div class="u-pal-row"><div class="u-cards">${cards}</div>${undo.replace('u-pal-undo', 'u-pal-undo side')}</div>`;
+  }
+
+  /** Krótka podpowiedź nad paletą (znika po kilku sekundach). */
   showToast(text: string): void {
+    if (!text) return;
     this.toast.textContent = text;
     this.toast.classList.remove('hidden');
+    const pal = !this.palette.classList.contains('hidden') && !this.palette.classList.contains('under-profile');
+    this.toast.style.bottom = pal ? `${104 + this.palette.offsetHeight + 10}px` : '';
     window.clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => this.toast.classList.add('hidden'), 4500);
-  }
-}
-
-export interface MapNavHandlers {
-  onRotate(): void;
-  onZoom(factor: number): void;
-}
-
-/** Róża kierunków (strzałka północy, obrót o 180°) i przyciski zoomu. */
-export class MapNav {
-  private readonly arrow: SVGElement;
-  private readonly letter: SVGElement;
-
-  constructor(parent: HTMLElement, h: MapNavHandlers) {
-    const el = document.createElement('div');
-    el.className = 'a-map-nav';
-    el.innerHTML = `
-      <button type="button" class="a-card a-compass" title="Północ. Kliknij – obróć mapę o 180° (widok od Korbielowa ↔ od Słowacji)">
-        <svg viewBox="0 0 40 40" width="52" height="52"><g class="a-compass-arrow"><path d="M20 11 L25 21 L20 19 L15 21 Z" fill="#d6336c"/><path d="M20 31 L25 21 L20 23 L15 21 Z" fill="#94a3b8"/></g><text class="a-compass-n" x="20" y="9" text-anchor="middle" font-size="9" font-weight="700" fill="#1f2a37">N</text></svg>
-        <span class="a-compass-rot">↻ 180°</span>
-      </button>
-      <div class="a-card a-zoom">
-        <button type="button" data-z="in" title="Przybliż (kółko myszy, klawisz +)">+</button>
-        <button type="button" data-z="out" title="Oddal (kółko myszy, klawisz −)">−</button>
-      </div>`;
-    parent.appendChild(el);
-    this.arrow = el.querySelector('.a-compass-arrow')!;
-    this.letter = el.querySelector('.a-compass-n')!;
-    el.querySelector('.a-compass')!.addEventListener('click', () => h.onRotate());
-    el.querySelector('[data-z="in"]')!.addEventListener('click', () => h.onZoom(1.6));
-    el.querySelector('[data-z="out"]')!.addEventListener('click', () => h.onZoom(1 / 1.6));
+    this.toastTimer = window.setTimeout(() => this.toast.classList.add('hidden'), 5000);
   }
 
-  /** Strzałka N: w górę ekranu (mapa nieobrócona) lub w dół (widok od Korbielowa). */
-  setRotated(rotated: boolean): void {
-    this.arrow.setAttribute('transform', rotated ? 'rotate(180 20 21)' : '');
-    this.letter.setAttribute('y', rotated ? '39' : '9');
+  /** Paleta chowa się, gdy na dole jest profil (rysowanie, zaznaczony obiekt). */
+  setProfileShown(shown: boolean): void {
+    this.palette.classList.toggle('under-profile', shown);
   }
 }

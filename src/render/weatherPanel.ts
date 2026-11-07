@@ -1,6 +1,7 @@
 /**
  * Panel pogody: warunki teraz na dole i na górze ośrodka + prognoza na 7 dni.
  */
+import { icon } from './ui/icons';
 import type { PrecipitationPhase } from '../sim';
 import type { EnvironmentStateMessage } from '../worker/protocol';
 import { compassName } from './colors';
@@ -21,12 +22,12 @@ const CLEAR_SKY_MAX = 0.3;
 const PARTLY_CLOUDY_MAX = 0.7;
 
 export function weatherSymbol(phase: PrecipitationPhase, cloud: number): string {
-  if (phase === 'snow') return '❄';
-  if (phase === 'rain') return '☂';
-  if (phase === 'sleet') return '❄☂';
-  if (cloud < CLEAR_SKY_MAX) return '☀';
-  if (cloud < PARTLY_CLOUDY_MAX) return '⛅';
-  return '☁';
+  // Etap 7c: ikony liniowe zamiast znaków emoji.
+  if (phase === 'snow' || phase === 'sleet') return icon('cloudSnow', 16);
+  if (phase === 'rain') return icon('cloudRain', 16);
+  if (cloud < CLEAR_SKY_MAX) return icon('sun', 16);
+  if (cloud < PARTLY_CLOUDY_MAX) return icon('partly', 16);
+  return icon('cloud', 16);
 }
 
 export class WeatherPanel {

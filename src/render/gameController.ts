@@ -330,7 +330,7 @@ export class GameController {
     }
   }
 
-  private async loadFile(f: File): Promise<void> {
+  async loadFile(f: File): Promise<void> {
     try {
       this.applySave(JSON.parse(await f.text()));
       this.o.toast(`Wczytano grę: ${formatIsoDate(this.state!.date).split('-').reverse().join('.')}.`);
@@ -449,6 +449,25 @@ export class GameController {
     const err = repayLoan(s, id, loan?.remainingPln ?? 0);
     this.o.toast(err ?? 'Kredyt spłacony (całość lub tyle, ile było na koncie).');
     this.refreshPanel(true);
+  }
+
+  /** Etap 7c: cennik i godziny (górny pasek, menu). */
+  showPrices(): void {
+    if (this.state) this.prices.show(this.state.prices, this.state.hours, this.o.ep, this.marketPrice());
+  }
+
+  /** Etap 7c: fakty o ośrodku (raport, doradca, pasek górny). */
+  get resortFactsNow(): ResortFacts | null {
+    return this.facts;
+  }
+
+  /** Etap 7c: powód blokady atrakcji letniej (paleta budowy) – null, gdy dostępna. */
+  lockReason(kind: 'bike' | 'walk' | 'toboggan' | 'playground' | 'viewpoint'): string | null {
+    const s = this.state;
+    const sp = this.o.ep.summer;
+    if (!s || !sp) return null;
+    const u = attractionUnlocked(kind, s, reputationOf(s, this.o.ep), sp);
+    return u.ok ? null : u.why.replace(/^potrzebna /, '').replace(/^potrzebne /, '');
   }
 
   showReport(): void {

@@ -160,6 +160,9 @@ export interface TrailDesign {
   /** Oś od początku do końca (rower i tor – od góry w dół; dowolnie, analiza ustawi kierunek). */
   points: PointM[];
   closed?: boolean;
+  /** Etap 7c (edycja, tylko widok): punkty kontrolne linii i gładkość łuku (0 – łamana, 1 – łuk); `points` to gęsty przebieg z nich liczony. */
+  ctrl?: PointM[];
+  smooth?: number;
 }
 
 export interface TrailAnalysis {

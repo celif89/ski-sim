@@ -3,12 +3,13 @@
  * i wczytanie układu, przełączniki nakładek (sieć, rzeczywistość), lista obiektów ze statystykami,
  * ostrzeżenia sieci i porównanie z prawdziwymi trasami Pilska.
  */
+import { icon } from './ui/icons';
 import type { LiftParams } from '../sim/lifts';
 import type { PisteParams } from '../sim/pistes';
 import type { RealPisteComparison, ResortAnalysis, ResortLayout } from '../sim/resort';
 import type { ThinSegment } from '../sim/snowRiding';
 
-export type BuildTool = 'select' | 'lift' | 'pisteBrush' | 'pisteAxis' | 'base' | 'pipeline' | 'supply' | 'gun' | 'road' | 'catwalk' | 'bikeTrail' | 'walkTrail' | 'toboggan';
+export type BuildTool = 'select' | 'lift' | 'pisteBrush' | 'pisteAxis' | 'base' | 'pipeline' | 'supply' | 'gun' | 'road' | 'catwalk' | 'bikeTrail' | 'walkTrail' | 'toboggan' | 'demolish';
 
 export interface BuildPanelHandlers {
   onTool(tool: BuildTool): void;
@@ -111,8 +112,8 @@ export class BuildPanel {
         ${gunTypes ? '<div class="build-row"><label>Armatka <select class="build-gun"></select></label></div>' : ''}
         <div class="build-row"><label title="Usunięcie kamieni i pniaków, niwelacja – kosztuje, ale na łące wyrównanej wystarczy mniej śniegu"><input type="checkbox" class="build-grade"> wyrównaj teren pod nowymi trasami</label></div>
         <div class="build-row build-buttons">
-          <button type="button" class="b-undo" title="Cofnij (Ctrl+Z)">↶ Cofnij</button>
-          <button type="button" class="b-redo" title="Ponów (Ctrl+Y)">↷ Ponów</button>
+          <button type="button" class="b-undo" title="Cofnij (Ctrl+Z)">Cofnij</button>
+          <button type="button" class="b-redo" title="Ponów (Ctrl+Y)">Ponów</button>
           <button type="button" class="b-del" title="Usuń zaznaczony obiekt (Delete)">Usuń</button>
         </div>
         <div class="build-row build-buttons">
@@ -222,7 +223,7 @@ export class BuildPanel {
     if (this.gunSelect) this.gunSelect.value = s.gunTypeId;
     const building = (id: string) => {
       const p = s.construction.get(id);
-      return p === undefined ? '' : ` <span class="g-warn" title="plac budowy">🚧 ${fmt0(p * 100)} %</span>`;
+      return p === undefined ? '' : ` <span class="g-warn" title="plac budowy">budowa ${fmt0(p * 100)} %</span>`;
     };
     this.msg.textContent = s.message;
     this.msg.classList.toggle('empty', !s.message);
@@ -255,7 +256,7 @@ export class BuildPanel {
         return `<tr data-kind="pipeline" data-id="${pp.id}" class="${sel('pipeline', pp.id)}"><td><b>${pp.name}</b>${building(pp.id)}</td><td colspan="5">${fmt0(L)} m · armatek: ${guns}</td></tr>`;
       })
       .join('');
-    const issues = s.analysis.network.issues.map((i) => `<li class="warning">⚠ ${i.message}</li>`).join('');
+    const issues = s.analysis.network.issues.map((i) => `<li class="warning">${icon('warn', 14)} ${i.message}</li>`).join('');
     const empty = !lifts && !pistes && !bases;
     let real = '';
     if (s.showReality && s.real) {
@@ -277,7 +278,7 @@ export class BuildPanel {
       ${bases ? `<div class="build-section">Budynki</div><table class="build-list"><tbody>${bases}</tbody></table>` : ''}
       ${pipes ? `<div class="build-section">Naśnieżanie – rurociągi</div><table class="build-list"><tbody>${pipes}</tbody></table>` : ''}
       ${!empty ? `<div class="build-total">Razem: ${money(s.analysis.totals.costPln)} · ${fmt0(s.analysis.totals.buildDays)} dni pracy · wycinka ${(s.analysis.totals.clearedForestM2 / 10_000).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} ha lasu</div>` : ''}
-      ${issues ? `<div class="build-section">Sieć – ostrzeżenia</div><ul class="build-issues">${issues}</ul>` : !empty ? '<div class="build-ok">✓ sieć: wszystkie trasy i wyciągi połączone</div>' : ''}
+      ${issues ? `<div class="build-section">Sieć – ostrzeżenia</div><ul class="build-issues">${issues}</ul>` : !empty ? '<div class="build-ok">sieć: wszystkie trasy i wyciągi połączone</div>' : ''}
       ${real}`;
   }
 }

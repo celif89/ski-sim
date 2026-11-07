@@ -34,15 +34,34 @@ export interface CardAction {
   priceKey?: string;
 }
 
+export type CardLevel = 'good' | 'warn' | 'bad';
+
+/** Etap 7c (tylko do wyświetlenia): duża liczba stanu z paskiem, np. „320 / 320 miejsc zajętych – Pełny”. */
+export interface CardHeadline {
+  value: number;
+  of?: number;
+  unit: string;
+  level: CardLevel;
+  badge?: string;
+  /** Liczba z przecinkiem (np. baza śniegu). */
+  decimals?: number;
+}
+
 export interface ObjectCard {
   title: string;
   kindLabel: string;
   status: CardStatus;
   statusText: string;
   rows: [string, string][];
-  chart: { title: string; unit: string; values: number[]; slotH: number; nowIndex: number; capacity?: number } | null;
+  chart: { title: string; unit: string; values: number[]; slotH: number; nowIndex: number; capacity?: number; /** Wartości po „teraz” to prognoza z modelu dnia (szare słupki). */ forecast?: boolean } | null;
   actions: CardAction[];
+  /** Etap 7c: liczba stanu, trzy kafelki, jedno zdanie z sugestią (żółte pole). */
+  headline?: CardHeadline;
+  tiles?: { label: string; value: string; level?: CardLevel }[];
+  note?: string;
 }
+
+const levelOf = (share: number, warn = 0.8, bad = 0.98): CardLevel => (share >= bad ? 'bad' : share >= warn ? 'warn' : 'good');
 
 export interface CardContext {
   state: GameState;
@@ -242,7 +261,27 @@ function liftCard(id: string, c: CardContext): ObjectCard | null {
   }
   if (c.ep.summer && insState && !insState.activeUntil) actions.push({ id: 'inspection', label: 'Termin przeglądu', input: 'date', value: insState.scheduled ?? formatIsoDate(c.state.date) });
   actions.push({ id: 'demolish', label: 'Rozbierz' });
-  return { title: l.name, kindLabel: t.kind === 'aerial' ? 'kolej linowa' : 'wyciąg', status, statusText: text, rows, chart, actions };
+  const card: ObjectCard = { title: l.name, kindLabel: t.kind === 'aerial' ? 'kolej linowa' : 'wyciąg', status, statusText: text, rows, chart, actions };
+  const live = c.winter?.liveLifts.get(id);
+  if (live && !summer) {
+    const u = Math.min(1, live.utilization);
+    card.headline = { value: Math.round(u * 100), of: 100, unit: '% przepustowości', level: levelOf(u, 0.75, 0.95), badge: live.waitMin >= 1 ? `Kolejka ${f0(live.waitMin)} min` : 'Bez kolejki' };
+    card.tiles = [{ label: 'Pasażerowie dziś', value: f0(live.rides) }, { label: 'W kolejce', value: `${f0(live.queue)} os.`, level: live.waitMin >= 15 ? 'bad' : live.waitMin >= 5 ? 'warn' : undefined }, { label: 'Przepustowość', value: `${f0(t.capacityPerHour)}/h` }];
+    if (live.waitMin >= 10) card.note = `Kolejka ${f0(live.waitMin)} min – goście zaczynają narzekać. Drugi wyciąg obok albo szybsza kolej rozładuje tłok.`;
+  } else if (summer && sl && summer.stats) {
+    const li = summer.poiOf('lift', id);
+    const st = summer.stats;
+    if (li >= 0) {
+      const k = nowSlot(c.hour);
+      const w = st.liftWaitMin[li][k];
+      card.headline = { value: Math.round(st.liftUp[li] + st.liftDown[li]), unit: 'przejazdów dziś', level: w >= 15 ? 'bad' : w >= 5 ? 'warn' : 'good', badge: w >= 1 ? `Kolejka ${f0(w)} min` : 'Bez kolejki' };
+      card.tiles = [{ label: 'W górę', value: f0(st.liftUp[li]) }, { label: 'W dół', value: f0(st.liftDown[li]) }, { label: 'Rowery', value: f0(st.liftBikes[li]) }];
+    }
+  } else {
+    card.tiles = [{ label: 'Przepustowość', value: `${f0(t.capacityPerHour)}/h` }, { label: 'Długość', value: `${f0(a?.slopeLengthM ?? f?.lengthM ?? 0)} m` }, { label: 'Przegląd', value: INSPECTION_STATUS_NAMES[ins] }];
+  }
+  if (chart && !summer) chart.forecast = true;
+  return card;
 }
 
 function pisteCard(id: string, c: CardContext): ObjectCard | null {
@@ -270,10 +309,18 @@ function pisteCard(id: string, c: CardContext): ObjectCard | null {
       const onPiste = prof.map((x) => x * c.winter!.guests * 0.35 * share);
       const k = nowSlot(c.hour);
       rows.push(['narciarzy na trasie teraz (model)', f0(onPiste[k])], ['tłok teraz', `${(onPiste[k] / Math.max(0.1, a.lengthM / 100)).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} os./100 m`]);
-      return { title: p.name, kindLabel: 'trasa narciarska', status, statusText: text, rows, chart: { title: 'narciarze na trasie (model)', unit: 'os.', values: onPiste, slotH: 0.25, nowIndex: k }, actions: [{ id: 'toggleOpen', label: p.closed ? 'Otwórz' : 'Zamknij' }, { id: 'demolish', label: 'Rozbierz' }] };
+      return pisteExtras({ title: p.name, kindLabel: 'trasa narciarska', status, statusText: text, rows, chart: { title: 'narciarze na trasie (model)', unit: 'os.', values: onPiste, slotH: 0.25, nowIndex: k, forecast: true }, actions: [{ id: 'toggleOpen', label: p.closed ? 'Otwórz' : 'Zamknij' }, { id: 'demolish', label: 'Rozbierz' }] }, a, sn ?? null, onPiste[k], cls);
     }
+    return pisteExtras({ title: p.name, kindLabel: 'trasa narciarska', status, statusText: text, rows, chart: null, actions: [{ id: 'toggleOpen', label: p.closed ? 'Otwórz' : 'Zamknij' }, { id: 'demolish', label: 'Rozbierz' }] }, a, sn ?? null, null, cls);
   }
-  return { title: p.name, kindLabel: 'trasa narciarska', status, statusText: text, rows, chart: null, actions: [{ id: 'toggleOpen', label: p.closed ? 'Otwórz' : 'Zamknij' }, { id: 'demolish', label: 'Rozbierz' }] };
+  return pisteExtras({ title: p.name, kindLabel: 'trasa narciarska', status, statusText: text, rows, chart: null, actions: [{ id: 'toggleOpen', label: p.closed ? 'Otwórz' : 'Zamknij' }, { id: 'demolish', label: 'Rozbierz' }] }, a, null, null, cls);
+}
+
+/** Etap 7c: liczba stanu i kafelki trasy (baza śniegu, długość, nachylenie, narciarze). */
+function pisteExtras(card: ObjectCard, a: { lengthM: number; meanSlopePercent: number; maxSlopePercent: number }, sn: { baseCm: number; quality: string } | null, skiers: number | null, cls: string): ObjectCard {
+  if (sn) card.headline = { value: Math.round(sn.baseCm), unit: 'cm bazy ubitej', level: sn.baseCm >= 30 ? 'good' : sn.baseCm >= 15 ? 'warn' : 'bad', badge: sn.quality };
+  card.tiles = [{ label: 'Klasa', value: cls }, { label: 'Długość', value: `${f0(a.lengthM)} m` }, skiers !== null ? { label: 'Narciarzy teraz', value: f0(skiers) } : { label: 'Nachylenie', value: `${f0(a.meanSlopePercent)}–${f0(a.maxSlopePercent)} %` }];
+  return card;
 }
 
 function trailCard(id: string, c: CardContext): ObjectCard | null {
@@ -310,7 +357,10 @@ function trailCard(id: string, c: CardContext): ObjectCard | null {
   if (t.kind === 'toboggan') actions.push({ id: 'price', label: 'Cena przejazdu [zł]', input: 'number', value: c.state.summer?.prices.tobogganRidePln ?? sp.prices.tobogganRidePln, priceKey: 'tobogganRidePln' });
   if (t.kind === 'bike') actions.push({ id: 'price', label: 'Karnet rowerowy [zł]', input: 'number', value: c.state.summer?.prices.bikeDayPln ?? sp.prices.bikeDayPln, priceKey: 'bikeDayPln' });
   actions.push({ id: 'demolish', label: 'Rozbierz' });
-  return { title: t.name, kindLabel: TRAIL_KIND_NAMES[t.kind], status, statusText: text, rows, chart, actions };
+  const card: ObjectCard = { title: t.name, kindLabel: TRAIL_KIND_NAMES[t.kind], status, statusText: text, rows, chart, actions };
+  if (t.kind === 'toboggan' && s?.stats) card.headline = { value: Math.round(s.stats.tobRides), unit: 'przejazdów dziś', level: 'good', badge: `Kolejka ${f0(s.stats.tobQueue[nowSlot(c.hour)])} os.` };
+  card.tiles = [{ label: 'Długość', value: `${f0(a.lengthM)} m` }, { label: 'Spadek', value: `${f0(a.dropM)} m` }, { label: 'Przychód w sezonie', value: pln(c.state.objectRevenue?.[id] ?? 0) }];
+  return card;
 }
 
 function buildingCard(id: string, c: CardContext): ObjectCard | null {
@@ -351,7 +401,14 @@ function buildingCard(id: string, c: CardContext): ObjectCard | null {
       rows.push(['zajęte teraz', `${f0(now)} aut`], ['wolne teraz', `${f0(Math.max(0, t.cars - now))}`], ['szczyt dnia', `${f0(peak)} aut o ${hh(peakK * 0.25)}`], ['pełny od', fullK >= 0 ? hh(fullK * 0.25) : 'nie był pełny'], ['odjechało (brak miejsc)', `${f0(turned)} os.`], ['przychód dziś (szac.)', pln(series.reduce((a, v, i) => a + Math.max(0, v - (i ? series![i - 1] : 0)), 0) * t.feePerCarPln)]);
     }
     rows.push(['przychód w roku gry', pln(season)]);
-    return { title: b.name, kindLabel: 'parking', status: cs?.status ?? (bf?.accessible === false ? 'nieczynny' : 'czynny'), statusText: cs?.text ?? (bf?.accessible === false ? 'bez dojazdu – zbuduj drogę' : 'czynny'), rows, chart: series ? { title: 'zajęte miejsca', unit: 'aut', values: series, slotH: 0.25, nowIndex: k, capacity: t.cars } : null, actions: [{ id: 'demolish', label: 'Rozbierz' }] };
+    const card: ObjectCard = { title: b.name, kindLabel: 'parking', status: cs?.status ?? (bf?.accessible === false ? 'nieczynny' : 'czynny'), statusText: cs?.text ?? (bf?.accessible === false ? 'bez dojazdu – zbuduj drogę' : 'czynny'), rows, chart: series ? { title: 'zajęte miejsca w ciągu dnia', unit: 'aut', values: series, slotH: 0.25, nowIndex: k, capacity: t.cars, forecast: !(s?.stats && pi >= 0) } : null, actions: [{ id: 'demolish', label: 'Rozbierz' }] };
+    const now = series ? series[k] : 0;
+    const full = series ? series.findIndex((v) => v >= t.cars - 0.5) : -1;
+    card.headline = { value: Math.round(now), of: t.cars, unit: 'miejsc zajętych', level: levelOf(now / Math.max(1, t.cars)), badge: now >= t.cars - 0.5 ? 'Pełny' : undefined };
+    const income = series ? series.reduce((acc, v, i) => acc + Math.max(0, v - (i ? series![i - 1] : 0)), 0) * t.feePerCarPln : 0;
+    card.tiles = [{ label: 'Odjechało', value: `${f0(turned / Math.max(1, c.ep.demand.personsPerCar))} aut`, level: turned > 0 ? 'bad' : undefined }, { label: 'Przychód dziś', value: pln(income) }, { label: 'Opłata', value: pln(t.feePerCarPln) }];
+    if (turned > 0 && full >= 0) card.note = `Parking pełny od ${hh(full * 0.25)}, ${f0(turned)} osób odjechało. Zbuduj drugi parking albo podnieś opłatę.`;
+    return card;
   }
   // Gastronomia (restauracja, schronisko, bar).
   if (t?.id === 'gastronomy') {
@@ -373,7 +430,23 @@ function buildingCard(id: string, c: CardContext): ObjectCard | null {
       chart = { title: 'goście w lokalu (model)', unit: 'os.', values: lunch.map((v) => Math.min(seats || 9999, ((users * v) / sum) * 3)), slotH: 0.25, nowIndex: k, capacity: seats || undefined };
     }
     rows.push(['koszty personelu dziś', pln(t.staffPerDay * staffH * wage)], ['przychód w roku gry', pln(season)]);
-    return { title: b.name, kindLabel: 'gastronomia', status: cs?.status ?? 'czynny', statusText: cs?.text ?? 'czynna', rows, chart, actions: [{ id: 'demolish', label: 'Rozbierz' }] };
+    const card: ObjectCard = { title: b.name, kindLabel: 'gastronomia', status: cs?.status ?? 'czynny', statusText: cs?.text ?? 'czynna', rows, chart, actions: [{ id: 'demolish', label: 'Rozbierz' }] };
+    if (s?.stats && fi >= 0 && sp) {
+      const occ = s.stats.foodOccupied[fi][k];
+      const q = s.stats.foodQueue[fi][k];
+      const served = s.stats.foodServed[fi];
+      card.headline = { value: Math.round(occ), of: seats, unit: 'miejsc zajętych', level: q > 0 ? 'warn' : levelOf(occ / Math.max(1, seats)), badge: q >= 1 ? `Kolejka ${f0(q)} osób` : undefined };
+      card.tiles = [{ label: 'Obsłużeni', value: f0(served) }, { label: 'Średni rachunek', value: pln(sp.guests.mealSpendPln) }, { label: 'Przychód dziś', value: pln(served * sp.guests.mealSpendPln) }];
+      const peakQ = Math.max(...s.stats.foodQueue[fi]);
+      if (peakQ > seats * 0.3) card.note = `W szczycie obiadowym w kolejce czekało do ${f0(peakQ)} osób. Większa sala albo drugi lokal skróci czekanie.`;
+    } else if (c.winter?.open) {
+      const users = Math.min(t.capacityPerDay, c.winter.guests * t.useShare);
+      card.headline = { value: Math.round(users), of: t.capacityPerDay, unit: 'gości dziś (plan)', level: levelOf(users / Math.max(1, t.capacityPerDay), 0.85, 0.99), badge: users >= t.capacityPerDay * 0.99 ? 'Pełne obłożenie' : undefined };
+      card.tiles = [{ label: 'Obsłużeni (plan)', value: f0(users) }, { label: 'Średni rachunek', value: pln(t.revenuePerGuestPln) }, { label: 'Przychód (plan)', value: pln(users * t.revenuePerGuestPln) }];
+      if (users >= t.capacityPerDay * 0.99) card.note = 'Lokal jest pełny – część gości odchodzi głodna. Drugi lokal zwiększy przychód i zadowolenie.';
+      if (card.chart) card.chart.forecast = true;
+    }
+    return card;
   }
   if (t && (t.id === 'rental' || t.id === 'school' || t.id === 'shuttle')) {
     const users = c.winter?.open ? Math.min(t.capacityPerDay, c.winter.guests * t.useShare) : 0;
@@ -388,8 +461,12 @@ function buildingCard(id: string, c: CardContext): ObjectCard | null {
     const ops = c.state.ops;
     const sum = c.ops;
     if (infraT.kind === 'reservoir') {
+      const capAll = Math.max(1, inf?.reservoirCapacityM3 ?? infraT.capacity);
+      const nowM3 = ops?.reservoirM3 ?? 0;
+      const card: ObjectCard = { title: b.name, kindLabel: infraT.name, status: cs?.status ?? 'czynny', statusText: cs?.text ?? 'czynny', rows, chart: null, actions: [{ id: 'demolish', label: 'Rozbierz' }], headline: { value: Math.round(nowM3), of: Math.round(capAll), unit: 'm³ wody (wszystkie zbiorniki)', level: nowM3 / capAll < 0.2 ? 'bad' : nowM3 / capAll < 0.5 ? 'warn' : 'good' }, tiles: [{ label: 'Dopływ dziś', value: `${f0(sum?.inflowM3 ?? 0)} m³` }, { label: 'Zużycie dziś', value: `${f0(sum?.waterM3 ?? 0)} m³` }, { label: 'Pojemność', value: `${f0(infraT.capacity)} m³` }] };
       rows.push(['pojemność', `${f0(infraT.capacity)} m³`], ['woda teraz', `${f0(ops?.reservoirM3 ?? 0)} m³ (${f0((100 * (ops?.reservoirM3 ?? 0)) / Math.max(1, inf?.reservoirCapacityM3 ?? infraT.capacity))} % wszystkich zbiorników)`], ['dopływ dziś', `${f0(sum?.inflowM3 ?? 0)} m³`], ['zużycie dziś', `${f0(sum?.waterM3 ?? 0)} m³`]);
       for (const so of sum?.sources ?? []) rows.push([`źródło: ${so.name}`, `${f0(so.m3)} m³, ${pln(so.costPln)} – ${so.note}`]);
+      return card;
     } else if (infraT.kind === 'intake' || infraT.kind === 'mains' || infraT.kind === 'well' || infraT.kind === 'catchment') {
       const src = inf?.sources.find((x) => x.id === id);
       const day = sum?.sources?.find((x) => x.id === id);

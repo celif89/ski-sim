@@ -5,6 +5,7 @@
  *   miejsca ostrzeżeń i liczby;
  * – trasa: profil podłużny kolorowany nachyleniem, najtrudniejszy odcinek 50 m, liczby.
  */
+import { icon } from './ui/icons';
 import type { BuildIssue, LiftAnalysis, LiftDesign, Tower } from '../sim/lifts';
 import type { PisteAnalysis, PisteParams } from '../sim/pistes';
 import type { ThinSegment } from '../sim/snowRiding';
@@ -19,8 +20,8 @@ const CHART_HEIGHT_PX = 180;
 const PAD = { left: 52, right: 14, top: 22, bottom: 28 };
 
 export function issuesHtml(issues: BuildIssue[]): string {
-  if (!issues.length) return '<div class="build-ok">✓ bez zastrzeżeń</div>';
-  return `<ul class="build-issues">${issues.map((i) => `<li class="${i.severity}">${i.severity === 'error' ? '✗' : '⚠'} ${i.message}</li>`).join('')}</ul>`;
+  if (!issues.length) return `<div class="build-ok">${icon('check', 14)} bez zastrzeżeń</div>`;
+  return `<ul class="build-issues">${issues.map((i) => `<li class="${i.severity}">${icon('warn', 14)} ${i.message}</li>`).join('')}</ul>`;
 }
 
 export interface ProfileCallbacks {
