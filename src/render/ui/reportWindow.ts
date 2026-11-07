@@ -35,6 +35,8 @@ export interface ReportSource {
 export interface ReportHandlers {
   onAdvice(actionId: string, advice: Advice): void;
   onSeasonDetails(): void;
+  /** Dotychczasowy raport dnia z symulacji gości (zatłoczone trasy, wypadki, oceny co godzinę). */
+  onGuestDetails(): void;
 }
 
 const f0 = (v: number) => Math.round(v).toLocaleString('pl-PL');
@@ -143,6 +145,10 @@ export class ReportWindow {
         return;
       }
       if (t.closest('[data-season-details]')) h.onSeasonDetails();
+      if (t.closest('[data-guest-details]')) {
+        this.hide();
+        h.onGuestDetails();
+      }
     });
     this.el.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') this.hide();
@@ -312,7 +318,7 @@ export class ReportWindow {
     const body = `${tiles}
       <div class="u-report-row two">
         <div class="u-box"><div class="u-box-head"><span class="u-box-title">Goście na stoku w ciągu dnia</span><span class="u-dim">${peakI >= 0 ? `szczyt ${f0(ys[peakI])} o ${hhmm(Math.floor(xs[peakI]))}` : ''}${r ? '' : ' · model'}</span></div>${chart}</div>
-        <div class="u-box"><div class="u-box-head"><span class="u-box-title">Co mówią goście</span><span class="u-dim">liczba osób</span></div>${this.voices(r)}</div>
+        <div class="u-box"><div class="u-box-head"><span class="u-box-title">Co mówią goście</span><span class="u-dim">liczba osób</span></div>${this.voices(r)}<button type="button" class="u-btn wide u-mt-auto" data-guest-details ${tipAttrs('Dzisiejszy dzień w symulacji gości: oceny, powody wyjazdu, kolejki co godzinę, zatłoczone trasy, wypadki')}>Szczegóły dnia gości</button></div>
       </div>
       <div class="u-report-row three">${this.money(d.flows)}<div class="u-box"><div class="u-box-title">Wyciągi</div>${this.liftTable(r)}</div></div>
       ${this.adviceHtml(this.advisorInput(d.guests, r, d.rating, s.seasonOpen && !d.open))}`;

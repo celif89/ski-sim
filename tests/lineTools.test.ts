@@ -60,6 +60,16 @@ describe('Upraszczanie linii narysowanej ręką', () => {
     }
   });
 
+  it('drżenie ręki zmieniające się co próbkę (±1,5 m) – nadal najwyżej kilkanaście punktów', () => {
+    const drawn: CtrlPt[] = Array.from({ length: 300 }, (_, i) => {
+      const t = i / 299;
+      return { xM: 650 * Math.sin(t * Math.PI * 1.6) + Math.sin(i * 7.3) * 1.5, yM: 1400 * t, widthM: 30 };
+    });
+    const ctrl = simplifyStroke(drawn, opts);
+    expect(ctrl.length).toBeLessThanOrEqual(15);
+    expect(maxDeviation(smoothPath(ctrl, opts.smooth, 1), drawn)).toBeLessThan(lp.toleranceM);
+  });
+
   it('prosta linia z drżeniem → tylko dwa punkty', () => {
     const r = lcg(5);
     const drawn: Pt[] = Array.from({ length: 300 }, (_, i) => ({ xM: i * 3 + (r() - 0.5) * 2, yM: i * 1.5 + (r() - 0.5) * 2 }));

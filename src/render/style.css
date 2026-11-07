@@ -2740,3 +2740,13 @@ tr.g-closed td {
     display: none;
   }
 }
+.profile-header .build-title {
+  flex: 1;
+}
+.profile-header .profile-close {
+  margin-left: auto;
+  flex: none;
+}
+.u-mt-auto {
+  margin-top: auto;
+}

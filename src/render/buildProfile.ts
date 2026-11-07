@@ -173,7 +173,7 @@ export class BuildProfile {
       extra ? `<span><b>Stan:</b> ${extra.closed ? 'zamknięta' : 'otwarta'}${extra.graded ? ', teren wyrównany' : ''}</span>` : '',
     ].join('');
     if (extra && !draft) {
-      this.actions.innerHTML = `<button type="button" class="toggle-closed">${extra.closed ? 'Otwórz trasę' : 'Zamknij trasę'}</button> <button type="button" class="toggle-graded">${extra.graded ? 'Bez wyrównania terenu' : 'Wyrównaj teren'}</button> <span class="muted">Na mapie: przeciągnij punkt osi (kółko) lub szerokość (kwadrat) · „+” – nowy punkt · prawy przycisk / Delete – usuń punkt</span>`;
+      this.actions.innerHTML = `<button type="button" class="toggle-closed">${extra.closed ? 'Otwórz trasę' : 'Zamknij trasę'}</button> <button type="button" class="toggle-graded">${extra.graded ? 'Bez wyrównania terenu' : 'Wyrównaj teren'}</button> <span class="muted">Na mapie: przeciągnij punkt kontrolny (kółko) lub szerokość (kwadrat) · przeciągnięcie odcinka – nowy punkt · prawy przycisk / Delete – usuń punkt · gładkość – w karcie trasy</span>`;
       this.actions.querySelector('.toggle-closed')!.addEventListener('click', () => this.cb.onToggleClosed());
       this.actions.querySelector('.toggle-graded')!.addEventListener('click', () => this.cb.onToggleGraded());
     } else this.actions.innerHTML = '';

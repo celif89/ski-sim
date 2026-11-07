@@ -193,12 +193,15 @@ export function simplifyStroke<T extends CtrlPt>(samples: readonly T[], o: Simpl
   const tol = o.toleranceM;
   const fine = Math.max(0.5, Math.min(2, tol / 2));
   let idx = [0, pts.length - 1];
-  const curveOf = (ix: number[]) => smoothPath(ix.map((i) => pts[i]), o.smooth, fine);
+  // Kandydaci na punkty kontrolne: ślad uśredniony wzdłuż linii (okno ±tolerancja) – drżenie ręki
+  // nie trafia do punktów kontrolnych; odchyłkę mierzymy względem śladu oryginalnego.
+  const cand = averageAlong(pts, tol);
+  const curveOf = (ix: number[]) => smoothPath(ix.map((i) => cand[i]), o.smooth, fine);
   // Odchyłka liczona na zakresie próbek między kolejnymi punktami kontrolnymi.
   for (let iter = 0; iter < pts.length; iter++) {
     const curve = curveOf(idx);
     let worst = -1;
-    let wd = tol * 0.85;
+    let wd = tol * 0.95;
     for (let i = 1; i < pts.length - 1; i++) {
       if (idx.includes(i)) continue;
       const d = nearestOnPolyline(pts[i], curve).d;
@@ -210,7 +213,7 @@ export function simplifyStroke<T extends CtrlPt>(samples: readonly T[], o: Simpl
     if (worst < 0) {
       // Łuk nie może też odejść od narysowanej linii (przestrzelenie między punktami).
       let far = -1;
-      let fd = tol * 0.85;
+      let fd = tol * 0.95;
       for (const c of curve) {
         const r = nearestOnPolyline(c, pts);
         if (r.d > fd) {
@@ -254,7 +257,37 @@ export function simplifyStroke<T extends CtrlPt>(samples: readonly T[], o: Simpl
       else break;
     }
   }
-  return idx.map((i) => ({ ...pts[i] }));
+  return idx.map((i) => ({ ...cand[i] }));
+}
+
+/** Średnia krocząca po długości linii (okno ±radiusM); końce bez zmian, szerokość też uśredniana. */
+export function averageAlong<T extends CtrlPt>(pts: readonly T[], radiusM: number): T[] {
+  const n = pts.length;
+  const s = new Float64Array(n);
+  for (let i = 1; i < n; i++) s[i] = s[i - 1] + dist(pts[i], pts[i - 1]);
+  const out: T[] = [];
+  let lo = 0;
+  let hi = 0;
+  for (let i = 0; i < n; i++) {
+    if (i === 0 || i === n - 1) {
+      out.push({ ...pts[i] });
+      continue;
+    }
+    // Okno symetryczne, przycięte przy końcach (bez ciągnięcia linii do środka przy końcach).
+    const r = Math.min(radiusM, s[i], s[n - 1] - s[i]);
+    while (s[lo] < s[i] - r) lo++;
+    while (hi + 1 < n && s[hi + 1] <= s[i] + r) hi++;
+    let x = 0;
+    let y = 0;
+    let w = 0;
+    for (let k = Math.max(lo, 0); k <= Math.max(hi, i); k++) {
+      x += pts[k].xM;
+      y += pts[k].yM;
+      w++;
+    }
+    out.push({ ...pts[i], xM: x / w, yM: y / w });
+  }
+  return out;
 }
 
 /** Tolerancja uproszczenia przy danym przybliżeniu (drżenie ręki rośnie z oddaleniem). */

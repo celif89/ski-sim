@@ -147,6 +147,7 @@ export class BuildController {
   private drawModeValue: 'hand' | 'click' = 'hand';
   /** Linia rysowana teraz ręką (przeciąganie). */
   private handStroke = false;
+  private strokeSinceAnalysis = 0;
   private lastMessage = '';
   private readonly panel: BuildPanel;
   private readonly profile: BuildProfile;
@@ -832,7 +833,14 @@ export class BuildController {
       const last = this.axisPoints[this.axisPoints.length - 1];
       if (Math.hypot(p.xM - last.xM, p.yM - last.yM) < spacing) return;
       this.axisPoints.push({ xM: p.xM, yM: p.yM, widthM: last.widthM });
-      this.updateDraftPiste(this.axisPoints, null);
+      // Profil i klasa liczone co ok. odstęp pędzla (analiza trasy jest droższa niż rysowanie śladu).
+      if (++this.strokeSinceAnalysis >= 3 || !this.draftPiste) {
+        this.strokeSinceAnalysis = 0;
+        this.updateDraftPiste(this.axisPoints, null);
+      } else {
+        this.draftPiste = { points: this.axisPoints, analysis: this.draftPiste.analysis };
+        this.drawVersion++;
+      }
       return;
     }
     const arr = this.strokeArray();
@@ -1178,7 +1186,7 @@ export class BuildController {
       return;
     }
     next.pistes.push(design);
-    this.commit(next, `Zbudowano trasę ${name} (${this.o.pisteParams.classes[a.classIndex].name})${hand ? ` – ${oriented.length} punktów kontrolnych; przeciągnij punkt albo odcinek, żeby poprawić` : ''}.`);
+    this.commit(next, `Zbudowano trasę ${name} (${this.o.pisteParams.classes[a.classIndex].name})${hand ? ` – ${oriented.length} punktów kontrolnych. Poprawki: Esc, potem przeciągnij punkt albo odcinek trasy` : ''}.`);
     this.select({ kind: 'piste', id });
   }
 

@@ -1397,6 +1397,7 @@ async function start(): Promise<void> {
           else if (id === 'prices') game?.showPrices();
         },
         onSeasonDetails: () => game?.showReport(),
+        onGuestDetails: () => void guestCtl.showReport(),
       },
     );
 
@@ -1747,6 +1748,7 @@ async function start(): Promise<void> {
       build,
       game,
       sim,
+      ui: { shell, buildBar, drawer, notices, reportWindow, dataViews, cardView, minimap },
     };
   } catch (error) {
     console.error(error);
