@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<title>Interfejs gry – raport dnia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#FF9A4D}a:hover{color:#FFB47A}
+button{font-family:inherit}
+button:focus-visible{outline:2px solid #FF7A1A;outline-offset:2px}
+</style>
+</head>
+<body>
+<div style="width: 1920px; height: 1080px; position: relative; overflow: hidden; background: #E8EEF4; font-family: 'Barlow', system-ui, sans-serif; color: #EEF3F8; font-variant-numeric: tabular-nums">
+
+<img src="mapa.jpg" alt="" aria-hidden="true" style="position: absolute; left: -266.67px; top: -586.67px; width: 2560px; height: 1706.67px; max-width: none">
+<div style="position: absolute; inset: 0; background: rgba(12,19,27,0.6); backdrop-filter: blur(3px)"></div>
+
+<section role="dialog" aria-label="Raport dnia" style="position: absolute; left: 304px; top: 64px; width: 1312px; box-sizing: border-box; background: #172331; border: 1px solid rgba(255,255,255,0.09); border-radius: 18px; box-shadow: 0 24px 60px rgba(4,8,14,0.45); overflow: hidden; display: flex; flex-direction: column">
+
+<div style="padding: 20px 20px 0 28px; display: flex; align-items: center; gap: 16px">
+<div style="display: flex; flex-direction: column; line-height: 1.15">
+<h1 style="margin: 0; font-family: 'Barlow Condensed', sans-serif; font-size: 34px; font-weight: 700">Raport dnia</h1>
+<span style="font-size: 14px; color: #9DB0C3">Sobota, 17 stycznia, sezon 3. Ośrodek zamknięty o 16:30.</span>
+</div>
+<div role="tablist" style="margin-left: auto; display: flex; gap: 2px; padding: 3px; background: rgba(255,255,255,0.06); border-radius: 10px">
+<button role="tab" aria-selected="true" style="height: 38px; padding: 0 18px; border: 0; border-radius: 8px; background: #FF7A1A; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer">Dzień</button>
+<button role="tab" aria-selected="false" style="height: 38px; padding: 0 18px; border: 0; border-radius: 8px; background: transparent; color: #C9D6E3; font-size: 14px; font-weight: 600; cursor: pointer">Tydzień</button>
+<button role="tab" aria-selected="false" style="height: 38px; padding: 0 18px; border: 0; border-radius: 8px; background: transparent; color: #C9D6E3; font-size: 14px; font-weight: 600; cursor: pointer">Sezon</button>
+</div>
+<button aria-label="Zamknij raport" style="width: 44px; height: 44px; border: 0; border-radius: 10px; background: rgba(255,255,255,0.06); color: #C9D6E3; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</div>
+
+<div style="padding: 20px 28px 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px">
+<div style="padding: 14px 16px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #9DB0C3">Goście</span><span style="font-family: 'Barlow Condensed', sans-serif; font-size: 34px; font-weight: 700; line-height: 1">1 842</span><span style="font-size: 13px; color: #5FD39A">+12% wobec zeszłej soboty</span></div>
+<div style="padding: 14px 16px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #9DB0C3">Przychody</span><span style="font-family: 'Barlow Condensed', sans-serif; font-size: 34px; font-weight: 700; line-height: 1">312 400 zł</span><span style="font-size: 13px; color: #9DB0C3">170 zł na gościa</span></div>
+<div style="padding: 14px 16px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #9DB0C3">Koszty</span><span style="font-family: 'Barlow Condensed', sans-serif; font-size: 34px; font-weight: 700; line-height: 1">191 900 zł</span><span style="font-size: 13px; color: #9DB0C3">naśnieżanie 27%</span></div>
+<div style="padding: 14px 16px; border-radius: 12px; background: rgba(95,211,154,0.08); border: 1px solid rgba(95,211,154,0.25); display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #9DB0C3">Wynik dnia</span><span style="font-family: 'Barlow Condensed', sans-serif; font-size: 34px; font-weight: 700; line-height: 1; color: #5FD39A">+120 500 zł</span><span style="font-size: 13px; color: #9DB0C3">w sezonie +1,94 mln zł</span></div>
+<div style="padding: 14px 16px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #9DB0C3">Ocena gości</span><span style="font-family: 'Barlow Condensed', sans-serif; font-size: 34px; font-weight: 700; line-height: 1">4,1 <span style="font-size: 20px; color: #9DB0C3">/ 5</span></span><span style="font-size: 13px; color: #F5C542">−0,2 przez kolejki</span></div>
+</div>
+
+<div style="padding: 16px 28px 0; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px">
+<div style="padding: 16px 18px 12px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: baseline"><span style="font-size: 16px; font-weight: 600">Goście na stoku w ciągu dnia</span><span style="margin-left: auto; font-size: 13px; color: #9DB0C3">szczyt 1 720 o 11:00</span></div>
+<svg viewBox="0 0 760 230" width="100%" style="display: block" role="img" aria-label="Liczba gości na stoku od 8:30 do 16:30, szczyt 1720 o 11:00; parking pełny od 10:12">
+<g style="stroke: rgba(255,255,255,0.08); stroke-width: 1">
+<line x1="48" y1="200" x2="740" y2="200"></line><line x1="48" y1="156" x2="740" y2="156"></line><line x1="48" y1="112" x2="740" y2="112"></line><line x1="48" y1="68" x2="740" y2="68"></line><line x1="48" y1="24" x2="740" y2="24"></line>
+</g>
+<g style="font-size: 12px; fill: #9DB0C3; text-anchor: end">
+<text x="40" y="204">0</text><text x="40" y="160">500</text><text x="40" y="116">1000</text><text x="40" y="72">1500</text><text x="40" y="28">2000</text>
+</g>
+<g style="font-size: 12px; fill: #9DB0C3; text-anchor: middle">
+<text x="48" y="222">8:00</text><text x="201.8" y="222">10:00</text><text x="355.6" y="222">12:00</text><text x="509.3" y="222">14:00</text><text x="663.1" y="222">16:00</text>
+</g>
+<path d="M86.4 181.5 L124.9 145.4 L201.8 78.6 L278.7 48.6 L355.6 51.3 L432.4 58.3 L509.3 54.8 L586.2 75 L663.1 113.8 L701.6 152.5 L701.6 200 L86.4 200 Z" style="fill: rgba(124,196,242,0.14)"></path>
+<path d="M86.4 181.5 L124.9 145.4 L201.8 78.6 L278.7 48.6 L355.6 51.3 L432.4 58.3 L509.3 54.8 L586.2 75 L663.1 113.8 L701.6 152.5" style="fill: none; stroke: #7CC4F2; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round"></path>
+<circle cx="278.7" cy="48.6" r="4" style="fill: #7CC4F2; stroke: #172331; stroke-width: 2"></circle>
+<line x1="217.2" y1="24" x2="217.2" y2="200" style="stroke: #FF6B6B; stroke-width: 1.5; stroke-dasharray: 4 4"></line>
+<rect x="223" y="96" width="132" height="24" rx="6" style="fill: rgba(255,107,107,0.16)"></rect>
+<text x="231" y="112.5" style="font-size: 13px; font-weight: 600; fill: #FF8A8A">Parking pełny 10:12</text>
+</svg>
+</div>
+
+<div style="padding: 16px 18px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: baseline"><span style="font-size: 16px; font-weight: 600">Co mówią goście</span><span style="margin-left: auto; font-size: 13px; color: #9DB0C3">liczba osób</span></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><div style="display: flex; font-size: 14px"><span>Za długa kolejka do K1</span><span style="margin-left: auto; font-weight: 600">412</span></div><div style="height: 6px; border-radius: 3px; background: rgba(255,255,255,0.06)"><div style="width: 100%; height: 100%; border-radius: 3px; background: #FF6B6B"></div></div></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><div style="display: flex; font-size: 14px"><span>Świetnie przygotowane trasy</span><span style="margin-left: auto; font-weight: 600">388</span></div><div style="height: 6px; border-radius: 3px; background: rgba(255,255,255,0.06)"><div style="width: 94%; height: 100%; border-radius: 3px; background: #5FD39A"></div></div></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><div style="display: flex; font-size: 14px"><span>Brak miejsc na parkingu</span><span style="margin-left: auto; font-weight: 600">231</span></div><div style="height: 6px; border-radius: 3px; background: rgba(255,255,255,0.06)"><div style="width: 56%; height: 100%; border-radius: 3px; background: #FF6B6B"></div></div></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><div style="display: flex; font-size: 14px"><span>Dobre jedzenie w schronisku</span><span style="margin-left: auto; font-weight: 600">204</span></div><div style="height: 6px; border-radius: 3px; background: rgba(255,255,255,0.06)"><div style="width: 50%; height: 100%; border-radius: 3px; background: #5FD39A"></div></div></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><div style="display: flex; font-size: 14px"><span>Za drogi karnet</span><span style="margin-left: auto; font-weight: 600">97</span></div><div style="height: 6px; border-radius: 3px; background: rgba(255,255,255,0.06)"><div style="width: 24%; height: 100%; border-radius: 3px; background: #FF6B6B"></div></div></div>
+</div>
+</div>
+
+<div style="padding: 12px 28px 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<div style="padding: 16px 18px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 16px; font-weight: 600">Skąd pieniądze</div>
+<div style="display: grid; grid-template-columns: 112px minmax(0, 1fr) 84px; gap: 8px 10px; align-items: center; font-size: 14px">
+<span>Karnety</span><div style="height: 10px; border-radius: 3px; background: #5FD39A; width: 100%"></div><span style="text-align: right; font-weight: 600">257 900 zł</span>
+<span>Gastronomia</span><div style="height: 10px; border-radius: 3px; background: #5FD39A; width: 15.7%"></div><span style="text-align: right; font-weight: 600">40 500 zł</span>
+<span>Parkingi</span><div style="height: 10px; border-radius: 3px; background: #5FD39A; width: 3.2%"></div><span style="text-align: right; font-weight: 600">8 300 zł</span>
+<span>Wypożyczalnia</span><div style="height: 10px; border-radius: 3px; background: #5FD39A; width: 1.6%"></div><span style="text-align: right; font-weight: 600">4 200 zł</span>
+<span>Szkółka</span><div style="height: 10px; border-radius: 3px; background: #5FD39A; width: 0.6%; min-width: 3px"></div><span style="text-align: right; font-weight: 600">1 500 zł</span>
+</div>
+</div>
+<div style="padding: 16px 18px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 16px; font-weight: 600">Na co poszły</div>
+<div style="display: grid; grid-template-columns: 128px minmax(0, 1fr) 76px; gap: 8px 10px; align-items: center; font-size: 14px">
+<span>Naśnieżanie</span><div style="height: 10px; border-radius: 3px; background: #FFA36B; width: 100%"></div><span style="text-align: right; font-weight: 600">52 300 zł</span>
+<span>Personel</span><div style="height: 10px; border-radius: 3px; background: #FFA36B; width: 88.3%"></div><span style="text-align: right; font-weight: 600">46 200 zł</span>
+<span>Raty kredytu</span><div style="height: 10px; border-radius: 3px; background: #FFA36B; width: 72.7%"></div><span style="text-align: right; font-weight: 600">38 000 zł</span>
+<span>Energia wyciągów</span><div style="height: 10px; border-radius: 3px; background: #FFA36B; width: 35.2%"></div><span style="text-align: right; font-weight: 600">18 400 zł</span>
+<span>Towar w kuchni</span><div style="height: 10px; border-radius: 3px; background: #FFA36B; width: 31%"></div><span style="text-align: right; font-weight: 600">16 200 zł</span>
+<span>Utrzymanie</span><div style="height: 10px; border-radius: 3px; background: #FFA36B; width: 21%"></div><span style="text-align: right; font-weight: 600">11 000 zł</span>
+<span>Ratraki</span><div style="height: 10px; border-radius: 3px; background: #FFA36B; width: 18.7%"></div><span style="text-align: right; font-weight: 600">9 800 zł</span>
+</div>
+</div>
+<div style="padding: 16px 18px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 16px; font-weight: 600">Wyciągi</div>
+<table style="border-collapse: collapse; width: 100%; font-size: 14px">
+<thead><tr style="color: #9DB0C3; font-size: 12px; text-align: right"><th scope="col" style="text-align: left; font-weight: 500; padding: 0 0 6px">Wyciąg</th><th scope="col" style="font-weight: 500; padding: 0 0 6px">Przewiezieni</th><th scope="col" style="font-weight: 500; padding: 0 0 6px">Kolejka</th><th scope="col" style="font-weight: 500; padding: 0 0 6px">Obciążenie</th></tr></thead>
+<tbody>
+<tr style="border-top: 1px solid rgba(255,255,255,0.06); text-align: right"><th scope="row" style="text-align: left; font-weight: 600; padding: 9px 0">K1 kanapa</th><td>6 840</td><td style="color: #F5C542">9 min</td><td style="color: #FF8A8A">94%</td></tr>
+<tr style="border-top: 1px solid rgba(255,255,255,0.06); text-align: right"><th scope="row" style="text-align: left; font-weight: 600; padding: 9px 0">O1 orczyk</th><td>2 310</td><td>2 min</td><td>61%</td></tr>
+<tr style="border-top: 1px solid rgba(255,255,255,0.06); text-align: right"><th scope="row" style="text-align: left; font-weight: 600; padding: 9px 0">T1 taśma</th><td>980</td><td>0 min</td><td>35%</td></tr>
+</tbody>
+</table>
+<div style="margin-top: auto; font-size: 12px; color: #9DB0C3">Kolejka to średni czas oczekiwania w godzinach otwarcia.</div>
+</div>
+</div>
+
+<div style="margin: 12px 28px 24px; padding: 14px 16px; border-radius: 12px; background: rgba(255,122,26,0.1); border: 1px solid rgba(255,122,26,0.3); display: flex; gap: 14px; align-items: center">
+<div style="flex: none; width: 40px; height: 40px; border-radius: 10px; background: #FF7A1A; color: #FFFFFF; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round"><path d="M9 18h6M10 21h4"></path><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"></path></svg></div>
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<span style="font-size: 15px; font-weight: 600">K1 jest wąskim gardłem ośrodka</span>
+<span style="font-size: 14px; color: #C9D6E3; line-height: 1.4">Pracuje na 94% przepustowości, a 412 osób narzekało na kolejkę. Drugi wyciąg z doliny albo większy parking zmniejszą tłok w weekendy.</span>
+</div>
+<div style="margin-left: auto; display: flex; gap: 8px; flex: none">
+<button style="height: 44px; padding: 0 16px; border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; background: transparent; color: #EEF3F8; font-size: 14px; font-weight: 600; cursor: pointer">Pokaż kolejki na mapie</button>
+<button style="height: 44px; padding: 0 18px; border: 0; border-radius: 10px; background: #FF7A1A; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer">Zaplanuj wyciąg</button>
+</div>
+</div>
+</section>
+
+</div>
+</body>
+</html>
