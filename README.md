@@ -145,55 +145,48 @@ i pracujące, trasy zamknięte przez pryzmy, flota ratraków, przewidywany konie
 | Przesuwanie mapy | przeciągnij myszą albo strzałki / klawisze W A S D |
 | Przybliżanie i oddalanie | kółko myszy (przybliża w miejscu kursora), na gładziku Maca: gest szczypania; klawisze `+` / `−` |
 | Cała mapa na ekranie | klawisz `0` lub `Home` |
-| Obrót mapy o 180° | róża kierunków w prawym dolnym rogu (strzałka **N**). Domyślnie widok od Korbielowa: szczyt u góry, północ na dole |
-| Upływ czasu gry | prawy górny róg: pauza, **1:1** (czas rzeczywisty – do oglądania narciarzy z bliska), ×1 (dzień sezonu w ok. 10 minut, noc szybciej), ×5, ×20; spacja – pauza / ×1 |
-| Nakładki danych | przycisk **„Nakładki”** na dolnym pasku (tam też mapa topograficzna, sieć tras, prawdziwy ośrodek) albo klawisze `1`–`9`, `G`, `K`, `M` |
-| Nakładka nachylenia | „Nakładki” → „Nachylenie” lub klawisz `1` |
-| Nakładka ekspozycji | przycisk „Ekspozycja” lub klawisz `2` |
-| Sama mapa | przycisk „Bez nakładki” lub klawisz `3` |
-| Nasłonecznienie teraz (W/m²) | przycisk „Słońce teraz” lub klawisz `4` |
-| Suma dobowa promieniowania (kWh/m²) | przycisk „Słońce – doba” lub klawisz `5` |
-| Temperatura powietrza | przycisk „Temperatura” lub klawisz `6` |
-| Grubość śniegu (cm) | przycisk „Śnieg – grubość” lub klawisz `7` |
-| Stan śniegu (puch, przewiany, osiadły, firn, breja, zlodzony, przetarty) | przycisk „Śnieg – stan” lub klawisz `8` |
-| Przewijanie sezonu (śnieg zmienia się dzień po dniu do 30 kwietnia) | lewy górny róg: „Kalendarz i słońce” → „▶▶ Przewiń sezon”, prędkość 1 / 5 / 20 dni na sekundę |
-| Dzień i godzina | lewy górny róg: „Kalendarz i słońce” – data, strzałki ◀ ▶, suwak godziny, „▶ Odtwórz dzień” |
-| Pogoda | plakietka u góry na środku (temperatura, śnieg, wiatr); kliknięcie – szczegóły i prognoza na 7 dni |
-| Goście | panel **„Goście”** po prawej: liczba gości dnia, „↺ Od nowa”, „Raport dnia”, tabela wyciągów; kliknięcie postaci na mapie – karta gościa |
-| Ruch na trasach / kolejki | klawisz `9` (natężenie ruchu) i `K` (czas oczekiwania przy stacjach) albo „Nakładki” |
-| Podłoże terenu | klawisz `G` albo „Nakładki” → „Podłoże”: łąka wyrównana, łąka naturalna, kamienie / skała, przecinka z pniakami, las |
-| Gdzie można teraz naśnieżać | klawisz `M` albo „Nakładki” → „Naśnieżanie teraz” (temperatura mokra) |
-| Menu deweloperskie | przycisk „Dev” w lewym dolnym rogu lub klawisz `` ` `` – licznik klatek, czas pracy na klatkę |
-| Profil terenu | przycisk „Profil terenu” lub klawisz `P`, potem kliknij punkt A i punkt B; `Esc` zamyka |
-| Dymek przy kursorze | zatrzymaj kursor na chwilę: wysokość, nachylenie, ekspozycja, śnieg (grubość, baza ubita, stan), temperatura na tej wysokości, obiekt pod kursorem (trasa, wyciąg, budynek, droga, potok z przepływem); wyłączanie: „Nakładki” → „Dymek przy kursorze” albo klawisz `I` |
+| Obrót mapy o 180° | minimapa w prawym dolnym rogu – przycisk **N↓** (tam też przybliżanie +/−; kliknięcie w minimapę przesuwa widok). Domyślnie widok od Korbielowa: szczyt u góry, północ na dole |
+| Upływ czasu gry | górny pasek: pauza, ×1 (dzień sezonu w ok. 10 minut, noc szybciej), ×5, ×20; spacja – pauza / ×1; czas rzeczywisty **1:1** – kliknij zegar |
+| Widoki danych (dawne nakładki) | **lewy pionowy pasek** (ikony z podpowiedzią) albo klawisze `1`–`9`, `G`, `K`, `M`; legenda pokazuje się obok, warianty jako zakładki (np. Śnieg: grubość / stan / podłoże) |
+| Mapa, mapa topograficzna, sieć tras, prawdziwy ośrodek | lewy pasek → „Teren i mapa” (`3`), w legendzie przełączniki; `N`, `R` |
+| Nachylenie / ekspozycja | `1` / `2` |
+| Nasłonecznienie teraz / suma doby | `4` / `5` |
+| Temperatura / gdzie można teraz naśnieżać (temp. mokra) | `6` / `M` |
+| Śnieg: grubość / stan / podłoże | `7` / `8` / `G` |
+| Ruch na trasach / kolejki | `9` / `K` |
+| Dzień, godzina, przewijanie sezonu | kliknij **zegar** w górnym pasku – kalendarz, suwak godziny, „Odtwórz dzień”, „Przewiń sezon” |
+| Pogoda | górny pasek: góra i dół, baza śniegu, wiatr, prognoza 4 dni (dzień z odwilżą na żółto); kliknięcie – szczegóły i prognoza na 7 dni |
+| Saldo, goście, cennik, naśnieżanie | kliknięcie pozycji w górnym pasku otwiera panel po prawej (Finanse, Goście, Cennik, Naśnieżanie i ratraki) |
+| Menu gry | przycisk ☰ w prawym górnym rogu: raporty, panele, historia powiadomień, zapis / wczytanie / nowa gra, **skala interfejsu**, skróty klawiszowe, menu deweloperskie |
+| Powiadomienia | lewa strona pod paskiem: kolejki, pełny parking, odwilż, za mało śniegu, wpisy dziennika gry; kliknięcie – kamera jedzie w to miejsce |
+| Raporty | dolne menu „Raporty” albo menu: dzień, tydzień, sezon – z doradcą (jedno zdanie i przycisk akcji) |
+| Karta obiektu / gościa | kliknij obiekt lub postać na mapie: zakładki Przegląd / Szczegóły / Ustawienia; karta gościa – „Śledź kamerą” |
+| Profil terenu | lewy pasek pod kreską albo `P`, potem kliknij punkt A i punkt B; `Esc` zamyka |
+| Dymek przy kursorze | lewy pasek (ikona „i”) albo `I`: wysokość, nachylenie, ekspozycja, śnieg, temperatura, obiekt pod kursorem |
+| Menu deweloperskie | „Dev” w lewym dolnym rogu lub klawisz `` ` `` |
 
-### Budowa ośrodka (dolny pasek i panel „Budowa ośrodka” po prawej)
+### Budowa ośrodka (dolne menu)
 
-Dolny pasek: **Wyciąg**, **Trasa**, **Naśnieżanie** (rurociąg `H`, armatki `J`), **Budynki** (baza, budynki
-naśnieżania), **Nakładki**. „Wycinka” jest wyszarzona – liczy się sama pod wyciągami i trasami.
+Kategorie: **Wyciągi, Trasy, Naśnieżanie, Drogi, Budynki, Lato, Wycinka | Rozbiórka, Raporty**. Kliknięcie
+kategorii otwiera nad menu paletę kart (rysunek, nazwa, najważniejszy parametr, cena); zablokowana karta
+jest szara z powodem (np. reputacja). Lista obiektów, ostrzeżenia sieci, porównanie z OSM i plik układu –
+menu ☰ → „Obiekty ośrodka i plik układu”.
 
 | Czynność | Jak |
 |---|---|
-| Wyciąg | wybierz typ, przycisk „Wyciąg” lub klawisz `L`; kliknij **dolną**, potem **górną** stację. W trakcie na dole widać profil terenu z liną, podporami i ostrzeżeniami. |
-| Trasa pędzlem | „Trasa – pędzel” lub `T`: przeciągnij myszą wzdłuż trasy (mapę przesuwasz wtedy prawym przyciskiem lub klawiszami) |
-| Trasa po osi | „Trasa – oś” lub `O`: klikaj kolejne punkty osi; podwójne kliknięcie lub `Enter` – koniec, `Backspace` – cofnij punkt |
-| Szerokość trasy | suwak w panelu lub klawisze `[` i `]` |
-| Droga dojazdowa | klawisz `E`: klikaj od drogi publicznej (szara) do parkingu; koszt za metr, nachylenie do 12 %, zimą odśnieżanie. Parking bez drogi nie ma dojazdu, a wyciąg, do którego nie da się dojść z parkingu, stoi („niedostępny z parkingu”) |
-| Nartostrada | klawisz `U`: wąski, łagodny łącznik (6 m, do 15 %) – tylko w dół |
-| Zjazd wyciągiem w dół | w profilu kanapy lub gondoli przycisk „Włącz zjazd w dół” – goście zjeżdżają nim, gdy dolna trasa jest zamknięta lub za trudna (kanapa – część miejsc, orczyk – nie da się) |
-| Rura zasilająca | klawisz `F`: od źródła wody (ujęcie, studnia, wodociąg) do zbiornika |
-| Baza (parking, wioska) | „Baza” lub `B`, kliknij miejsce – trasy mogą się tam kończyć |
-| Wybór obiektu | „Wybierz” lub `V`, kliknij wyciąg lub trasę na mapie albo w liście – profil i liczby na dole |
-| Edycja trasy | zaznacz trasę (klik): na osi pojawiają się **kółka** (punkty osi – przeciągnij), **kwadraciki** po bokach (szerokość w tym miejscu – przeciągnij w bok) i **„+”** w połowie odcinków (klik – nowy punkt). Usuń punkt: prawy przycisk na kółku albo najedź i `Delete`. Profil, kolor trasy, wycinka i koszt przeliczają się w trakcie przeciągania |
-| Edycja wyciągu | zaznacz wyciąg: **prostokąty** – stacja dolna i górna (przeciągnij), **„+”** na linii – nowe załamanie (stacja kątowa; na orczyku i talerzyku koła odchylające – tylko mały kąt), **romb** – załamanie (przeciągnij; podwójne kliknięcie – stacja pośrednia z wsiadaniem i wysiadaniem; prawy przycisk – usuń). Podpory przeliczają się same; podpory ustawione ręcznie zostają, jeśli dalej spełniają warunki |
-| Otwarcie / zamknięcie | w profilu zaznaczonej trasy lub wyciągu przycisk „Zamknij / Otwórz”; cały ośrodek – pole **„Ośrodek otwarty”** w panelu „Goście” |
-| Wyrównanie terenu | w profilu trasy przycisk „Wyrównaj teren” (koszt: usunięcie kamieni i pniaków, niwelacja) – podłoże staje się łąką wyrównaną, potrzeba mniej śniegu; dla nowych tras – pole „wyrównaj teren pod nowymi trasami” w panelu budowy |
-| Podpory wyciągu | na wykresie profilu: przeciągnij podporę w bok (położenie) lub w górę/dół (wysokość); podwójne kliknięcie – nowa podpora; prawy przycisk – usuń; przycisk „Rozstaw podpory automatycznie” |
-| Usuń | `Delete` lub przycisk „Usuń” |
-| Cofnij / ponów | `Ctrl+Z` / `Ctrl+Y` (na Macu `Cmd`) lub przyciski |
-| Sieć ośrodka | `N` – strzałki kierunku zjazdu, numery, połączenia, ostrzeżenia o trasach „donikąd” |
-| Prawdziwy ośrodek Pilsko | `R` – wyciągi i trasy z OpenStreetMap (półprzezroczyste, nie do edycji) i tabela: oficjalny kolor trasy a nasza klasyfikacja |
-| Zapis | układ zapisuje się sam w przeglądarce; „Zapisz plik” / „Wczytaj plik” – plik JSON |
+| Wyciąg | „Wyciągi” → karta typu (albo `L`); kliknij **dolną**, potem **górną** stację. W trakcie na dole profil terenu z liną, podporami i ostrzeżeniami. |
+| Trasa, droga, rurociąg, trasa letnia – **rysowanie ręką** | przeciągnij myszą wzdłuż przebiegu; po puszczeniu linia sama się upraszcza do kilku punktów kontrolnych (co ok. 40 m, gęściej na zakrętach) i prowadzi gładkim łukiem – odbiega od narysowanej najwyżej o kilka metrów |
+| … **rysowanie punktami** | przełącznik „Ręką / Punktami” w palecie albo klawisz `O`: klik = punkt, podwójny klik lub `Enter` = koniec, `Backspace` – cofnij punkt |
+| Szerokość trasy, wyrównanie terenu | suwak i pole w palecie „Trasy”; klawisze `[` `]` |
+| Nartostrada, droga, rurociąg, rura zasilająca, armatka | `U`, `E`, `H`, `F`, `J` albo karty w paletach |
+| Budynek | „Budynki” / „Naśnieżanie” / „Lato” → karta, kliknij miejsce (`B`) |
+| Poprawianie linii | `Esc` (wybieranie), kliknij trasę / drogę / rurociąg: **kółka** to punkty kontrolne – przeciągnij; **przeciągnięcie odcinka** wstawia nowy punkt; prawy przycisk albo `Delete` na kółku – usuń punkt; **kwadraciki** po bokach trasy – szerokość; suwak **„Gładkość”** w karcie (0 % – łamana, 100 % – łuk) |
+| Edycja wyciągu | zaznacz wyciąg: **prostokąty** – stacja dolna i górna (przeciągnij), **„+”** na linii – nowe załamanie, **romb** – załamanie (podwójne kliknięcie – stacja pośrednia; prawy przycisk – usuń) |
+| Otwarcie / zamknięcie | karta obiektu („Zamknij / Otwórz”) albo profil; cały ośrodek – pole „Sezon otwarty” w panelu Goście |
+| Podpory wyciągu | na wykresie profilu: przeciągnij podporę; podwójne kliknięcie – nowa; prawy przycisk – usuń; „Rozstaw podpory automatycznie” |
+| Rozbiórka | „Rozbiórka” i klik na obiekcie, `Delete` przy zaznaczonym albo karta → Ustawienia → Rozbierz |
+| Cofnij / ponów | `Ctrl+Z` / `Ctrl+Y` (na Macu `Cmd`) albo strzałki w palecie |
+| Zapis | układ zapisuje się sam w przeglądarce; plik JSON – menu → „Obiekty ośrodka i plik układu” |
 
 **Śnieg a jazda (etap 5b).** Pod kursorem (pasek na dole) i w profilu trasy widać osobno grubość
 całkowitą i **bazę ubitą** (zapas wody w śniegu przeliczony na śnieg ubity 420 kg/m³ – 10 cm puchu to

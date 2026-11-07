@@ -2,6 +2,7 @@
  * Panele gry (etap 6): finanse (saldo, dzień, sezon, kredyt, zapis), cennik i godziny otwarcia,
  * raport sezonu, ekran startowy (kariera / piaskownica / kontynuacja / wczytanie).
  */
+import { starsSvg } from './ui/icons';
 import type { DayRecord, Flows, GameState, Loan, SeasonReport } from '../sim/economy';
 import { COST_KEYS, FLOW_NAMES, REVENUE_KEYS, fmtPln, sumCosts, sumRevenue } from '../sim/economy';
 import type { EconomyParams, OpeningHours, PassPrices } from '../sim/economyParams';
@@ -10,7 +11,7 @@ import { WINTER_CLASS_NAMES } from '../sim/winterClass';
 const f0 = (v: number) => Math.round(v).toLocaleString('pl-PL');
 const f1 = (v: number) => v.toLocaleString('pl-PL', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const hhmm = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
-const stars = (r: number) => '★'.repeat(Math.round(r)) + '☆'.repeat(5 - Math.round(r));
+
 
 export interface FinanceView {
   state: GameState;
@@ -115,7 +116,7 @@ export class FinancePanel {
     const box = this.root.querySelector<HTMLElement>('.fin-summer')!;
     const sh = sm
       ? `<div class="build-section">Sezon letni</div>
-        <div class="small">${sm.open ? '<b>otwarty</b>' : 'zamknięty'} · ${sm.window} · reputacja letnia ${f1(sm.reputation)} ★
+        <div class="small">${sm.open ? '<b>otwarty</b>' : 'zamknięty'} · ${sm.window} · reputacja letnia ${f1(sm.reputation)} / 5
         <button type="button" data-summer="${sm.open ? '0' : '1'}" ${!sm.open && !sm.allowed ? 'disabled title="Poza okresem sezonu letniego"' : ''}>${sm.open ? 'Zamknij sezon letni' : 'Otwórz sezon letni'}</button></div>
         <div class="gm-grid small fin-summer-prices">
           <label>W górę <input type="number" name="liftUpPln" min="0" max="400" value="${sm.prices.liftUpPln}"> zł</label>
@@ -138,7 +139,7 @@ export class FinancePanel {
     const building = Object.keys(s.construction).length;
     const html = `
       <div class="fin-top"><div><span class="muted">${v.modeLabel} · ${v.phaseLabel}</span><div class="fin-balance ${s.balancePln < 0 ? 'g-bad' : ''}">${fmtPln(s.balancePln)}</div></div>
-        <div class="fin-rep" title="Reputacja z ocen gości (świeże ważą więcej)"><span class="fin-stars">${stars(v.reputation)}</span><br><span class="muted">${f1(v.reputation)} reputacja</span></div></div>
+        <div class="fin-rep" title="Reputacja z ocen gości (świeże ważą więcej)"><span class="fin-stars">${starsSvg(v.reputation, 90)}</span><br><span class="muted">${f1(v.reputation)} reputacja</span></div></div>
       ${s.bankrupt ? '<div class="g-bad"><b>Bankructwo – koniec kariery.</b> Zacznij nową grę albo wczytaj zapis.</div>' : ''}
       ${v.catchingUp !== null ? `<div class="g-catch">Liczę dni… zostało ${f0(v.catchingUp)}</div>` : ''}
       <div class="fin-grid">
@@ -299,7 +300,7 @@ export class SeasonReportView extends Modal {
         <div><b>${r.openDays}</b><span>dni otwartych</span></div>
         <div><b>${f0(r.guests)}</b><span>gości</span></div>
         <div><b>${r.meanRating === null ? '–' : f1(r.meanRating)}</b><span>średnia ocena gości</span></div>
-        <div><b>${f1(r.reputationEnd)} ★</b><span>reputacja</span></div>
+        <div><b>${f1(r.reputationEnd)} / 5</b><span>reputacja</span></div>
         ${r.winter ? `<div title="Dni 1 XII – 31 III z bazą ubitą ≥ ${r.winter.thresholdCm} cm ze śniegu naturalnego na otwartym terenie na ${r.winter.elevationM} m (model w punkcie), na tle 160 zim z generatora pogody"><b>${WINTER_CLASS_NAMES[r.winter.cls]}</b><span>zima: ${r.winter.days} dni ze śniegiem (średnio ${f0(r.winter.meanDays)}; ${f0(r.winter.percentile * 100)}. percentyl)</span></div>` : ''}
       </div>
       ${daysChart(r.days)}
@@ -326,7 +327,7 @@ function seasonSplit(r: SeasonReport): string {
     ${row('lato', sf.summer, `${r.summerOpenDays ?? 0} dni, ${f0(r.summerGuests ?? 0)} gości${r.summerRating ? `, ocena ${f1(r.summerRating)}` : ''}`)}
     ${row('poza sezonem', sf.off)}
     ${row('koszty wspólne', sf.common, 'stała załoga, utrzymanie, ubezpieczenie, przeglądy, odsetki')}
-    </table>${r.summerReputationEnd !== undefined ? `<div class="muted small">Reputacja letnia na koniec roku: ${f1(r.summerReputationEnd)} ★ (osobno od zimowej).</div>` : ''}`;
+    </table>${r.summerReputationEnd !== undefined ? `<div class="muted small">Reputacja letnia na koniec roku: ${f1(r.summerReputationEnd)} / 5 (osobno od zimowej).</div>` : ''}`;
 }
 
 export interface StartChoice {

@@ -158,15 +158,14 @@ export class Legend {
     }
     if (kind === 'liftWait') {
       const rows = [
-        ['#2f9e44', 'do 5 min'],
-        ['#f59f00', '5–15 min'],
-        ['#e8590c', '15–30 min'],
-        ['#d92b2b', 'ponad 30 min'],
+        ['#5FD39A', 'do 5 min'],
+        ['#F5C542', '5–15 min'],
+        ['#FF6B6B', 'ponad 15 min'],
         ['#64748b', 'wyciąg stoi (wiatr, zamknięty)'],
       ]
-        .map(([c, t]) => `<div class="legend-row"><span class="legend-swatch" style="background:${c}"></span>${t}</div>`)
+        .map(([c, t]) => `<div class="legend-row"><span class="legend-pill" style="background:${c}"></span>${t}</div>`)
         .join('');
-      this.element.innerHTML = `<div class="legend-title">Kolejki: czas oczekiwania · liczba osób</div>${rows}<div class="legend-note">przy dolnych stacjach; szczegóły w panelu „Goście”</div>`;
+      this.element.innerHTML = `<div class="legend-title">Kolejki do wyciągów</div>${rows}<div class="legend-note">czas oczekiwania · liczba osób przy dolnych stacjach</div>`;
       return;
     }
     const titles: Record<string, [string, string]> = {

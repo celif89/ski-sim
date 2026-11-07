@@ -305,6 +305,8 @@ export interface GameState {
   /** Ostatnie komunikaty (budowy ukończone, przeglądy, raty…). */
   log: { date: string; text: string }[];
   lastDay: (DayRecord & { flows: Flows }) | null;
+  /** Etap 7c (tylko do wyświetlenia): przepływy ostatnich 7 zamkniętych dni – raport tygodnia. */
+  recentFlows?: { date: string; flows: Flows }[];
 }
 
 export function newGameState(o: { mode: GameMode; seed: number; date: CalendarDate; ep: EconomyParams }): GameState {
@@ -1174,6 +1176,8 @@ export function closeDay(
   };
   state.year.days.push(record);
   state.lastDay = { ...record, flows: dayFlows };
+  // Etap 7c (tylko do wyświetlenia): przepływy ostatnich 7 dni – raport tygodnia.
+  state.recentFlows = [...(state.recentFlows ?? []), { date: record.date, flows: dayFlows }].slice(-7);
   // Następny dzień; 1 maja – koniec roku gry: raport sezonu, sezon zamknięty.
   const next = addDays(date, 1);
   let report: SeasonReport | null = null;

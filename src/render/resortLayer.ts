@@ -19,7 +19,8 @@ import { lodWeights } from './illustration';
 
 const INK = 0x1e293b;
 const SLATE = 0x334155;
-const SELECT_COLOR = 0xffd400;
+/** Etap 7c: zaznaczenie w kolorze akcentu (pomarańcz siatek zabezpieczających). */
+const SELECT_COLOR = 0xff7a1a;
 const ERROR_COLOR = 0xdc2626;
 const REAL_LIFT_COLOR = 0xc2255c;
 const BORDER_COLOR = 0xb91c1c;
@@ -101,7 +102,7 @@ const BUILDING_STYLE: Record<string, { color: number; letter: string }> = {
 const PIPE_COLOR = 0x1c7ed6;
 const SITE_COLOR = 0xf59f00;
 
-export type HandleKind = 'pistePoint' | 'pisteAdd' | 'pisteWidth' | 'liftBottom' | 'liftTop' | 'liftBend' | 'liftAdd';
+export type HandleKind = 'pistePoint' | 'pisteAdd' | 'pisteWidth' | 'liftBottom' | 'liftTop' | 'liftBend' | 'liftAdd' | 'linePoint';
 
 export interface EditHandle {
   kind: HandleKind;
@@ -868,16 +869,20 @@ export class ResortLayer {
       const p = toS(h.xM, h.yM);
       const r = h.hover ? 8 : 6;
       if (h.kind === 'pisteAdd' || h.kind === 'liftAdd') {
-        g.circle(p.xPx, p.yPx, h.hover ? 7 : 5).fill({ color: 0xffffff, alpha: 0.85 }).stroke({ width: 1.5, color: 0x1c64d8 });
-        g.moveTo(p.xPx - 3, p.yPx).lineTo(p.xPx + 3, p.yPx).moveTo(p.xPx, p.yPx - 3).lineTo(p.xPx, p.yPx + 3).stroke({ width: 1.5, color: 0x1c64d8 });
+        g.circle(p.xPx, p.yPx, h.hover ? 7 : 5).fill({ color: 0xffffff, alpha: 0.85 }).stroke({ width: 1.5, color: 0xff7a1a });
+        g.moveTo(p.xPx - 3, p.yPx).lineTo(p.xPx + 3, p.yPx).moveTo(p.xPx, p.yPx - 3).lineTo(p.xPx, p.yPx + 3).stroke({ width: 1.5, color: 0xff7a1a });
       } else if (h.kind === 'pisteWidth') {
-        g.rect(p.xPx - r / 2, p.yPx - r / 2, r, r).fill({ color: 0x1c64d8 }).stroke({ width: 1.5, color: 0xffffff });
+        g.rect(p.xPx - r / 2, p.yPx - r / 2, r, r).fill({ color: 0xff7a1a }).stroke({ width: 1.5, color: 0xffffff });
       } else if (h.kind === 'liftBend') {
         g.moveTo(p.xPx, p.yPx - r - 2).lineTo(p.xPx + r + 2, p.yPx).lineTo(p.xPx, p.yPx + r + 2).lineTo(p.xPx - r - 2, p.yPx).closePath().fill({ color: h.mid ? 0x2f9e44 : 0xfacc15 }).stroke({ width: 2, color: INK });
       } else if (h.kind === 'liftBottom' || h.kind === 'liftTop') {
         g.roundRect(p.xPx - r - 3, p.yPx - r, 2 * r + 6, 2 * r, 3).fill({ color: 0xfacc15 }).stroke({ width: 2, color: INK });
+      } else if (h.kind === 'linePoint' || h.kind === 'pistePoint') {
+        // Punkt kontrolny linii (etap 7c): biały z pomarańczową obwódką, większy pod kursorem.
+        g.circle(p.xPx, p.yPx, r).fill({ color: 0xffffff }).stroke({ width: 2.5, color: 0xff7a1a });
+        if (h.hover) g.circle(p.xPx, p.yPx, r + 4).stroke({ width: 1.5, color: 0xff7a1a, alpha: 0.5 });
       } else {
-        g.circle(p.xPx, p.yPx, r).fill({ color: 0xffffff }).stroke({ width: 2.5, color: 0x1c64d8 });
+        g.circle(p.xPx, p.yPx, r).fill({ color: 0xffffff }).stroke({ width: 2.5, color: 0xff7a1a });
       }
     }
     if (st.hoverPoint) {

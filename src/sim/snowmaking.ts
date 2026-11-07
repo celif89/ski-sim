@@ -69,6 +69,9 @@ export interface PipelineDesign {
   points: PointM[];
   /** Etap 6b: rura zasilająca (źródło wody → zbiornik) – bez hydrantów, poza siecią pompowni. */
   supply?: boolean;
+  /** Etap 7c (edycja, tylko widok): punkty kontrolne linii i gładkość łuku (0 – łamana, 1 – łuk); `points` to gęsty przebieg z nich liczony. */
+  ctrl?: PointM[];
+  smooth?: number;
 }
 
 export interface SnowGunDesign {

@@ -10,7 +10,7 @@ import { Container, Graphics, Text } from 'pixi.js';
 import type { CalendarDate } from '../sim';
 import type { GuestParams } from '../sim/guestParams';
 import type { GuestNet } from '../sim/guestNetwork';
-import type { GuestConditions, GuestCounts, GuestEconomySummary, GuestEvent } from '../sim/guests';
+import type { GuestCard, GuestConditions, GuestCounts, GuestDayReport, GuestEconomySummary, GuestEvent } from '../sim/guests';
 import { LIFT_STRIDE } from '../sim/guests';
 import type { GuestClient } from '../worker/guestClient';
 import type { GuestFrameMessage } from '../worker/guestProtocol';
@@ -56,6 +56,10 @@ export interface GuestControllerOptions {
   camera: Camera;
   panelParent: HTMLElement;
   cardParent: HTMLElement;
+  /** Etap 7c: raport dnia w nowym oknie (zamiast starego panelu). */
+  onReportRequest?: () => void;
+  /** Etap 7c: wydatki gościa (karta gościa). */
+  spendOf?: (c: GuestCard) => number | null;
   initialGuests: number;
   /** Przejazdy dnia gotowe – do modelu śniegu. */
   onDayTraffic(date: CalendarDate, passes: Float32Array): void;
@@ -94,6 +98,8 @@ export class GuestController {
   private readonly card: GuestCardView;
   private readonly report: DayReportView;
   private selected = -1;
+  /** Etap 7c: kamera śledzi zaznaczonego gościa. */
+  private follow = false;
   private cardTimer = 0;
   private readonly lastPos = new Map<number, number>();
   private readonly lastX: number[] = [];
@@ -125,7 +131,7 @@ export class GuestController {
           this.restart();
         },
         onRestart: () => this.restart(),
-        onReport: () => void this.showReport(),
+        onReport: () => (o.onReportRequest ? o.onReportRequest() : void this.showReport()),
         onLoadOsm: () => o.onLoadOsm(),
         onResortOpen: (open) => {
           this.setResortOpen(open);
@@ -135,7 +141,12 @@ export class GuestController {
       this.guests,
     );
     this.card = new GuestCardView(o.cardParent);
-    this.card.onClose = () => (this.selected = -1);
+    this.card.onClose = () => {
+      this.selected = -1;
+      this.follow = false;
+    };
+    this.card.onFollow = (on) => (this.follow = on);
+    if (o.spendOf) this.card.spendOf = o.spendOf;
     this.report = new DayReportView(o.cardParent);
     o.screenLayer.addChild(this.gfx, this.labels);
     o.client.onFrame = (f) => this.onFrame(f);
@@ -408,17 +419,19 @@ export class GuestController {
         if (!row) return;
         const s = camera.worldToScreen(l.bottomX, l.bottomY);
         const w = row.waitMin;
-        const color = row.closed ? 0x64748b : w < 5 ? 0x2f9e44 : w < 15 ? 0xf59f00 : w < 30 ? 0xe8590c : 0xd92b2b;
+        // Etap 7c: kolory stanów z zasad wyglądu (dobrze / uwaga / źle), tekst ciemny na jasnym tle.
+        const color = row.closed ? 0x64748b : w < 5 ? 0x5fd39a : w < 15 ? 0xf5c542 : 0xff6b6b;
         g.roundRect(s.xPx - 30, s.yPx + 10, 60, 20, 10).fill({ color }).stroke({ width: 2, color: 0xffffff });
         let t = this.labelPool[li];
         if (!t) {
-          t = new Text({ text: '', style: { fontFamily: 'Barlow Condensed', fontWeight: '700', fontSize: 14, fill: 0xffffff } });
+          t = new Text({ text: '', style: { fontFamily: 'Barlow Condensed', fontWeight: '700', fontSize: 14, fill: 0x1b2633 } });
           t.anchor.set(0.5);
           this.labelPool[li] = t;
           this.labels.addChild(t);
         }
         const text = row.closed ? 'stoi' : `${Math.round(w)} min · ${Math.round(row.queue)}`;
         if (t.text !== text) t.text = text;
+        t.style.fill = row.closed ? 0xffffff : 0x1b2633;
         t.position.set(Math.round(s.xPx), Math.round(s.yPx + 20));
         t.visible = true;
         li++;
@@ -429,8 +442,9 @@ export class GuestController {
     if (this.selected >= 0) {
       const p = this.findById(this.selected, renderTimeS);
       if (p) {
+        if (this.follow) camera.centerOn(p.xM, p.yM);
         const s = camera.worldToScreen(p.xM, p.yM);
-        g.circle(s.xPx, s.yPx, 11).stroke({ width: 2.5, color: 0xfacc15 });
+        g.circle(s.xPx, s.yPx, 11).stroke({ width: 2.5, color: 0xff7a1a });
       }
       this.cardTimer -= dtRealS;
       if (this.cardTimer <= 0) {
@@ -473,6 +487,11 @@ export class GuestController {
   private async refreshCard(): Promise<void> {
     const c = await this.o.client.card(this.selected);
     if (c && this.selected === c.id) this.card.show(c);
+  }
+
+  /** Etap 7c: raport dnia z wątku gości (okno raportu). */
+  dayReport(): Promise<GuestDayReport | null> {
+    return this.o.client.report();
   }
 
   async showReport(): Promise<void> {

@@ -5,6 +5,7 @@
  *   miejsca ostrzeżeń i liczby;
  * – trasa: profil podłużny kolorowany nachyleniem, najtrudniejszy odcinek 50 m, liczby.
  */
+import { icon } from './ui/icons';
 import type { BuildIssue, LiftAnalysis, LiftDesign, Tower } from '../sim/lifts';
 import type { PisteAnalysis, PisteParams } from '../sim/pistes';
 import type { ThinSegment } from '../sim/snowRiding';
@@ -19,8 +20,8 @@ const CHART_HEIGHT_PX = 180;
 const PAD = { left: 52, right: 14, top: 22, bottom: 28 };
 
 export function issuesHtml(issues: BuildIssue[]): string {
-  if (!issues.length) return '<div class="build-ok">✓ bez zastrzeżeń</div>';
-  return `<ul class="build-issues">${issues.map((i) => `<li class="${i.severity}">${i.severity === 'error' ? '✗' : '⚠'} ${i.message}</li>`).join('')}</ul>`;
+  if (!issues.length) return `<div class="build-ok">${icon('check', 14)} bez zastrzeżeń</div>`;
+  return `<ul class="build-issues">${issues.map((i) => `<li class="${i.severity}">${icon('warn', 14)} ${i.message}</li>`).join('')}</ul>`;
 }
 
 export interface ProfileCallbacks {
@@ -172,7 +173,7 @@ export class BuildProfile {
       extra ? `<span><b>Stan:</b> ${extra.closed ? 'zamknięta' : 'otwarta'}${extra.graded ? ', teren wyrównany' : ''}</span>` : '',
     ].join('');
     if (extra && !draft) {
-      this.actions.innerHTML = `<button type="button" class="toggle-closed">${extra.closed ? 'Otwórz trasę' : 'Zamknij trasę'}</button> <button type="button" class="toggle-graded">${extra.graded ? 'Bez wyrównania terenu' : 'Wyrównaj teren'}</button> <span class="muted">Na mapie: przeciągnij punkt osi (kółko) lub szerokość (kwadrat) · „+” – nowy punkt · prawy przycisk / Delete – usuń punkt</span>`;
+      this.actions.innerHTML = `<button type="button" class="toggle-closed">${extra.closed ? 'Otwórz trasę' : 'Zamknij trasę'}</button> <button type="button" class="toggle-graded">${extra.graded ? 'Bez wyrównania terenu' : 'Wyrównaj teren'}</button> <span class="muted">Na mapie: przeciągnij punkt kontrolny (kółko) lub szerokość (kwadrat) · przeciągnięcie odcinka – nowy punkt · prawy przycisk / Delete – usuń punkt · gładkość – w karcie trasy</span>`;
       this.actions.querySelector('.toggle-closed')!.addEventListener('click', () => this.cb.onToggleClosed());
       this.actions.querySelector('.toggle-graded')!.addEventListener('click', () => this.cb.onToggleGraded());
     } else this.actions.innerHTML = '';

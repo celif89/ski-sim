@@ -506,6 +506,46 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
   - testy: `tests/summer.test.ts` (kalendarz, burze, orczyk latem nie wozi, kanapa w obie strony,
     wieszaki, burza zatrzymuje kolej i tor, deszczowy weekend mniej gości, przegląd, parkingi, pełny
     rok zima + lato), `tests/objectCards.test.ts`.
+- **Etap 7c – zrobiony** (listopad 2026): nowy interfejs gry i prostsza edycja tras.
+  - makiety `docs/ui/` (ui-1-mapa, ui-2-karty, ui-3-raport: PNG + HTML – źródło kolorów, rozmiarów,
+    czcionek), zrzuty gry w tych samych sytuacjach i lista funkcji „gdzie co teraz jest”:
+    `docs/ui/porownanie/` (README.md);
+  - zasady wyglądu – sekcja „Ustalenia rozgrywki” (obowiązujące); `src/render/style.css` napisany od
+    nowa (ciemne panele, tokeny kolorów), czcionki `@fontsource` (Barlow 400–700, Barlow Condensed
+    500–700), ikony `src/render/ui/icons.ts` (także rysunki kart palety), bez emoji;
+  - `src/render/ui/`: `shell.ts` (kontener `#ui` ze skalą CSS zoom – automatycznie wg szerokości okna
+    albo z menu, podpowiedzi `data-tip` ze skrótem, fokus), `dataViews.ts` (lewy pasek widoków danych:
+    grupy nakładek z zakładkami, legenda obok aktywnego przycisku, mapa topograficzna / sieć / OSM),
+    `notifications.ts` (powiadomienia z ikoną stanu, godziną, jednym zdaniem i skokiem kamery; historia
+    w menu; reguły w main.ts: dziennik gry, kolejki ≥ 10 min, pełny parking z modelu dnia, odwilż
+    w prognozie, za mało śniegu), `gameMenu.ts` (menu ☰, panel boczny na dotychczasowe panele – jeden
+    naraz: Finanse, Goście, Naśnieżanie, Obiekty ośrodka; okno historii, skrótów, skali), `minimap.ts`
+    (teren, las, śnieg, trasy, wyciągi, prostokąt widoku, klik przesuwa kamerę, obrót, zoom),
+    `reportWindow.ts` (raport dzień / tydzień / sezon: 5 kafelków, goście na stoku w ciągu dnia –
+    z symulacji gości albo z modelu, „co mówią goście”, skąd pieniądze / na co poszły, wyciągi,
+    doradca), `advisor.ts` (reguły: wąskie gardło wyciągu, pełny parking, kuchnia, brak śniegu, brak
+    tras dla początkujących, niska ocena – zdanie + przycisk akcji);
+  - `topBar.ts` (nazwa, sezon, saldo ze zmianą, goście dziś / na stoku, reputacja z gwiazdkami, cena
+    karnetu, data i zegar, czas, pogoda góra/dół, baza śniegu, wiatr, prognoza 4 dni, menu),
+    `buildBar.ts` (kategorie i paleta kart z ceną i blokadą), `objectCardView.ts` (nagłówek z ikoną,
+    zakładki, liczba stanu z paskiem, kafelki, wykres godzinowy – szare słupki prognozy, sugestia,
+    akcje, suwak „Gładkość”), karta gościa w `guestPanels.ts` (imię i wiek z numeru gościa – tylko
+    widok, potrzeby, „co myśli”, wydatek na karnet, śledzenie kamerą);
+  - dane tylko do wyświetlania w `src/sim`: `ObjectCard.headline / tiles / note`, `chart.forecast`
+    (objectCards.ts), `GameState.recentFlows` (7 dni – raport tygodnia), `ctrl` i `smooth` w trasach,
+    drogach, rurociągach i trasach letnich (zapis układu, `parseLayout`);
+  - rysowanie linii (`src/render/lineTools.ts`, parametry `data/ui.json` sekcja `lines`): ślad ręki
+    uśredniany wzdłuż linii, punkty kontrolne dokładane tam, gdzie gładki łuk odbiega najbardziej
+    (Douglas–Peucker liczony względem łuku), odchyłka < tolerancji (4 m albo 3 px), potem usuwanie
+    punktów bliżej niż 40 m (zostają na zakrętach ≥ 35°); łuk Catmull–Rom w wariancie dośrodkowym,
+    gładkość 0–1 (0 – łamana); `points` w układzie = gęsty przebieg co 8 m (symulacja bez zmian);
+    tryb „ręką / punktami” (klawisz O, paleta) dla tras, nartostrad, dróg, rurociągów i tras letnich;
+    uchwyty tylko przy zaznaczonym obiekcie, przeciągnięcie odcinka wstawia punkt, prawy przycisk /
+    Delete usuwa; starsze zapisy: łamana ≤ 12 punktów zostaje (gładkość 0), gęstsza – upraszczana;
+  - testy: `tests/lineTools.test.ts` (300 próbek ręki → 12–13 punktów, odchyłka 2–3 m przy tolerancji
+    4 m; drżenie co próbkę; serpentyna; łuk przez punkty; gładkość 0 = łamana), `tests/advisor.test.ts`
+    (reguły doradcy, skala automatyczna 1366/1920/2560 px);
+  - pomiar: rysowanie 300 próbek 0,4 s, uproszczenie po puszczeniu ok. 0,2 s (kontener, 1 wątek).
 - **Następny: etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja.**
 
 Uwagi techniczne:
@@ -567,6 +607,13 @@ Uwagi techniczne:
   wielodniowych śnieżyc; pierwszy śnieg ok. 1–2 tygodnie za wcześnie (ok. 31 X wobec 10–20 XI);
   słabych zim nieco za mało (10 % najsłabszych: do 59 dni wobec 53).
 
+- Interfejs (7c): makieta zakłada „Rozbuduj parking o 120 miejsc”, „Zatrudnij kucharza”, menu
+  potraw, oceny jedzenia/cen/czekania – w symulacji tego nie ma (karta proponuje kolejny budynek);
+  opinie gości i tabela wyciągów w raporcie tylko z dni oglądanych na żywo (dni przewinięte – model);
+  wąskie gardło z modelu dla dni przewiniętych; paleta – blokady tylko atrakcji letnich (wyciągi bez
+  progów reputacji); minimapa bez odświeżania śniegu w ciągu doby; brak przeciągania punktów linii
+  w trakcie rysowania punktami (dopiero po zakończeniu).
+
 ## Na później
 
 - Lato (7b): popyt letni, udziały typów gości, ceny i koszty atrakcji do kalibracji (frekwencja Pilska,
@@ -617,10 +664,23 @@ Uwagi techniczne:
 - Jeden ośrodek naraz; nowa lokalizacja = nowa rozgrywka.
 - Pozwolenia środowiskowe pomijamy. Wycinka kosztuje i trwa.
 - Sezon letni (etap 7b): od maja do października, gracz otwiera i zamyka; dni jak zimą.
-- Grafika 2D z góry. **Styl obowiązujący: A – „ilustrowana mapa narciarska”** (od etapu 4b):
+- Grafika 2D z góry. **Mapa: styl A – „ilustrowana mapa narciarska”** (od etapu 4b):
   biały śnieg z niebieskawym cieniowaniem rzeźby, świerki rysowane z boku, trasy jako kolorowe
-  linie z białą obwódką, wyciąg jako ciemna linia z podporami i stacjami, etykiety z białą obwódką,
-  jasne zaokrąglone panele, czcionka Barlow / Barlow Condensed. Nowe elementy (goście, ratraki,
-  armatki, budynki) rysować w tym stylu: widok z góry z cieniem w prawo w dół ekranu, ikony
-  z boku tylko dla drzew; obiekty ruchome przez `MoverLayer`. Mapa topograficzna zostaje jako
-  nakładka.
+  linie z białą obwódką, wyciąg jako ciemna linia z podporami i stacjami, etykiety z białą obwódką.
+  Nowe elementy (goście, ratraki, armatki, budynki) rysować w tym stylu: widok z góry z cieniem
+  w prawo w dół ekranu, ikony z boku tylko dla drzew; obiekty ruchome przez `MoverLayer`. Mapa
+  topograficzna zostaje jako widok danych.
+- **Interfejs – zasady wyglądu obowiązujące od etapu 7c** (makiety i ich HTML w `docs/ui/` – źródło
+  dokładnych kolorów, rozmiarów i czcionek; style w `src/render/style.css`):
+  - panele ciemnogranatowe półprzezroczyste `rgba(20,31,43,0.92–0.94)` z rozmyciem tła (blur 14 px),
+    obramowanie `rgba(255,255,255,0.09)`, zaokrąglenie 14 px (karty) / 10 px (przyciski);
+  - tekst `#EEF3F8`, drugorzędny `#9DB0C3`; **jeden kolor akcentu: pomarańcz siatek
+    zabezpieczających `#FF7A1A`** – tylko zaznaczenie, aktywne narzędzie i główny przycisk; stany:
+    dobrze `#5FD39A`, uwaga `#F5C542`, źle `#FF6B6B`, woda i śnieg `#7CC4F2`;
+  - czcionki Barlow (tekst) i Barlow Condensed (liczby, nagłówki), cyfry tabelaryczne; wgrane
+    lokalnie (`@fontsource`), bez Google Fonts – gra działa offline i na Macu;
+  - ikony: jeden zestaw liniowych ikon SVG (`src/render/ui/icons.ts`, grubość 1,7–1,9), bez emoji;
+  - bez gradientów i cieni pod każdą kartą (cień tylko pod oknami: raport, dialogi); teksty krótkie,
+    zdaniami, bez wielkich liter w etykietach;
+  - każdy przycisk ma podpowiedź (`data-tip`, skrót w `data-key`), widoczne obramowanie fokusu
+    (Tab); cały interfejs w kontenerze `#ui` ze skalą (`--ui-scale`, menu → Skala interfejsu).

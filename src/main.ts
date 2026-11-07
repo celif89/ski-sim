@@ -8,6 +8,7 @@ import '@fontsource/barlow/400.css';
 import '@fontsource/barlow/500.css';
 import '@fontsource/barlow/600.css';
 import '@fontsource/barlow/700.css';
+import '@fontsource/barlow-condensed/500.css';
 import '@fontsource/barlow-condensed/600.css';
 import '@fontsource/barlow-condensed/700.css';
 import mapStyleJson from '../data/map-style.json';
@@ -95,10 +96,27 @@ import type { TipContent } from './render/cursorTip';
 import { MapInput } from './render/input';
 import { parseMapStyle } from './render/mapStyle';
 import { TopBar, type GameSpeed, type SnowAtPoints } from './render/topBar';
-import { BuildBar, MapNav } from './render/buildBar';
+import { BuildBar } from './render/buildBar';
+import type { BuildCategory, PaletteCard } from './render/buildBar';
+import uiJson from '../data/ui.json';
+import { UiShell, parseScaleParams } from './render/ui/shell';
+import { DataViews } from './render/ui/dataViews';
+import { Notifications, parseNoticeParams } from './render/ui/notifications';
+import type { Notice } from './render/ui/notifications';
+import { Drawer, GameMenu, UiWindow, shortcutsHtml } from './render/ui/gameMenu';
+import { Minimap } from './render/ui/minimap';
+import { ReportWindow } from './render/ui/reportWindow';
+import { parseAdvisorParams } from './render/ui/advisor';
+import { parseLineParams } from './render/lineTools';
+import { formatHour } from './render/timePanel';
+import { reputationOf, sumCosts, sumRevenue } from './sim/economy';
+import { presenceProfile, parkingProfiles } from './sim/objectCards';
+import { summerReputationOf } from './sim/summer';
+import type { GuestDayReport } from './sim/guests';
+import { formatIsoDate } from './sim/time';
 import { createAspectOverlayCanvas, createSlopeOverlayCanvas } from './render/overlays';
 import type { OverlayKind } from './render/overlays';
-import { Legend, OVERLAY_KEYS, Toolbar, WET_BULB_COLORS } from './render/panels';
+import { OVERLAY_KEYS, WET_BULB_COLORS } from './render/panels';
 import { ProfileTool } from './render/profileTool';
 import { TimePanel } from './render/timePanel';
 import type { TimeChange } from './render/timePanel';
@@ -170,7 +188,7 @@ async function start(): Promise<void> {
     const terrainPromise = sim.prepareTerrain(request);
     await app.init({
       resizeTo: root,
-      background: '#d5dde6',
+      background: '#3b4856',
       antialias: false,
       autoDensity: true,
       resolution: window.devicePixelRatio || 1,
@@ -237,11 +255,43 @@ async function start(): Promise<void> {
     const camera = new Camera(grid.widthM, grid.heightM, viewSettings.minMetersPerPixel, app.screen.width, app.screen.height);
     camera.rotated = viewSettings.rotatedByDefault;
     const input = new MapInput(app.canvas, camera, viewSettings);
-    const hud = new Hud(document.body, viewSettings.scaleBarMaxWidthPx, style.flatSlopePercent);
-    const rightColumn = document.createElement('div');
-    rightColumn.className = 'right-column';
-    document.body.appendChild(rightColumn);
-    const legend = new Legend(rightColumn, slopeClasses, style.flatSlopePercent, parsePisteParams(pistesJson).classes.map((c) => ({ name: c.name, color: c.color })));
+    // ---------------------------------------------------------------- interfejs (etap 7c)
+    // Jedna warstwa #ui ze skalą; panele ciemne półprzezroczyste (zasady wyglądu w CLAUDE.md).
+    const shell = new UiShell(parseScaleParams(uiJson));
+    const ui = shell.root;
+    const hud = new Hud(ui, viewSettings.scaleBarMaxWidthPx, style.flatSlopePercent);
+    const noticeParams = parseNoticeParams(uiJson);
+    const lineParams = parseLineParams(uiJson);
+    const drawer = new Drawer(ui);
+    const slotFinance = drawer.slot('finance', 'Finanse', 'Finanse, cennik, kredyt i zapis gry – po rozpoczęciu gry (menu → Nowa gra).');
+    const slotGuests = drawer.slot('guests', 'Goście i wyciągi');
+    const slotSnow = drawer.slot('snow', 'Naśnieżanie i ratraki', 'Naśnieżanie i ratraki – po rozpoczęciu gry.');
+    const slotObjects = drawer.slot('objects', 'Obiekty ośrodka');
+    const pisteClassesLegend = parsePisteParams(pistesJson).classes.map((c) => ({ name: c.name, color: c.color }));
+    const cursorTip = new CursorTip(document.body);
+    let topoOn = false;
+    const dataViews = new DataViews(ui, slopeClasses, style.flatSlopePercent, pisteClassesLegend, {
+      onOverlay: (kind) => setOverlay(kind),
+      onProfile: () => {
+        if (!profile.active) build.setTool('select');
+        profile.toggle();
+      },
+      onTip: () => {
+        cursorTip.setEnabled(!cursorTip.enabled);
+        dataViews.setTipActive(cursorTip.enabled);
+      },
+      onTopo: (on) => {
+        topoOn = on;
+        showTopo(topoOn);
+      },
+      onNetwork: () => build.toggleNetwork(),
+      onReality: () => build.toggleReality(),
+    });
+    const legend = dataViews.legend;
+    dataViews.setTipActive(cursorTip.enabled);
+    const notices = new Notifications(ui, noticeParams);
+    dataViews.onLegendVisible = (v) => notices.setOffset(v);
+    notices.onJump = (at) => camera.centerOn(at.xM, at.yM);
 
     // ---------------------------------------------------------------- nakładki
     const staticTextures = new Map<OverlayKind, Texture>();
@@ -269,58 +319,17 @@ async function start(): Promise<void> {
     const fmtDate = (d: CalendarDate) => `${d.day}.${String(d.month).padStart(2, '0')}.${d.year}`;
     const sameDate = (a: CalendarDate, b: CalendarDate) => a.year === b.year && a.month === b.month && a.day === b.day;
 
-    // Interfejs w stylu A: górny pasek (czas, pogoda, prędkość), dolny pasek budowy, róża kierunków.
+    // Górny pasek (czas, saldo, goście, pogoda, prognoza, menu).
     let gameSpeed: GameSpeed = 0;
-    const topBar = new TopBar(document.body, { onSpeed: (sp) => setGameSpeed(sp) });
-    const buildBar = new BuildBar(document.body, {
-      onTool: (tool) => {
-        if (tool !== 'select') profile.setActive(false);
-        build.setTool(tool);
-      },
-      onInfo: (text) => buildBar.showToast(text),
+    const topBar = new TopBar(ui, {
+      onSpeed: (sp) => setGameSpeed(sp),
+      onMenu: () => gameMenu.toggle(),
+      onFinance: () => drawer.toggle('finance'),
+      onGuests: () => drawer.toggle('guests'),
+      onPrices: () => (game?.state ? game.showPrices() : drawer.show('finance')),
+      onSnow: () => drawer.toggle('snow'),
     });
-    const mapNav = new MapNav(document.body, {
-      onRotate: () => {
-        camera.toggleRotation();
-        mapNav.setRotated(camera.rotated);
-      },
-      onZoom: (f) => camera.zoomAt(camera.viewportWidthPx / 2, camera.viewportHeightPx / 2, f),
-    });
-    mapNav.setRotated(camera.rotated);
-    const cursorTip = new CursorTip(document.body);
-    const toolbar = new Toolbar(buildBar.layersPop, {
-      onTip: () => {
-        cursorTip.setEnabled(!cursorTip.enabled);
-        toolbar.setTipActive(cursorTip.enabled);
-      },
-      onOverlay: (kind) => setOverlay(kind),
-      onProfileTool: () => {
-        if (!profile.active) build.setTool('select');
-        profile.toggle();
-      },
-    });
-    toolbar.setTipActive(cursorTip.enabled);
-    let topoOn = false;
-    const layerExtras = document.createElement('div');
-    layerExtras.className = 'a-layers-extra';
-    layerExtras.innerHTML = `
-      <button type="button" data-l="topo" title="Dawna mapa topograficzna: warstwice co 10 m, barwy wysokości, opisy">Mapa topograficzna</button>
-      <button type="button" data-l="net" title="Strzałki kierunku zjazdu, numery, połączenia (klawisz N)"><kbd>N</kbd> Sieć tras</button>
-      <button type="button" data-l="real" title="Prawdziwe wyciągi i trasy Pilska z OpenStreetMap (klawisz R)"><kbd>R</kbd> Prawdziwy ośrodek</button>`;
-    buildBar.layersPop.prepend(Object.assign(document.createElement('div'), { className: 'a-pop-title', textContent: 'Nakładki' }));
-    buildBar.layersPop.appendChild(layerExtras);
-    const layerBtn = (k: string) => layerExtras.querySelector<HTMLButtonElement>(`[data-l="${k}"]`)!;
-    layerBtn('topo').addEventListener('click', () => {
-      topoOn = !topoOn;
-      showTopo(topoOn);
-    });
-    layerBtn('net').addEventListener('click', () => build.toggleNetwork());
-    layerBtn('real').addEventListener('click', () => build.toggleReality());
-    const refreshLayerButtons = () => {
-      layerBtn('topo').classList.toggle('active', topoOn);
-      layerBtn('net').classList.toggle('active', build.networkShown);
-      layerBtn('real').classList.toggle('active', build.realityShown);
-    };
+    topBar.setThawThreshold(noticeParams.thawWarnC);
 
     // Gra (etap 6) – tworzona niżej, gdy gotowe są budowa i goście.
     let game: GameController | null = null;
@@ -345,8 +354,8 @@ async function start(): Promise<void> {
       }
     }
     setGameSpeed(0);
-    const profile = new ProfileTool(screenLayer, document.body, grid, camera, slopeClasses, (active) => {
-      toolbar.setProfileActive(active);
+    const profile = new ProfileTool(screenLayer, ui, grid, camera, slopeClasses, (active) => {
+      dataViews.setProfileActive(active);
       app.canvas.classList.toggle('tool-profile', active);
     });
 
@@ -369,13 +378,19 @@ async function start(): Promise<void> {
     let onCardSelect: (sel: { kind: string; id: string } | null) => void = () => {};
     // Ostrzeżenia „za mało śniegu” → panel gości (ustawiane niżej, gdy kontroler gości gotowy).
     let onSnowWarnings: (w: SnowWarning[]) => void = () => {};
+    // Dolne menu budowy – tworzone niżej (po kontrolerze budowy); wywołania zwrotne do tego czasu nic nie robią.
+    let buildBar: BuildBar = null as unknown as BuildBar;
+    const cardSelRef: { close: (() => void) | null } = { close: null };
     const build = new BuildController({
       grid,
       camera,
       world,
       screenLayer,
-      panelParent: rightColumn,
-      profileParent: document.body,
+      panelParent: slotObjects,
+      profileParent: ui,
+      lines: lineParams,
+      onMessage: (text) => buildBar?.showToast(text),
+      onState: () => buildBar?.setState(build.barState),
       liftParams,
       pisteParams: parsePisteParams(pistesJson),
       clearing: parseConstructionParams(constructionJson).clearing,
@@ -403,6 +418,7 @@ async function start(): Promise<void> {
       borderLinesLocal,
       onLandCover: (f, sh) => onLandCoverChange(f, sh),
       onLayoutChange: (layout, analysis) => {
+        if (buildBar) refreshMinimapLayout();
         terrain.setLayout(layout, new Map([...analysis.pistes].map(([id, a]) => [id, a.axis.filter((x) => !Number.isNaN(x.elevationM))])), liftParams);
         if (game?.state) game.onLayoutChange(layout, analysis);
         else onGuestLayout(layout, analysis);
@@ -410,11 +426,222 @@ async function start(): Promise<void> {
         if (overlay === 'ground') refreshField();
       },
       onToolChange: (tool) => {
-        buildBar.setTool(tool);
+        if (tool === 'select' && buildBar?.openCategory && buildBar.openCategory !== 'reports' && buildBar.openCategory !== 'clearing') buildBar.close();
+        buildBar?.setState(build.barState);
+        if (tool !== 'select' && cardSelRef.close) cardSelRef.close();
         app.canvas.classList.toggle('tool-build', tool !== 'select');
         if (tool !== 'select') profile.setActive(false);
       },
     });
+
+
+    // ---------------------------------------------------------------- dolne menu budowy (etap 7c)
+    const mln = (v: number) => (v >= 1e6 ? `${(v / 1e6).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} mln zł` : `${Math.round(v / 1000).toLocaleString('pl-PL')} tys. zł`);
+    const LIFT_ART: Record<string, string> = { tasma: 'carpet', talerzyk: 'platter', orczyk: 'tbar', kanapa2s: 'chair2', kanapa4s: 'chair4', kanapa4d: 'chair4', kanapa6d: 'chair6', gondola: 'gondola' };
+    const SNOW_ART: Record<string, string> = { intake: 'supply', mains: 'pipeline', well: 'tank', catchment: 'supply', reservoir: 'tank', pump: 'pipeline', grid: 'building', garage: 'building', anchor: 'info' };
+    const SNOW_UNIT: Record<string, string> = { intake: 'm³/h', mains: 'm³/h', well: 'm głębokości', catchment: 'm² zlewni', reservoir: 'm³', pump: 'm³/h', grid: 'kW', garage: 'ratraki', anchor: 'm liny' };
+    const f0n = (v: number) => Math.round(v).toLocaleString('pl-PL');
+    const buildingCard = (id: string, name: string, art: string, param: string, costPln: number, lockKey?: string): PaletteCard => ({ id: `b-${id}`, art, name, param, price: mln(costPln), tool: 'base', sub: { kind: 'building', id }, key: 'B', ...(lockKey ? { lockKey } : {}) });
+    const categories: BuildCategory[] = [
+      {
+        id: 'lifts',
+        label: 'Wyciągi',
+        icon: 'lift',
+        key: 'L',
+        tip: 'Wyciągi i koleje: kliknij dolną stację, potem górną',
+        cards: liftParams.types.map((t) => ({
+          id: `l-${t.id}`,
+          art: LIFT_ART[t.id] ?? 'chair4',
+          name: t.name.replace(' (stałe chwytaki)', '').replace('Wyciąg ', '').replace(/^./, (c) => c.toUpperCase()),
+          param: `${f0n(t.capacityPerHour)} os./h`,
+          price: `1 km ≈ ${mln(t.stationCostPln + 1000 * t.costPerMeterPln + Math.ceil(1000 / t.maxSpanM) * t.towerCostPln)}`,
+          tool: 'lift' as const,
+          sub: { kind: 'lift' as const, id: t.id },
+          key: 'L',
+          tip: `${t.name}: ${f0n(t.capacityPerHour)} os./h, ${t.speedMs.toLocaleString('pl-PL')} m/s; cena orientacyjna dla 1 km (stacje, lina, podpory)`,
+        })),
+      },
+      {
+        id: 'pistes',
+        label: 'Trasy',
+        icon: 'piste',
+        key: 'T',
+        tip: 'Trasy narciarskie: rysuj ręką albo klikaj punkty (O przełącza)',
+        options: ['draw', 'width', 'grade'],
+        cards: [
+          { id: 'piste', art: 'piste', name: 'Trasa narciarska', param: 'klasa z nachylenia', price: `${parsePisteParams(pistesJson).gradingCostPlnPerM2} zł/m² + wycinka`, tool: 'pisteBrush', key: 'T', tip: 'Trasa: przeciągnij myszą z góry na dół (albo klikaj punkty). Linia sama się uprości i wygładzi.' },
+          { id: 'catwalk', art: 'catwalk', name: 'Nartostrada', param: `${parsePisteParams(pistesJson).catwalkWidthM} m, do ${parsePisteParams(pistesJson).catwalkMaxSlopePercent} %`, price: 'łatwy łącznik', tool: 'catwalk', key: 'U', tip: 'Wąski, łagodny łącznik między trasami i wyciągami' },
+        ],
+      },
+      {
+        id: 'snow',
+        label: 'Naśnieżanie',
+        icon: 'snow',
+        key: 'H',
+        tip: 'Rurociąg z hydrantami, armatki, woda, zbiorniki, pompownie, przyłącza, ratraki',
+        options: ['draw'],
+        cards: [
+          { id: 'pipe', art: 'pipeline', name: 'Rurociąg', param: `hydrant co ${snowmakingParams.pipe.hydrantSpacingM} m`, price: `${f0n(snowmakingParams.pipe.costPlnPerM)} zł/m`, tool: 'pipeline', key: 'H', tip: 'Od pompowni wzdłuż trasy; wykop tylko latem (V–X)' },
+          { id: 'supply', art: 'supply', name: 'Rura zasilająca', param: 'źródło → zbiornik', price: `${f0n(snowmakingParams.pipe.supplyCostPlnPerM)} zł/m`, tool: 'supply', key: 'F', tip: 'Od ujęcia, studni albo wodociągu do zbiornika' },
+          ...snowmakingParams.guns.map((g) => ({ id: `g-${g.id}`, art: g.movable ? 'fan' : 'lance', name: g.name, param: `od ${g.curveWetBulbC[0].toLocaleString('pl-PL')} °C (temp. mokra)`, price: mln(g.costPln), tool: 'gun' as const, sub: { kind: 'gun' as const, id: g.id }, key: 'J', tip: `${g.name}: kliknij hydrant na rurociągu` })),
+          ...snowmakingParams.buildings.map((b) => buildingCard(b.id, b.name, SNOW_ART[b.kind] ?? 'building', `${f0n(b.capacity)} ${SNOW_UNIT[b.kind] ?? ''}${b.summerOnly ? ', budowa V–X' : ''}`, b.costPln)),
+        ],
+      },
+      {
+        id: 'roads',
+        label: 'Drogi',
+        icon: 'road',
+        key: 'E',
+        tip: 'Droga dojazdowa do parkingu – od drogi publicznej',
+        options: ['draw'],
+        cards: [{ id: 'road', art: 'road', name: 'Droga dojazdowa', param: `do ${roadParams.maxSlopePercent} %, zimą odśnieżanie`, price: `${f0n(roadParams.costPlnPerM)} zł/m`, tool: 'road', key: 'E', tip: 'Od drogi publicznej (szarej) albo innej drogi do parkingu' }],
+      },
+      {
+        id: 'buildings',
+        label: 'Budynki',
+        icon: 'home',
+        key: 'B',
+        tip: 'Parking, gastronomia, wypożyczalnia, szkółka, transport do schroniska',
+        cards: economyParams.buildings.map((b) => buildingCard(b.id, b.name, b.base ? 'parking' : b.id === 'gastronomy' ? 'food' : 'building', b.base ? `${f0n(b.cars)} aut` : `${f0n(b.capacityPerDay)} os./dzień`, b.costPln)),
+      },
+      {
+        id: 'summer',
+        label: 'Lato',
+        icon: 'sun',
+        key: 'X',
+        tip: 'Atrakcje letnie: bike park, ścieżki, tor saneczkowy, plac zabaw, punkt widokowy',
+        options: ['draw'],
+        cards: [
+          { id: 'bike', art: 'bike', name: 'Trasa rowerowa', param: 'trudność z nachylenia', price: `${f0n(summerParams.bike.buildPlnPerM)} zł/m`, tool: 'bikeTrail', key: 'X', lockKey: 'bike', tip: 'Od górnej stacji kolei z wieszakami w dół' },
+          { id: 'walk', art: 'walk', name: 'Ścieżka spacerowa', param: 'łączy szlaki i stacje', price: `${f0n(summerParams.walk.buildPlnPerM)} zł/m`, tool: 'walkTrail', key: 'Q', lockKey: 'walk' },
+          { id: 'toboggan', art: 'toboggan', name: 'Tor saneczkowy', param: `${summerParams.toboggan.minSlopePercent}–${summerParams.toboggan.maxSlopePercent} %, cały rok`, price: `od ${mln(summerParams.toboggan.fixedCostPln)}`, tool: 'toboggan', key: 'C', lockKey: 'toboggan' },
+          ...summerParams.buildings.map((b) => buildingCard(b.id, b.name, b.id === 'playground' ? 'playground' : 'view', `${f0n(b.capacity)} os.`, b.costPln, b.id)),
+        ],
+      },
+      {
+        id: 'clearing',
+        label: 'Wycinka',
+        icon: 'tree',
+        tip: 'Wycinka lasu – liczona sama pod wyciągami i trasami',
+        cards: [{ id: 'clear', art: 'tree', name: 'Wycinka pod budowę', param: 'sama pod wyciągami i trasami', price: 'w koszcie obiektu', disabled: 'Wycinka jest liczona sama pod wyciągami i trasami (przecinki widać na mapie). Ręczna wycinka – później.' }],
+      },
+      {
+        id: 'demolish',
+        label: 'Rozbiórka',
+        icon: 'trash',
+        sep: true,
+        tip: 'Rozbiórka: kliknij obiekt na mapie',
+        cards: [{ id: 'demolish', art: 'info', name: 'Rozbierz obiekt', param: 'kliknij obiekt na mapie', price: 'część kosztu przepada', tool: 'demolish', key: 'Delete', tip: 'Kliknij wyciąg, trasę, budynek, rurociąg albo drogę. Zaznaczony obiekt usuwa też klawisz Delete.' }],
+      },
+      {
+        id: 'reports',
+        label: 'Raporty',
+        icon: 'chart',
+        tip: 'Raport dnia, tygodnia i sezonu z doradcą',
+        cards: [
+          { id: 'rDay', art: 'info', name: 'Raport dnia', param: 'goście, pieniądze, wyciągi', price: 'z doradcą', action: 'report:day' },
+          { id: 'rWeek', art: 'info', name: 'Raport tygodnia', param: '7 ostatnich dni', price: 'z doradcą', action: 'report:week' },
+          { id: 'rSeason', art: 'info', name: 'Raport sezonu', param: 'rok gry od 1 maja', price: 'z doradcą', action: 'report:season' },
+          { id: 'rFin', art: 'info', name: 'Finanse', param: 'saldo, kredyt, zapis', price: 'panel', action: 'drawer:finance' },
+          { id: 'rObj', art: 'info', name: 'Obiekty ośrodka', param: 'lista, sieć tras, plik układu', price: 'panel', action: 'drawer:objects' },
+        ],
+      },
+    ];
+    buildBar = new BuildBar(ui, categories, {
+      onCard: (k) => {
+        profile.setActive(false);
+        if (k.sub?.kind === 'lift') build.setLiftType(k.sub.id);
+        else if (k.sub?.kind === 'building') build.setBuildingType(k.sub.id);
+        else if (k.sub?.kind === 'gun') build.setGunType(k.sub.id);
+        else if (k.tool) build.setTool(k.tool);
+      },
+      onClose: () => build.setTool('select'),
+      onAction: (a) => uiAction(a),
+      onDrawMode: (m) => build.setDrawMode(m),
+      onWidth: (w) => build.setWidth(w),
+      onGradeNew: (on) => build.setGradeNew(on),
+      onUndo: () => build.undoLast(),
+      onRedo: () => build.redoLast(),
+      lockReason: (key) => game?.lockReason(key as 'bike') ?? null,
+    });
+    buildBar.setState(build.barState);
+
+    // ---------------------------------------------------------------- minimapa, menu, okna (etap 7c)
+    const minimap = new Minimap(ui, grid, hillshade, landCover?.forest ?? null, camera, {
+      onRotate: () => camera.toggleRotation(),
+      onZoom: (f) => camera.zoomAt(camera.viewportWidthPx / 2, camera.viewportHeightPx / 2, f),
+    });
+    minimap.setPisteColors(pisteClassesLegend.map((c) => c.color));
+    const refreshMinimapLayout = () => minimap.setLayout(build.current.layout, (id) => build.current.analysis.pistes.get(id)?.classIndex ?? 1);
+    refreshMinimapLayout();
+    const infoWindow = new UiWindow(ui);
+    const loadInput = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json' });
+    loadInput.addEventListener('change', () => {
+      if (loadInput.files?.[0]) void game?.loadFile(loadInput.files[0]);
+      loadInput.value = '';
+    });
+    const scaleHtml = () =>
+      `<p class="muted">Skala paneli, przycisków i napisów. „Automatycznie” – według szerokości okna (1366 px → ok. 75 %, 1920 px → 100 %, 2560 px → ok. 130 %).</p><div class="u-seg big u-scale-opts">${['auto', ...shell.scaleOptions]
+        .map((o) => `<button type="button" data-scale="${o}" class="${String(shell.scaleChoice) === String(o) ? 'active' : ''}">${o === 'auto' ? `Automatycznie (${Math.round(shell.scale * 100)} %)` : `${Math.round(Number(o) * 100)} %`}</button>`)
+        .join('')}</div>`;
+    infoWindow.body.addEventListener('click', (e) => {
+      const t = e.target as HTMLElement;
+      const sc = t.closest<HTMLElement>('[data-scale]')?.dataset.scale;
+      if (sc) {
+        shell.setScale(sc === 'auto' ? 'auto' : Number(sc));
+        infoWindow.body.innerHTML = scaleHtml();
+        return;
+      }
+      const h = t.closest<HTMLElement>('[data-h]');
+      if (h) {
+        const n = notices.history[Number(h.dataset.h)];
+        if (n?.at) {
+          infoWindow.hide();
+          camera.centerOn(n.at.xM, n.at.yM);
+        }
+      }
+    });
+    const gameMenu = new GameMenu(
+      ui,
+      [
+        { id: 'report', icon: 'chart', label: 'Raporty (dzień, tydzień, sezon)' },
+        { id: 'finance', icon: 'coins', label: 'Finanse i kredyt' },
+        { id: 'prices', icon: 'tag', label: 'Cennik i godziny' },
+        { id: 'guests', icon: 'people', label: 'Goście i wyciągi' },
+        { id: 'snow', icon: 'snow', label: 'Naśnieżanie i ratraki' },
+        { id: 'objects', icon: 'layers', label: 'Obiekty ośrodka i plik układu' },
+        { id: 'history', icon: 'bell', label: 'Historia powiadomień', sep: true },
+        { id: 'save', icon: 'save', label: 'Zapisz grę do pliku', sep: true },
+        { id: 'load', icon: 'folder', label: 'Wczytaj grę z pliku' },
+        { id: 'new', icon: 'play', label: 'Nowa gra' },
+        { id: 'scale', icon: 'settings', label: 'Skala interfejsu', sep: true },
+        { id: 'keys', icon: 'info', label: 'Skróty klawiszowe' },
+        { id: 'dev', icon: 'wrench', label: 'Menu deweloperskie', key: '`' },
+      ],
+      (id) => uiAction(`menu:${id}`),
+    );
+    const guestReports = new Map<string, GuestDayReport>();
+    const openBuild = (id: string) => {
+      if (buildBar.openCategory !== id) buildBar.toggleCategory(id);
+    };
+    /** Akcje z menu, palety, raportu i doradcy. */
+    function uiAction(a: string): void {
+      const [kind, arg] = a.split(':');
+      if (kind === 'report') reportWindow.show(arg as 'day' | 'week' | 'season');
+      else if (kind === 'drawer') drawer.show(arg);
+      else if (kind === 'menu') {
+        if (arg === 'report') reportWindow.show('day');
+        else if (arg === 'finance' || arg === 'guests' || arg === 'snow' || arg === 'objects') drawer.show(arg);
+        else if (arg === 'prices') (game?.state ? game.showPrices() : drawer.show('finance'));
+        else if (arg === 'history') infoWindow.show('Historia powiadomień', notices.historyHtml());
+        else if (arg === 'save') (game?.state ? game.saveFile() : buildBar.showToast('Najpierw zacznij grę (menu → Nowa gra).'));
+        else if (arg === 'load') loadInput.click();
+        else if (arg === 'new') void game?.showStart();
+        else if (arg === 'scale') infoWindow.show('Skala interfejsu', scaleHtml());
+        else if (arg === 'keys') infoWindow.show('Skróty klawiszowe', shortcutsHtml());
+        else if (arg === 'dev') devMenu.toggle();
+      }
+    }
 
     function refreshField(): void {
       if (!isField(overlay)) return;
@@ -540,8 +767,7 @@ async function start(): Promise<void> {
         fitToMap(overlaySprite);
         overlaySprite.visible = true;
       }
-      toolbar.setOverlay(kind);
-      legend.show(kind);
+      dataViews.setOverlay(kind);
     }
     setOverlay('none');
 
@@ -626,6 +852,7 @@ async function start(): Promise<void> {
           build.setSnow(m.sweMm);
           sendGuestSnow();
           terrain.setSnow(m.depthCm, m.quality, m.moguls);
+          minimap.setSnow(m.depthCm, false);
           if (lastState) topBar.setWeather(lastState, snowAtStations());
           // Śnieg na dachach: gdy w dolnych partiach (do ok. 750 m) zwykle leży śnieg.
           let low = 0;
@@ -837,10 +1064,27 @@ async function start(): Promise<void> {
       ski: terrain.ski,
       screenLayer: guestOverlay,
       camera,
-      panelParent: rightColumn,
-      cardParent: document.body,
+      panelParent: slotGuests,
+      cardParent: ui,
+      onReportRequest: () => reportWindow.show('day'),
+      spendOf: (c) => {
+        const st = game?.state;
+        if (!st) return null;
+        const stay = c.departH - c.arriveH;
+        const p = st.prices;
+        const pass = stay > 4 ? p.dayPln : stay > 2 ? p.fourHourPln : p.twoHourPln;
+        return pass * (c.child ? economyParams.passes.reducedFactor : 1);
+      },
       initialGuests: Number.isFinite(urlGuests) && urlGuests > 0 ? urlGuests : guestParams.scenario.guestsPerDay,
-      onDaySummary: (date, summary) => game?.onDaySummary(date, summary),
+      onDaySummary: (date, summary) => {
+        game?.onDaySummary(date, summary);
+        // Etap 7c: raport dnia z symulacji gości do okna raportu (zapamiętany na kilka dni).
+        void guestCtl.dayReport().then((r) => {
+          if (!r || r.date.year !== date.year || r.date.month !== date.month || r.date.day !== date.day) return;
+          guestReports.set(formatIsoDate(date), r);
+          if (guestReports.size > 10) guestReports.delete(guestReports.keys().next().value!);
+        });
+      },
       onSummerDay: (date, outcome, stats) => game?.onSummerDay(date, outcome, stats),
       manualGuests: () => !game?.state || game.mode === 'sandbox',
       onDayTraffic: (date, passes) => {
@@ -951,8 +1195,8 @@ async function start(): Promise<void> {
       mapName: simSettings.mapName,
       seed: simSettings.seed,
       sandboxDate: parseIsoDate(simSettings.startDate),
-      panelParent: rightColumn,
-      modalParent: document.body,
+      panelParent: slotFinance,
+      modalParent: ui,
       snowOn: async (date) => {
         while (!snowReady) await waitMs(200);
         for (;;) {
@@ -1031,13 +1275,13 @@ async function start(): Promise<void> {
           return { id: p.id, name: p.name, baseCm: base, hasGuns: guns.has(p.id), areaHa: (a?.areaM2 ?? 0) / 10000 };
         });
     };
-    const snowPlanDialog = new SnowPlanDialog(document.body, () => game?.opsChanged());
+    const snowPlanDialog = new SnowPlanDialog(ui, () => game?.opsChanged());
     const nightPlanDialog = new NightPlanDialog(
-      document.body,
+      ui,
       () => game?.opsChanged(),
       (id, on) => game?.setDayGroom(id, on),
     );
-    const snowPanel = new SnowPanel(rightColumn, {
+    const snowPanel = new SnowPanel(slotSnow, {
       onSnowPlan: () => {
         const st = game?.state;
         if (!st) return;
@@ -1089,7 +1333,162 @@ async function start(): Promise<void> {
       else if (mode === 'piaskownica') game.newGame('sandbox');
       else if (mode !== 'widok') void game.showStart();
     }
-    const devMenu = new DevMenu(document.body);
+    const devMenu = new DevMenu(ui);
+
+    // ---------------------------------------------------------------- raport z doradcą (etap 7c)
+    const g0 = guestParams.scenario;
+    const factsNow = () => game?.resortFactsNow ?? null;
+    const parkingModel = (guests: number) => {
+      const f = factsNow();
+      const st = game?.state;
+      if (!f || !st || guests <= 0) return null;
+      const parks = f.buildings.filter((b) => b.type.base && b.built && b.accessible);
+      if (!parks.length) return null;
+      const prof = presenceProfile(g0.arrivalMeanH, g0.arrivalSdH, g0.stayMeanH, g0.staySdH, st.hours.closeH);
+      const caps = parks.map((b) => b.type.cars);
+      const pp = parkingProfiles(guests / economyParams.demand.personsPerCar, prof, caps);
+      const total = caps.reduce((a, c) => a + c, 0);
+      const fullK = prof.findIndex((_, k) => pp.cars.reduce((a, c) => a + c[k], 0) >= total - 0.5);
+      return { fullAt: fullK >= 0 ? formatHour(fullK * 0.25) : null, turnedAway: Math.round(pp.turnedAway * economyParams.demand.personsPerCar), parkingId: parks[parks.length - 1].id, prof };
+    };
+    const reportWindow = new ReportWindow(
+      ui,
+      {
+        state: () => game?.state ?? null,
+        guestReport: (iso) => guestReports.get(iso) ?? null,
+        presence: (guests) => presenceProfile(g0.arrivalMeanH, g0.arrivalSdH, g0.stayMeanH, g0.staySdH, game?.state?.hours.closeH ?? 16).map((p) => p * guests),
+        parking: (guests) => parkingModel(guests),
+        food: (guests) => {
+          const f = factsNow();
+          const foods = (f?.buildings ?? []).filter((b) => b.type.id === 'gastronomy' && b.built);
+          const cap = foods.reduce((a, b) => a + b.type.capacityPerDay, 0);
+          return { has: foods.length > 0, full: foods.length > 0 && guests * (foods[0]?.type.useShare ?? 0) >= cap * 0.99, id: foods[0]?.id ?? null };
+        },
+        thin: () => ({ open: (factsNow()?.pistes ?? []).filter((p) => p.open).length, thin: build.thinWarningRows.length }),
+        hasSnowmaking: () => (build.current.layout.snowGuns?.length ?? 0) > 0,
+        reputation: () => (game?.state ? reputationOf(game.state, economyParams) : 0),
+        closeH: () => game?.state?.hours.closeH ?? 16,
+        seasonNumber: () => (game?.state?.history.length ?? 0) + 1,
+      },
+      parseAdvisorParams(uiJson),
+      {
+        onAdvice: (id) => {
+          const f = factsNow();
+          const centerOn = (bid: string | null | undefined) => {
+            const c = bid ? build.objectCenter('base', bid) : null;
+            if (c) camera.centerOn(c.xM, c.yM);
+          };
+          if (id === 'showQueues') setOverlay('liftWait');
+          else if (id === 'planLift') openBuild('lifts');
+          else if (id === 'showParking') centerOn(f?.buildings.find((b) => b.type.base)?.id);
+          else if (id === 'buildParking') {
+            openBuild('buildings');
+            build.setBuildingType('parking');
+          } else if (id === 'showFood') centerOn(f?.buildings.find((b) => b.type.id === 'gastronomy')?.id);
+          else if (id === 'buildFood') {
+            openBuild('buildings');
+            build.setBuildingType('gastronomy');
+          } else if (id === 'showSnow') setOverlay('snowDepth');
+          else if (id === 'snowPlan') drawer.show('snow');
+          else if (id === 'buildSnow') openBuild('snow');
+          else if (id === 'showSlope') setOverlay('slope');
+          else if (id === 'drawPiste') openBuild('pistes');
+          else if (id === 'guests') drawer.show('guests');
+          else if (id === 'prices') game?.showPrices();
+        },
+        onSeasonDetails: () => game?.showReport(),
+        onGuestDetails: () => void guestCtl.showReport(),
+      },
+    );
+
+    // ---------------------------------------------------------------- powiadomienia (etap 7c)
+    let logSeen = -1;
+    let rulesMs = 0;
+    const nowLabel = () => formatHour(timePanel.hour);
+    const liftBottomByName = (name: string) => {
+      const l = build.current.layout.lifts.find((x) => x.name === name);
+      return l ? { xM: l.bottom.xM, yM: l.bottom.yM } : null;
+    };
+    function noticeRules(nowMs: number): void {
+      if (nowMs - rulesMs < 1000) return;
+      rulesMs = nowMs;
+      const st = game?.state;
+      if (!st) return;
+      const dateLabel = fmtDate(timePanel.date);
+      const base: Pick<Notice, 'time' | 'date'> = { time: nowLabel(), date: dateLabel };
+      // 1) Dziennik gry (budowy ukończone, przeglądy, raty, sezon) – nowe wpisy.
+      if (logSeen < 0) logSeen = st.log.length;
+      for (const e of st.log.slice(logSeen)) {
+        const bad = /brak|bankrut|awari|nie można|ujemn|zamknięt/i.test(e.text);
+        const good = /ukończon|gotow|zbudowan|otwart/i.test(e.text);
+        const cut = e.text.search(/[.:–]\s/);
+        const title = cut > 8 && cut < 70 ? e.text.slice(0, cut) : e.text.length < 70 ? e.text : `${e.text.slice(0, 66)}…`;
+        const rest = cut > 8 && cut < 70 ? e.text.slice(cut + 1).trim().replace(/^[–:]\s*/, '') : '';
+        notices.push({ key: `log:${e.date}:${e.text}`, level: bad ? 'bad' : good ? 'good' : 'info', icon: bad ? 'warn' : good ? 'check' : 'info', title, text: rest, ...base });
+      }
+      logSeen = st.log.length;
+      // 2) Kolejki do wyciągów.
+      const qMin = noticeParams.queueWarnMin;
+      for (const r of guestCtl.liftRows) {
+        if (!r.closed && r.waitMin >= qMin) {
+          notices.push({ key: `queue:${dateLabel}:${r.name}`, level: r.waitMin >= 2 * qMin ? 'bad' : 'warn', icon: 'clock', title: `Kolejka do ${r.name}: ${Math.round(r.waitMin)} minut`, text: `Goście zaczynają narzekać. Wyciąg pracuje na ${Math.round(r.utilization * 100)} % przepustowości.`, at: liftBottomByName(r.name), ...base });
+        }
+      }
+      notices.resolve('queue:', (k) => guestCtl.liftRows.some((r) => k.endsWith(`:${r.name}`) && r.waitMin >= qMin * 0.6));
+      // 3) Pełny parking (model dnia przy dzisiejszej liczbie gości).
+      if (st.seasonOpen && guestCtl.guestsPerDay > 0) {
+        const pm = parkingModel(guestCtl.guestsPerDay);
+        if (pm?.fullAt && nowLabel() >= pm.fullAt && pm.turnedAway > 0) {
+          const at = build.objectCenter('base', pm.parkingId ?? '');
+          notices.push({ key: `parking:${dateLabel}`, level: 'bad', icon: 'car', title: `Parking pełny od ${pm.fullAt}`, text: `${Math.round(pm.turnedAway / economyParams.demand.personsPerCar)} samochodów zawróciło. Zbuduj drugi parking albo podnieś opłatę.`, at, ...base });
+        }
+      }
+      // 4) Odwilż w prognozie (zima).
+      const m = timePanel.date.month;
+      if (lastState && (m >= 11 || m <= 3)) {
+        const thaw = lastState.forecast.slice(1, 4).find((f) => f.bottomTMeanC > noticeParams.thawWarnC);
+        if (thaw) {
+          const res = st.ops ? ` Zbiornik: ${Math.round(st.ops.reservoirM3).toLocaleString('pl-PL')} m³.` : '';
+          notices.push({ key: `thaw:${thaw.date.year}-${thaw.date.month}-${thaw.date.day}`, level: 'info', icon: 'thermo', title: `${weekdayLong(thaw.date)} odwilż, do +${Math.round(thaw.bottomTMeanC)} °C`, text: `Mroźne noce przed odwilżą wykorzystaj na naśnieżanie.${res}`, ...base });
+        }
+      }
+      // 5) Za mało śniegu na otwartych trasach.
+      const thin = build.thinWarningRows;
+      if (thin.length && st.seasonOpen) {
+        const first = build.current.layout.pistes.find((p) => p.name === thin[0].pisteName);
+        notices.push({ key: `thin:${dateLabel}`, level: 'warn', icon: 'snow', title: `Za mało śniegu: ${thin.length === 1 ? `trasa ${thin[0].pisteName}` : `${thin.length} trasy`}`, text: 'Na cienkiej bazie są kamienie i wypadki. Zamknij trasę albo zaplanuj naśnieżanie.', at: first ? build.objectCenter('piste', first.id) : null, ...base });
+      }
+    }
+    const WEEKDAYS_LONG = ['W niedzielę', 'W poniedziałek', 'We wtorek', 'W środę', 'W czwartek', 'W piątek', 'W sobotę'];
+    const weekdayLong = (d: CalendarDate) => WEEKDAYS_LONG[new Date(Date.UTC(d.year, d.month - 1, d.day)).getUTCDay()];
+    let topBarMs = 0;
+    function refreshTopBarGame(nowMs: number): void {
+      if (nowMs - topBarMs < 500) return;
+      topBarMs = nowMs;
+      const st = game?.state;
+      if (!st) {
+        topBar.setGame(null);
+        return;
+      }
+      const mo = st.date.month;
+      const summer = mo >= 5 && mo <= 10;
+      const counts = guestCtl.counts;
+      const rep = summer && st.summer ? Math.max(0, summerReputationOf(st, summerParams)) : reputationOf(st, economyParams);
+      const last = st.lastDay;
+      topBar.setGame({
+        resortName: simSettings.mapName[0].toUpperCase() + simSettings.mapName.slice(1),
+        seasonLabel: `Sezon ${st.history.length + 1}, ${summer ? 'lato' : 'zima'}${st.mode === 'sandbox' ? ' · piaskownica' : ''}`,
+        balancePln: st.balancePln,
+        deltaPln: last ? sumRevenue(last.flows) - sumCosts(last.flows) : null,
+        deltaLabel: 'wczoraj',
+        guestsToday: counts?.arrived ?? 0,
+        onSlope: counts?.onHill ?? 0,
+        onSlopeLabel: summer ? 'teraz' : 'na stoku',
+        reputation: rep,
+        priceLabel: summer ? 'Kolej góra–dół' : 'Karnet dzienny',
+        pricePln: summer ? (st.summer?.prices.liftRoundTripPln ?? summerParams.prices.liftRoundTripPln) : st.prices.dayPln,
+      });
+    }
 
     /** Etap 6b: treść dymku przy kursorze. */
     function tipContent(c: { xPx: number; yPx: number }): TipContent | null {
@@ -1123,6 +1522,19 @@ async function start(): Promise<void> {
     input.onDragMove = (x, y) => build.handleDragMove(x, y);
     input.onDragEnd = () => build.handleDragEnd();
     input.onKey = (code) => {
+      if (code === 'Escape') {
+        if (reportWindow.visible) return (reportWindow.hide(), true);
+        if (infoWindow.visible) return (infoWindow.hide(), true);
+        if (gameMenu.visible) return (gameMenu.hide(), true);
+        topBar.closePops();
+        if (drawer.open) return (drawer.hide(), true);
+        if (cardSel && build.currentTool === 'select') {
+          cardSelRef.close?.();
+          build.clearSelection();
+          return true;
+        }
+        if (build.currentTool === 'select' && buildBar.openCategory) return (buildBar.close(), true);
+      }
       if (code === 'Backquote') {
         devMenu.toggle();
         return true;
@@ -1147,7 +1559,7 @@ async function start(): Promise<void> {
       }
       if (code === 'KeyI') {
         cursorTip.setEnabled(!cursorTip.enabled);
-        toolbar.setTipActive(cursorTip.enabled);
+        dataViews.setTipActive(cursorTip.enabled);
         buildBar.showToast(cursorTip.enabled ? 'Dymek przy kursorze włączony.' : 'Dymek przy kursorze wyłączony.');
         return true;
       }
@@ -1169,7 +1581,7 @@ async function start(): Promise<void> {
     let cardSel: { kind: string; id: string } | null = null;
     let cardStats: SummerStats | null = null;
     let cardRefreshMs = 0;
-    const cardView = new ObjectCardView(document.body, {
+    const cardView = new ObjectCardView(ui, {
       onAction: (a, value) => {
         if (!cardSel) return;
         const sel = cardSel;
@@ -1184,8 +1596,34 @@ async function start(): Promise<void> {
         else if (a.id === 'mains') game?.setMainsOn(!game.state?.ops?.mainsOn);
         cardRefreshMs = 0;
       },
-      onClose: () => (cardSel = null),
+      onViewAction: (id) => {
+        if (!cardSel) return;
+        const sel = cardSel;
+        if (id === 'show') {
+          const c = build.objectCenter(sel.kind as Parameters<typeof build.objectCenter>[0], sel.id);
+          if (c) camera.centerOn(c.xM, c.yM);
+        } else if (id === 'moreParking') {
+          buildBar.toggleCategory('buildings');
+          build.setBuildingType('parking');
+        } else if (id === 'moreFood') {
+          buildBar.toggleCategory('buildings');
+          build.setBuildingType('gastronomy');
+        } else if (id === 'moreLift') buildBar.toggleCategory('lifts');
+        else if (id === 'snowPlan') drawer.show('snow');
+      },
+      onSmooth: (v) => {
+        if (cardSel) build.setLineSmooth(cardSel.kind as Parameters<typeof build.setLineSmooth>[0], cardSel.id, v);
+        cardRefreshMs = 0;
+      },
+      onClose: () => {
+        cardSel = null;
+        build.clearSelection();
+      },
     });
+    cardSelRef.close = () => {
+      cardSel = null;
+      cardView.hide();
+    };
     const pisteSnowOf = (id: string) => {
       const a = build.current.analysis.pistes.get(id);
       if (!a || !lastSnow) return null;
@@ -1204,9 +1642,16 @@ async function start(): Promise<void> {
       return n ? { baseCm: sum / n, quality: top ? (SNOW_QUALITY_NAMES as unknown as Record<number, string>)[top[0]] : '' } : null;
     };
     onCardSelect = (sel) => {
-      cardSel = sel && game?.state ? sel : null;
+      cardSel = sel && sel.id && game?.state ? sel : null;
       if (!cardSel) cardView.hide();
+      else drawer.hide();
       cardRefreshMs = 0;
+    };
+    drawer.onShow = (name) => {
+      if (name && cardSel) {
+        cardSel = null;
+        cardView.hide();
+      }
     };
     function refreshCard(nowMs: number): void {
       if (!cardSel || !game?.state) return;
@@ -1217,8 +1662,18 @@ async function start(): Promise<void> {
       const ctx = game.cardContext(timePanel.hour, cardStats, guestCtl.liveLifts(), pisteSnowOf);
       if (!ctx) return;
       const card = objectCard(cardSel.kind as CardKind, cardSel.id, ctx);
-      if (card) cardView.show(card);
-      else cardView.hide();
+      if (!card) {
+        cardView.hide();
+        return;
+      }
+      // Akcje widoku: pokaż na mapie i „zbuduj więcej” przy obiektach, które bywają wąskim gardłem.
+      const extra: { id: string; label: string; primary?: boolean }[] = [];
+      if (card.kindLabel === 'parking') extra.push({ id: 'moreParking', label: 'Zbuduj kolejny parking', primary: true });
+      else if (card.kindLabel === 'gastronomia') extra.push({ id: 'moreFood', label: 'Postaw kolejny lokal', primary: true });
+      else if (cardSel.kind === 'lift' && card.headline && card.headline.level !== 'good') extra.push({ id: 'moreLift', label: 'Zaplanuj drugi wyciąg', primary: true });
+      else if (cardSel.kind === 'piste' && card.headline && card.headline.level === 'bad') extra.push({ id: 'snowPlan', label: 'Naśnieżanie i ratraki', primary: true });
+      extra.push({ id: 'show', label: 'Pokaż na mapie' });
+      cardView.show(card, cardSel.kind, extra, build.lineSmooth(cardSel.kind as Parameters<typeof build.lineSmooth>[0], cardSel.id));
     }
     // Etap 7b: wygląd lata (zielone łąki, szlaki PTTK) w miesiącach bez modelu śniegu.
     let summerLook = false;
@@ -1229,17 +1684,22 @@ async function start(): Promise<void> {
       summerLook = on;
       terrain.setSummer(on);
       build.setSummerLook(on);
+      if (on) minimap.setSnow(null, true);
     }
 
     app.ticker.add((ticker) => {
       const frameStart = performance.now();
       refreshSeasonLook();
       refreshCard(performance.now());
+      refreshTopBarGame(performance.now());
+      noticeRules(performance.now());
+      notices.tick(performance.now());
+      minimap.update();
       timePanel.tick(performance.now());
       seasonTick(performance.now());
       clockTick(ticker.deltaMS / 1000);
       topBar.setClock(timePanel.date, timePanel.hour, timePanel.statusText);
-      refreshLayerButtons();
+      dataViews.setLayerState(build.networkShown, build.realityShown);
       input.update(ticker.deltaMS / 1000);
       // Przeliczenie metrów na piksele: świat jest w metrach, kamera mówi, ile pikseli to metr.
       const scale = camera.pixelsPerMeter;
@@ -1288,6 +1748,7 @@ async function start(): Promise<void> {
       build,
       game,
       sim,
+      ui: { shell, buildBar, drawer, notices, reportWindow, dataViews, cardView, minimap },
     };
   } catch (error) {
     console.error(error);

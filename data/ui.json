@@ -1,0 +1,111 @@
+{
+  "_opis": "Interfejs gry (etap 7c): rysowanie linii (trasy, drogi, rurociągi, trasy letnie), skala interfejsu, powiadomienia i doradca raportu. Tylko wyświetlanie i edycja – symulacja tego nie czyta.",
+  "lines": {
+    "simplifyToleranceM": {
+      "value": 4,
+      "unit": "m",
+      "source": "do kalibracji: odchyłka przebiegu po uproszczeniu od linii narysowanej ręką; ok. 1/10 szerokości trasy (30–40 m)"
+    },
+    "simplifyTolerancePx": {
+      "value": 3,
+      "unit": "px",
+      "source": "do kalibracji: drżenie ręki na myszy – przy dużym oddaleniu tolerancja rośnie do tylu pikseli ekranu"
+    },
+    "minPointSpacingM": {
+      "value": 40,
+      "unit": "m",
+      "source": "polecenie etapu 7c: odstęp punktów kontrolnych 30–50 m"
+    },
+    "cornerAngleDeg": {
+      "value": 35,
+      "unit": "°",
+      "source": "do kalibracji: wyraźny zakręt – zmiana kierunku, przy której punkty mogą leżeć gęściej niż minPointSpacingM"
+    },
+    "sampleStepM": {
+      "value": 8,
+      "unit": "m",
+      "source": "do kalibracji: odstęp punktów gładkiej krzywej zapisywanej w układzie (siatka terenu 10 m)"
+    },
+    "defaultSmoothness": {
+      "value": 1,
+      "unit": "0–1",
+      "source": "polecenie etapu 7c: gładki łuk (Catmull-Rom) przez punkty kontrolne; 0 – łamana"
+    }
+  },
+  "scale": {
+    "options": {
+      "value": [0.8, 0.9, 1, 1.15, 1.3],
+      "unit": "×",
+      "source": "polecenie etapu 7c: ekrany od 1366 do 2560 px szerokości"
+    },
+    "referenceWidthPx": {
+      "value": 1920,
+      "unit": "px",
+      "source": "makiety docs/ui (1920 × 1080) – skala 1"
+    },
+    "autoMin": {
+      "value": 0.75,
+      "unit": "×",
+      "source": "1366 px / 1920 px ≈ 0,71 – zaokrąglone, by tekst był czytelny"
+    },
+    "autoMax": {
+      "value": 1.3,
+      "unit": "×",
+      "source": "2560 px / 1920 px ≈ 1,33"
+    }
+  },
+  "notifications": {
+    "visible": {
+      "value": 3,
+      "unit": "szt.",
+      "source": "makieta ui-1-mapa: trzy powiadomienia naraz"
+    },
+    "lifetimeS": {
+      "value": 14,
+      "unit": "s",
+      "source": "do kalibracji: czas widoczności powiadomienia (czas rzeczywisty); potem tylko w historii"
+    },
+    "historySize": {
+      "value": 100,
+      "unit": "szt.",
+      "source": "do kalibracji: liczba powiadomień w historii (menu)"
+    },
+    "queueWarnMin": {
+      "value": 10,
+      "unit": "min",
+      "source": "do kalibracji: kolejka, przy której goście zaczynają narzekać (cierpliwość w data/guests.json ok. 10–20 min)"
+    },
+    "thawWarnC": {
+      "value": 2,
+      "unit": "°C",
+      "source": "do kalibracji: odwilż w prognozie – temperatura maksymalna na dole powyżej tej wartości"
+    }
+  },
+  "advisor": {
+    "bottleneckUtilization": {
+      "value": 0.9,
+      "unit": "0–1",
+      "source": "do kalibracji: wyciąg pracujący ponad 90 % przepustowości to wąskie gardło"
+    },
+    "bottleneckWaitMin": {
+      "value": 10,
+      "unit": "min",
+      "source": "do kalibracji: średnia kolejka w szczycie, przy której doradca proponuje drugi wyciąg"
+    },
+    "kitchenQueue": {
+      "value": 10,
+      "unit": "os.",
+      "source": "do kalibracji: kolejka do gastronomii w szczycie, przy której brakuje miejsc lub obsługi"
+    },
+    "thinShare": {
+      "value": 0.25,
+      "unit": "0–1",
+      "source": "do kalibracji: udział tras z za cienką bazą, przy którym doradca proponuje naśnieżanie"
+    },
+    "lowRating": {
+      "value": 3.3,
+      "unit": "1–5",
+      "source": "do kalibracji: średnia ocena dnia uznana za słabą"
+    }
+  }
+}

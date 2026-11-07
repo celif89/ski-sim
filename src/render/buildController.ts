@@ -30,6 +30,9 @@ import type { Camera } from './camera';
 import { ResortLayer } from './resortLayer';
 import type { EditHandle, HandleKind, MapContextData, MapLabel } from './resortLayer';
 import type { LodThresholds } from './illustration';
+import type { BuildBarState } from './buildBar';
+import type { CtrlPt, LineParams } from './lineTools';
+import { ctrlFromPoints, effectiveTolerance, nearestOnPolyline, simplifyStroke, smoothPath, smoothPathWithSeg } from './lineTools';
 
 export interface BuildControllerOptions {
   grid: TerrainGrid;
@@ -75,6 +78,12 @@ export interface BuildControllerOptions {
   /** Etap 7b: zaznaczenie obiektu (karta obiektu). */
   onSelect?: (sel: { kind: SelKind; id: string } | null) => void;
   publicRoads?: PointM[][] | null;
+  /** Etap 7c: upraszczanie i wygładzanie linii (data/ui.json). */
+  lines: LineParams;
+  /** Etap 7c: komunikat budowy (podpowiedź nad paletą). */
+  onMessage?: (text: string) => void;
+  /** Etap 7c: zmiana stanu narzędzi (paleta budowy). */
+  onState?: () => void;
 }
 
 export type SelKind = 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road' | 'trail';
@@ -87,6 +96,11 @@ export interface SnowWarning {
 
 const SELECT_RADIUS_PX = 12;
 const HANDLE_RADIUS_PX = 10;
+/** Etap 7c: odległość od linii zaznaczonego obiektu, przy której przeciągnięcie wstawia punkt [px]. */
+const SEGMENT_GRAB_PX = 9;
+const DRAW_MODE_KEY = 'ski-sim:rysowanie';
+const LINE_TOOLS: BuildTool[] = ['pisteBrush', 'pisteAxis', 'catwalk', 'road', 'pipeline', 'supply', 'bikeTrail', 'walkTrail', 'toboggan'];
+
 
 export class BuildController {
   private layout: ResortLayout;
@@ -129,6 +143,12 @@ export class BuildController {
   private roadPoints: PointM[] = [];
   private trailPoints: PointM[] = [];
   private gunTypeId = 'fan';
+  /** Etap 7c: rysowanie linii ręką (przeciągnięcie, potem uproszczenie) albo klikaniem punktów. */
+  private drawModeValue: 'hand' | 'click' = 'hand';
+  /** Linia rysowana teraz ręką (przeciąganie). */
+  private handStroke = false;
+  private strokeSinceAnalysis = 0;
+  private lastMessage = '';
   private readonly panel: BuildPanel;
   private readonly profile: BuildProfile;
   private readonly layer: ResortLayer;
@@ -137,6 +157,11 @@ export class BuildController {
     this.liftTypeId = o.liftParams.types.find((t) => t.id === 'kanapa4d')?.id ?? o.liftParams.types[0].id;
     this.widthM = o.pisteParams.defaultWidthM;
     this.layout = this.loadSaved();
+    try {
+      if (window.localStorage.getItem(DRAW_MODE_KEY) === 'click') this.drawModeValue = 'click';
+    } catch {
+      /* bez pamięci przeglądarki */
+    }
     this.layer = new ResortLayer(o.world, o.screenLayer, o.grid, o.camera, o.pisteParams, o.lod, o.context, o.labels, o.borderLinesLocal);
     this.panel = new BuildPanel(o.panelParent, o.liftParams, o.pisteParams, {
       onTool: (t) => this.setTool(t),
@@ -374,17 +399,25 @@ export class BuildController {
   // ------------------------------------------------------------------ narzędzia
 
   setTool(tool: BuildTool): void {
+    // Etap 7c: trasa – jedno narzędzie, sposób rysowania wg trybu (ręką / punktami).
+    if (tool === 'pisteAxis') this.drawModeValue = 'click';
+    if (tool === 'pisteBrush' && this.drawModeValue === 'click') tool = 'pisteAxis';
     // Narzędzie budowy: zdejmujemy zaznaczenie, żeby panel profilu nie zasłaniał mapy.
-    if (tool !== 'select') this.selection = null;
+    if (tool !== 'select' && this.selection) {
+      this.selection = null;
+      this.o.onSelect?.(null);
+    }
     this.cancelDraft();
     this.tool = tool;
     this.message =
       tool === 'lift'
         ? `Wyciąg: kliknij dolną stację, potem górną (${liftTypeById(this.o.liftParams, this.liftTypeId).name}).`
         : tool === 'pisteBrush'
-          ? 'Trasa – pędzel: przeciągnij myszą wzdłuż trasy. Mapę przesuwasz prawym przyciskiem lub klawiszami.'
+          ? 'Trasa: przeciągnij myszą wzdłuż trasy – linia sama się uprości i wygładzi. Mapę przesuwasz prawym przyciskiem lub klawiszami. O – rysowanie punktami.'
           : tool === 'pisteAxis'
-            ? 'Trasa – oś: klikaj punkty osi; podwójne kliknięcie lub Enter – koniec; Backspace – cofnij punkt.'
+            ? 'Trasa: klikaj punkty osi; podwójne kliknięcie lub Enter – koniec; Backspace – cofnij punkt. O – rysowanie ręką.'
+            : tool === 'demolish'
+              ? 'Rozbiórka: kliknij obiekt na mapie (wyciąg, trasę, budynek, rurociąg…), który chcesz rozebrać.'
             : tool === 'road'
               ? `Droga: klikaj punkty od drogi publicznej (szara) albo innej drogi do parkingu; Enter lub podwójne kliknięcie – koniec. Nachylenie do ${this.o.roads?.maxSlopePercent ?? 12} %, koszt ${Math.round(this.o.roads?.costPlnPerM ?? 0)} zł/m, zimą odśnieżanie.`
               : tool === 'catwalk'
@@ -404,8 +437,155 @@ export class BuildController {
                 : tool === 'base'
               ? `Budynek: kliknij miejsce (${this.o.buildingTypes?.find((t) => t.id === this.buildingTypeId)?.name ?? 'baza'}).`
               : '';
+    if (this.drawModeValue === 'hand' && LINE_TOOLS.includes(tool) && tool !== 'pisteBrush') this.message += ' Rysujesz ręką: przeciągnij myszą (O – punktami).';
     this.o.onToolChange(tool);
     this.refreshPanel();
+  }
+
+  // ------------------------------------------------------------------ etap 7c: stan dla palety budowy
+
+  get drawMode(): 'hand' | 'click' {
+    return this.drawModeValue;
+  }
+
+  setDrawMode(mode: 'hand' | 'click'): void {
+    this.drawModeValue = mode;
+    try {
+      window.localStorage.setItem(DRAW_MODE_KEY, mode);
+    } catch {
+      /* bez pamięci przeglądarki */
+    }
+    if (this.tool === 'pisteBrush' || this.tool === 'pisteAxis') this.setTool(mode === 'click' ? 'pisteAxis' : 'pisteBrush');
+    else if (LINE_TOOLS.includes(this.tool)) this.setTool(this.tool);
+    else this.refreshPanel();
+  }
+
+  setLiftType(id: string): void {
+    this.liftTypeId = id;
+    this.setTool('lift');
+  }
+
+  setBuildingType(id: string): void {
+    this.buildingTypeId = id;
+    this.setTool('base');
+  }
+
+  setGunType(id: string): void {
+    this.gunTypeId = id;
+    this.setTool('gun');
+  }
+
+  setWidth(w: number): void {
+    this.widthM = Math.min(this.o.pisteParams.maxWidthM, Math.max(this.o.pisteParams.minWidthM, w));
+    this.refreshPanel();
+  }
+
+  setGradeNew(on: boolean): void {
+    this.gradeNew = on;
+    this.refreshPanel();
+  }
+
+  undoLast(): void {
+    this.undo();
+  }
+
+  redoLast(): void {
+    this.redo();
+  }
+
+  get barState(): BuildBarState {
+    return {
+      tool: this.tool,
+      liftTypeId: this.liftTypeId,
+      buildingTypeId: this.buildingTypeId,
+      gunTypeId: this.gunTypeId,
+      drawMode: this.drawModeValue,
+      widthM: this.widthM,
+      minWidthM: this.o.pisteParams.minWidthM,
+      maxWidthM: this.o.pisteParams.maxWidthM,
+      gradeNew: this.gradeNew,
+      canUndo: this.history.canUndo,
+      canRedo: this.history.canRedo,
+    };
+  }
+
+  /** Środek obiektu (kamera „Pokaż na mapie”). */
+  objectCenter(kind: SelKind, id: string): PointM | null {
+    const l = this.layout;
+    const mid = (pts: PointM[]) => pts[Math.floor(pts.length / 2)] ?? null;
+    if (kind === 'lift') {
+      const x = l.lifts.find((o) => o.id === id);
+      return x ? { xM: (x.bottom.xM + x.top.xM) / 2, yM: (x.bottom.yM + x.top.yM) / 2 } : null;
+    }
+    if (kind === 'piste') return mid(l.pistes.find((o) => o.id === id)?.points ?? []);
+    if (kind === 'road') return mid((l.roads ?? []).find((o) => o.id === id)?.points ?? []);
+    if (kind === 'trail') return mid((l.trails ?? []).find((o) => o.id === id)?.points ?? []);
+    if (kind === 'pipeline') return mid((l.pipelines ?? []).find((o) => o.id === id)?.points ?? []);
+    if (kind === 'gun') {
+      const g = (l.snowGuns ?? []).find((o) => o.id === id);
+      const h = g ? this.hydrants().find((x) => x.pipelineId === g.pipelineId && x.index === g.hydrant) : null;
+      return h ? { xM: h.xM, yM: h.yM } : null;
+    }
+    const b = [...l.bases, ...(l.buildings ?? [])].find((o) => o.id === id);
+    return b ? { xM: b.xM, yM: b.yM } : null;
+  }
+
+  /** Zdjęcie zaznaczenia (zamknięcie karty obiektu). */
+  clearSelection(): void {
+    if (this.selection) this.select(null);
+  }
+
+  /** Zaznaczenie z zewnątrz (powiadomienie, raport, karta). */
+  selectObject(kind: SelKind, id: string): void {
+    if (this.tool !== 'select') this.setTool('select');
+    this.select({ kind, id });
+  }
+
+  // ------------------------------------------------------------------ etap 7c: linie z punktami kontrolnymi
+
+  private lineObj(kind: SelKind, id: string, layout = this.layout): { points: CtrlPt[]; ctrl?: CtrlPt[]; smooth?: number } | null {
+    if (kind === 'piste') return layout.pistes.find((o) => o.id === id) ?? null;
+    if (kind === 'road') return (layout.roads ?? []).find((o) => o.id === id) ?? null;
+    if (kind === 'trail') return (layout.trails ?? []).find((o) => o.id === id) ?? null;
+    if (kind === 'pipeline') return (layout.pipelines ?? []).find((o) => o.id === id) ?? null;
+    return null;
+  }
+
+  /** Punkty kontrolne obiektu (starszy zapis bez nich – z gęstych punktów). */
+  private ctrlOf(o: { points: CtrlPt[]; ctrl?: CtrlPt[]; smooth?: number }): { ctrl: CtrlPt[]; smooth: number } {
+    if (o.ctrl && o.ctrl.length >= 2) return { ctrl: o.ctrl, smooth: o.smooth ?? this.o.lines.defaultSmooth };
+    return ctrlFromPoints(o.points, this.o.lines);
+  }
+
+  /** Gęsty przebieg z punktów kontrolnych (zapisywany jako `points` – z niego liczy symulacja). */
+  private densify<T extends CtrlPt>(ctrl: T[], smooth: number): T[] {
+    return smoothPath(ctrl, smooth, this.o.lines.sampleStepM);
+  }
+
+  /** Narysowane punkty → punkty kontrolne (ręką – upraszczanie) i gęsty przebieg. */
+  private lineFromDrawn<T extends CtrlPt>(drawn: T[], hand: boolean): { ctrl: T[]; smooth: number; points: T[] } {
+    const clean = drawn.filter((q, i, a) => i === 0 || Math.hypot(q.xM - a[i - 1].xM, q.yM - a[i - 1].yM) > 1);
+    const smooth = this.o.lines.defaultSmooth;
+    const L = this.o.lines;
+    const ctrl = hand && clean.length > 2 ? simplifyStroke(clean, { toleranceM: effectiveTolerance(L, this.o.camera.metersPerPixel), minSpacingM: L.minSpacingM, cornerAngleDeg: L.cornerAngleDeg, smooth }) : clean;
+    return { ctrl, smooth, points: this.densify(ctrl, smooth) };
+  }
+
+  /** Gładkość zaznaczonej linii (suwak w karcie) – null, gdy zaznaczenie nie jest linią. */
+  lineSmooth(kind: SelKind, id: string): number | null {
+    const o = this.lineObj(kind, id);
+    return o ? this.ctrlOf(o).smooth : null;
+  }
+
+  setLineSmooth(kind: SelKind, id: string, smooth: number): void {
+    const next = this.clone();
+    const o = this.lineObj(kind, id, next);
+    if (!o) return;
+    const c = this.ctrlOf(o);
+    o.ctrl = c.ctrl.map((q) => ({ ...q }));
+    o.smooth = Math.max(0, Math.min(1, smooth));
+    o.points = this.densify(o.ctrl, o.smooth);
+    this.commit(next, `Gładkość: ${Math.round(o.smooth * 100)} %.`);
   }
 
   private cancelDraft(): void {
@@ -416,6 +596,7 @@ export class BuildController {
     this.draftLift = null;
     this.axisPoints = [];
     this.brushing = false;
+    this.handStroke = false;
     this.draftPiste = null;
     this.drawVersion++;
     if (!this.selection) this.profile.hide();
@@ -464,6 +645,18 @@ export class BuildController {
       return true;
     }
     if (!p) return true;
+    if (this.tool === 'demolish') {
+      const hit = this.pick(xPx, yPx, p);
+      if (!hit) {
+        this.message = 'Kliknij obiekt do rozebrania (wyciąg, trasę, budynek, rurociąg, drogę).';
+        this.refreshPanel();
+        return true;
+      }
+      const name = this.nameOf(hit.kind, hit.id);
+      this.select(hit);
+      if (confirm(`Rozebrać „${name}”? Część kosztu budowy przepada.`)) this.cardAction(hit.kind, hit.id, 'demolish');
+      return true;
+    }
     if (this.tool === 'lift') {
       if (!this.liftBottom) {
         this.liftBottom = p;
@@ -563,19 +756,66 @@ export class BuildController {
 
   handleDragStart(xPx: number, yPx: number): boolean {
     if (this.tool === 'select') {
+      const sel = this.selection;
+      if (!sel) return false;
       const h = this.hitHandle(xPx, yPx);
-      if (!h || h.kind === 'pisteAdd' || h.kind === 'liftAdd' || !this.selection) return false;
-      const lift = this.selection.kind === 'lift' ? this.layout.lifts.find((l) => l.id === this.selection!.id) ?? null : null;
-      this.edit = { kind: h.kind, index: h.index, side: h.side, id: this.selection.id, before: this.clone(), prevLift: lift ? JSON.parse(JSON.stringify(lift)) : null };
+      if (h && h.kind !== 'pisteAdd' && h.kind !== 'liftAdd') {
+        const before = this.clone();
+        const lift = sel.kind === 'lift' ? this.layout.lifts.find((l) => l.id === sel.id) ?? null : null;
+        // Linia ze starszego zapisu – punkty kontrolne zapisujemy w obiekcie przed edycją.
+        const lo = this.lineObj(sel.kind, sel.id);
+        if (lo && !lo.ctrl) {
+          const c = this.ctrlOf(lo);
+          lo.ctrl = c.ctrl.map((q) => ({ ...q }));
+          lo.smooth = c.smooth;
+        }
+        this.edit = { kind: h.kind, index: h.index, side: h.side, id: sel.id, before, prevLift: lift ? JSON.parse(JSON.stringify(lift)) : null };
+        return true;
+      }
+      // Etap 7c: przeciągnięcie odcinka zaznaczonej linii wstawia punkt kontrolny i od razu go przesuwa.
+      const lo = this.lineObj(sel.kind, sel.id);
+      const p = this.world(xPx, yPx);
+      if (!lo || !p) return false;
+      const c = this.ctrlOf(lo);
+      const { points, seg } = smoothPathWithSeg(c.ctrl, c.smooth, this.o.lines.sampleStepM);
+      const near = nearestOnPolyline(p, points);
+      if (near.d / this.o.camera.metersPerPixel > SEGMENT_GRAB_PX) return false;
+      const before = this.clone();
+      const i = seg[Math.min(seg.length - 1, near.index)] + 1;
+      const a = c.ctrl[i - 1];
+      const b = c.ctrl[Math.min(c.ctrl.length - 1, i)];
+      const ins: CtrlPt = { xM: p.xM, yM: p.yM, ...(a.widthM !== undefined ? { widthM: Math.round(((a.widthM ?? 0) + (b.widthM ?? a.widthM ?? 0)) / 2) } : {}) };
+      lo.ctrl = [...c.ctrl.slice(0, i).map((q) => ({ ...q })), ins, ...c.ctrl.slice(i).map((q) => ({ ...q }))];
+      lo.smooth = c.smooth;
+      lo.points = this.densify(lo.ctrl, lo.smooth);
+      this.edit = { kind: sel.kind === 'piste' ? 'pistePoint' : 'linePoint', index: i, id: sel.id, before, prevLift: null };
+      this.drawVersion++;
       return true;
     }
-    if (this.tool !== 'pisteBrush') return false;
+    if (this.drawModeValue !== 'hand' || !LINE_TOOLS.includes(this.tool) || this.tool === 'pisteAxis') return false;
     const p = this.world(xPx, yPx);
     if (!p) return false;
-    this.brushing = true;
-    this.axisPoints = [{ xM: p.xM, yM: p.yM, widthM: this.widthM }];
-    this.updateDraftPiste(this.axisPoints, null);
+    this.handStroke = true;
+    if (this.tool === 'pisteBrush' || this.tool === 'catwalk') {
+      this.brushing = true;
+      this.axisPoints = [{ xM: p.xM, yM: p.yM, widthM: this.tool === 'catwalk' ? this.o.pisteParams.catwalkWidthM : this.widthM }];
+      this.updateDraftPiste(this.axisPoints, null);
+    } else this.strokeArray().splice(0, Infinity, { xM: p.xM, yM: p.yM });
+    this.drawVersion++;
     return true;
+  }
+
+  /** Tablica punktów rysowanej linii (droga, rurociąg, trasa letnia). */
+  private strokeArray(): PointM[] {
+    if (this.tool === 'road') return this.roadPoints;
+    if (this.tool === 'pipeline' || this.tool === 'supply') return this.pipePoints;
+    return this.trailPoints;
+  }
+
+  private nameOf(kind: SelKind, id: string): string {
+    const l = this.layout;
+    const all: { id: string; name?: string }[] = [...l.lifts, ...l.pistes, ...l.bases, ...(l.buildings ?? []), ...(l.pipelines ?? []), ...(l.roads ?? []), ...(l.trails ?? [])];
+    return all.find((o) => o.id === id)?.name ?? (kind === 'gun' ? `armatka ${id}` : id);
   }
 
   handleDragMove(xPx: number, yPx: number): void {
@@ -584,13 +824,30 @@ export class BuildController {
       if (p) this.applyEdit(p);
       return;
     }
-    if (!this.brushing) return;
+    if (!this.handStroke) return;
     const p = this.world(xPx, yPx);
     if (!p) return;
-    const last = this.axisPoints[this.axisPoints.length - 1];
-    if (Math.hypot(p.xM - last.xM, p.yM - last.yM) < this.o.pisteParams.brushPointSpacingM) return;
-    this.axisPoints.push({ xM: p.xM, yM: p.yM, widthM: this.widthM });
-    this.updateDraftPiste(this.axisPoints, null);
+    // Próbki co ok. 1/3 odstępu pędzla (dokładny ślad ręki – upraszczanie po puszczeniu).
+    const spacing = Math.max(1, this.o.pisteParams.brushPointSpacingM / 3);
+    if (this.brushing) {
+      const last = this.axisPoints[this.axisPoints.length - 1];
+      if (Math.hypot(p.xM - last.xM, p.yM - last.yM) < spacing) return;
+      this.axisPoints.push({ xM: p.xM, yM: p.yM, widthM: last.widthM });
+      // Profil i klasa liczone co ok. odstęp pędzla (analiza trasy jest droższa niż rysowanie śladu).
+      if (++this.strokeSinceAnalysis >= 3 || !this.draftPiste) {
+        this.strokeSinceAnalysis = 0;
+        this.updateDraftPiste(this.axisPoints, null);
+      } else {
+        this.draftPiste = { points: this.axisPoints, analysis: this.draftPiste.analysis };
+        this.drawVersion++;
+      }
+      return;
+    }
+    const arr = this.strokeArray();
+    const last = arr[arr.length - 1];
+    if (last && Math.hypot(p.xM - last.xM, p.yM - last.yM) < spacing) return;
+    arr.push({ xM: p.xM, yM: p.yM });
+    this.drawVersion++;
   }
 
   handleDragEnd(): void {
@@ -605,15 +862,19 @@ export class BuildController {
         return;
       }
       this.history.push(e.before);
-      this.message = e.kind.startsWith('piste') ? 'Zmieniono trasę (Cofnij przywraca).' : 'Zmieniono wyciąg (Cofnij przywraca).';
+      this.message = e.kind.startsWith('piste') ? 'Zmieniono trasę (Cofnij przywraca).' : e.kind === 'linePoint' ? 'Zmieniono przebieg (Cofnij przywraca).' : 'Zmieniono wyciąg (Cofnij przywraca).';
       this.reanalyze();
       this.save();
       this.notifyLandCover(false);
       return;
     }
-    if (!this.brushing) return;
+    if (!this.handStroke) return;
     this.brushing = false;
-    this.finishAxis();
+    if (this.tool === 'pisteBrush' || this.tool === 'catwalk') this.finishAxis(true);
+    else if (this.tool === 'road') this.finishRoad(true);
+    else if (this.tool === 'pipeline' || this.tool === 'supply') this.finishPipeline(true);
+    else this.finishTrail(true);
+    this.handStroke = false;
   }
 
   /** Klawisze narzędzi budowy. Zwraca true, jeśli obsłużone. */
@@ -629,7 +890,10 @@ export class BuildController {
         this.setTool('pisteBrush');
         return true;
       case 'KeyO':
-        this.setTool('pisteAxis');
+        // Etap 7c: przełącznik sposobu rysowania linii (ręką ↔ punktami).
+        this.setDrawMode(this.drawModeValue === 'hand' ? 'click' : 'hand');
+        this.message = this.drawModeValue === 'hand' ? 'Rysowanie ręką: przeciągnij myszą – linia sama się uprości i wygładzi.' : 'Rysowanie punktami: klik = punkt, podwójny klik lub Enter = koniec.';
+        this.refreshPanel();
         return true;
       case 'KeyB':
         this.setTool('base');
@@ -678,9 +942,14 @@ export class BuildController {
         this.setTool('gun');
         return true;
       case 'Backspace':
-        if (this.tool === 'pisteAxis' && this.axisPoints.length) {
+        if ((this.tool === 'pisteAxis' || this.tool === 'catwalk') && this.axisPoints.length) {
           this.axisPoints.pop();
           this.updateDraftPiste(this.axisPoints, null);
+          return true;
+        }
+        if (LINE_TOOLS.includes(this.tool) && this.strokeArray().length) {
+          this.strokeArray().pop();
+          this.drawVersion++;
           return true;
         }
         this.deleteSelected();
@@ -756,9 +1025,10 @@ export class BuildController {
     return {};
   }
 
-  private finishPipeline(): void {
+  private finishPipeline(hand = false): void {
     const supply = this.tool === 'supply';
-    const pts = this.pipePoints.filter((q, i, a) => i === 0 || Math.hypot(q.xM - a[i - 1].xM, q.yM - a[i - 1].yM) > 1);
+    const line = this.lineFromDrawn(this.pipePoints, hand);
+    const pts = line.points;
     this.pipePoints = [];
     this.drawVersion++;
     if (pts.length < 2) {
@@ -770,21 +1040,22 @@ export class BuildController {
     const id = `R${next.nextId++}`;
     if (supply) {
       const n = (next.pipelines ?? []).filter((x) => x.supply).length + 1;
-      (next.pipelines ??= []).push({ id, name: `Rura zasilająca ${n}`, points: pts, supply: true });
+      (next.pipelines ??= []).push({ id, name: `Rura zasilająca ${n}`, points: pts, supply: true, ctrl: line.ctrl, smooth: line.smooth });
       const c = pipelineCost(next.pipelines[next.pipelines.length - 1], this.o.snowmaking!);
       if (this.commit(next, `Rura zasilająca ${n}: ${Math.round(c.lengthM)} m. Jeden koniec przy źródle wody, drugi przy zbiorniku (do ${this.water?.wp.supply.connectRadiusM ?? 40} m). Wykop tylko latem (V–X).`)) this.select({ kind: 'pipeline', id });
       return;
     }
     const n = (next.pipelines ?? []).filter((x) => !x.supply).length + 1;
-    (next.pipelines ??= []).push({ id, name: `Rurociąg ${n}`, points: pts });
+    (next.pipelines ??= []).push({ id, name: `Rurociąg ${n}`, points: pts, ctrl: line.ctrl, smooth: line.smooth });
     const c = pipelineCost(next.pipelines[next.pipelines.length - 1], this.o.snowmaking!);
     if (this.commit(next, `Rurociąg ${n}: ${Math.round(c.lengthM)} m, ${c.hydrants} hydrantów. Wykop tylko latem (V–X). Początek musi być przy pompowni albo innym rurociągu.`)) this.select({ kind: 'pipeline', id });
   }
 
   /** Etap 7b: trasa letnia (rower, ścieżka, tor) z narysowanych punktów. */
-  private finishTrail(): void {
+  private finishTrail(hand = false): void {
     const kind = this.tool === 'bikeTrail' ? 'bike' : this.tool === 'walkTrail' ? 'walk' : 'toboggan';
-    const pts = this.trailPoints.filter((q, i, a) => i === 0 || Math.hypot(q.xM - a[i - 1].xM, q.yM - a[i - 1].yM) > 1);
+    const line = this.lineFromDrawn(this.trailPoints, hand);
+    const pts = line.points;
     this.trailPoints = [];
     this.drawVersion++;
     if (pts.length < 2 || !this.o.summer) {
@@ -803,13 +1074,14 @@ export class BuildController {
       this.refreshPanel();
       return;
     }
-    (next.trails ??= []).push({ ...t, points: pts });
+    (next.trails ??= []).push({ ...t, points: pts, ctrl: line.ctrl, smooth: line.smooth });
     const info = kind === 'bike' ? `trasa ${BIKE_CLASS_NAMES[a.classIndex]} (średnio ${Math.round(a.meanSlopePercent)} %)` : kind === 'toboggan' ? `spadek ${Math.round(a.dropM)} m` : '';
     if (this.commit(next, `${base} ${n}: ${Math.round(a.lengthM)} m${info ? `, ${info}` : ''}, koszt ${Math.round(a.costPln / 1000)} tys. zł${a.issues.length ? ` – ${a.issues.join('; ')}` : ''}.`)) this.select({ kind: 'trail', id });
   }
 
-  private finishRoad(): void {
-    const pts = this.roadPoints.filter((q, i, a) => i === 0 || Math.hypot(q.xM - a[i - 1].xM, q.yM - a[i - 1].yM) > 1);
+  private finishRoad(hand = false): void {
+    const line = this.lineFromDrawn(this.roadPoints, hand);
+    const pts = line.points;
     this.roadPoints = [];
     this.drawVersion++;
     if (pts.length < 2) {
@@ -820,7 +1092,7 @@ export class BuildController {
     const next = this.clone();
     const id = `D${next.nextId++}`;
     const n = (next.roads ?? []).length + 1;
-    (next.roads ??= []).push({ id, name: `Droga ${n}`, points: pts });
+    (next.roads ??= []).push({ id, name: `Droga ${n}`, points: pts, ctrl: line.ctrl, smooth: line.smooth });
     const a = analyzeRoads(next, this.o.grid, this.o.roads ?? null, this.o.publicRoads ?? null, this.o.pisteParams.baseRadiusM).roads.get(id);
     if (this.commit(next, `Droga ${n}: ${Math.round(a?.lengthM ?? 0)} m, nachylenie do ${Math.round(a?.maxSlopePercent ?? 0)} %${a && !a.connected ? ' – UWAGA: nie łączy się z drogą publiczną' : ''}.`)) this.select({ kind: 'road', id });
   }
@@ -886,13 +1158,14 @@ export class BuildController {
     if (this.commit(next, `Postawiono: ${sp.guns.find((t) => t.id === this.gunTypeId)?.name ?? 'armatka'}.`)) this.select({ kind: 'gun', id });
   }
 
-  private finishAxis(): void {
+  private finishAxis(hand = false): void {
     const pts = this.axisPoints;
     this.axisPoints = [];
     this.draftPiste = null;
     this.drawVersion++;
-    // Podwójne kliknięcie dodaje dwa razy ten sam punkt – usuwamy duplikaty.
-    const clean = pts.filter((q, i) => i === 0 || Math.hypot(q.xM - pts[i - 1].xM, q.yM - pts[i - 1].yM) > 1);
+    // Podwójne kliknięcie dodaje dwa razy ten sam punkt – usuwamy duplikaty. Ręką – upraszczanie.
+    const line = this.lineFromDrawn(pts, hand);
+    const clean = line.ctrl;
     if (clean.length < 2) {
       this.message = 'Za mało punktów – trasa potrzebuje co najmniej dwóch.';
       this.profile.hide();
@@ -904,7 +1177,7 @@ export class BuildController {
     const id = `T${next.nextId++}`;
     const name = String(this.nextNumber('piste'));
     const catwalk = this.tool === 'catwalk';
-    const design = { id, name: catwalk ? `Nartostrada ${name}` : name, points: oriented, ...(this.gradeNew ? { graded: true } : {}), ...(catwalk ? { catwalk: true } : {}) };
+    const design = { id, name: catwalk ? `Nartostrada ${name}` : name, points: this.densify(oriented, line.smooth), ctrl: oriented, smooth: line.smooth, ...(this.gradeNew ? { graded: true } : {}), ...(catwalk ? { catwalk: true } : {}) };
     const a = analyzePiste(design, this.pisteCtx());
     if (!a.ok) {
       this.message = `Nie można zbudować trasy: ${a.issues.find((i) => i.severity === 'error')?.message ?? ''}`;
@@ -913,7 +1186,7 @@ export class BuildController {
       return;
     }
     next.pistes.push(design);
-    this.commit(next, `Zbudowano trasę ${name} (${this.o.pisteParams.classes[a.classIndex].name}).`);
+    this.commit(next, `Zbudowano trasę ${name} (${this.o.pisteParams.classes[a.classIndex].name})${hand ? ` – ${oriented.length} punktów kontrolnych. Poprawki: Esc, potem przeciągnij punkt albo odcinek trasy` : ''}.`);
     this.select({ kind: 'piste', id });
   }
 
@@ -928,12 +1201,14 @@ export class BuildController {
   }
 
   private updateDraftPiste(points: AxisPoint[], cursor: PointM | null): void {
-    const pts = cursor && this.tool === 'pisteAxis' ? [...points, { xM: cursor.xM, yM: cursor.yM, widthM: this.widthM }] : points;
-    const clean = pts.filter((q, i) => i === 0 || Math.hypot(q.xM - pts[i - 1].xM, q.yM - pts[i - 1].yM) > 1);
+    const pts = cursor && (this.tool === 'pisteAxis' || this.tool === 'catwalk') ? [...points, { xM: cursor.xM, yM: cursor.yM, widthM: points[points.length - 1]?.widthM ?? this.widthM }] : points;
+    let clean = pts.filter((q, i) => i === 0 || Math.hypot(q.xM - pts[i - 1].xM, q.yM - pts[i - 1].yM) > 1);
+    // Rysowanie punktami: podgląd od razu jako gładki łuk.
+    if (!this.handStroke && clean.length >= 3) clean = this.densify(clean, this.o.lines.defaultSmooth);
     const analysis = clean.length >= 2 ? analyzePiste({ id: 'draft', name: '', points: clean }, { grid: this.o.grid, params: this.o.pisteParams, forest: this.o.forest, shrub: this.o.shrub, clearingCost: this.o.clearing }) : null;
-    this.draftPiste = { points: pts, analysis };
+    this.draftPiste = { points: this.handStroke ? pts : clean, analysis };
     this.drawVersion++;
-    if (analysis) this.profile.showPiste('', analysis, true, this.tool === 'pisteAxis' ? 'podwójne kliknięcie lub Enter – koniec' : 'puść przycisk – koniec');
+    if (analysis) this.profile.showPiste('', analysis, true, this.handStroke ? 'puść przycisk – koniec' : 'podwójne kliknięcie lub Enter – koniec');
   }
 
   // ------------------------------------------------------------------ zaznaczanie i edycja
@@ -1234,22 +1509,25 @@ export class BuildController {
     const out: EditHandle[] = [];
     const hov = this.hoverHandle;
     const isHover = (kind: HandleKind, index: number, side?: 1 | -1) => !!hov && hov.kind === kind && hov.index === index && hov.side === side;
-    if (s.kind === 'piste') {
-      const p = this.layout.pistes.find((x) => x.id === s.id);
-      if (!p) return [];
-      const pts = p.points;
-      pts.forEach((q, i) => {
-        const a = pts[Math.max(0, i - 1)];
-        const b = pts[Math.min(pts.length - 1, i + 1)];
-        const dx = b.xM - a.xM;
-        const dy = b.yM - a.yM;
-        const len = Math.hypot(dx, dy) || 1;
-        const nx = -dy / len;
-        const ny = dx / len;
-        for (const side of [1, -1] as const) out.push({ kind: 'pisteWidth', index: i, side, xM: q.xM + nx * side * (q.widthM / 2), yM: q.yM + ny * side * (q.widthM / 2), hover: isHover('pisteWidth', i, side) });
-        if (i < pts.length - 1) out.push({ kind: 'pisteAdd', index: i, xM: (q.xM + pts[i + 1].xM) / 2, yM: (q.yM + pts[i + 1].yM) / 2, hover: isHover('pisteAdd', i) });
-      });
-      pts.forEach((q, i) => out.push({ kind: 'pistePoint', index: i, xM: q.xM, yM: q.yM, hover: isHover('pistePoint', i) }));
+    const lo = this.lineObj(s.kind, s.id);
+    if (lo) {
+      // Etap 7c: uchwyty tylko w punktach kontrolnych (przeciągnięcie odcinka wstawia nowy punkt).
+      const pts = this.ctrlOf(lo).ctrl;
+      const kind: HandleKind = s.kind === 'piste' ? 'pistePoint' : 'linePoint';
+      if (s.kind === 'piste') {
+        pts.forEach((q, i) => {
+          const a = pts[Math.max(0, i - 1)];
+          const b = pts[Math.min(pts.length - 1, i + 1)];
+          const dx = b.xM - a.xM;
+          const dy = b.yM - a.yM;
+          const len = Math.hypot(dx, dy) || 1;
+          const nx = -dy / len;
+          const ny = dx / len;
+          const w = q.widthM ?? 30;
+          for (const side of [1, -1] as const) out.push({ kind: 'pisteWidth', index: i, side, xM: q.xM + nx * side * (w / 2), yM: q.yM + ny * side * (w / 2), hover: isHover('pisteWidth', i, side) });
+        });
+      }
+      pts.forEach((q, i) => out.push({ kind, index: i, xM: q.xM, yM: q.yM, hover: isHover(kind, i) }));
     } else if (s.kind === 'lift') {
       const l = this.layout.lifts.find((x) => x.id === s.id);
       if (!l) return [];
@@ -1272,7 +1550,7 @@ export class BuildController {
     const cam = this.o.camera;
     let best: EditHandle | null = null;
     let bestScore = Infinity;
-    const rank: Record<HandleKind, number> = { pistePoint: 0, liftBottom: 0, liftTop: 0, liftBend: 0, pisteWidth: 1, pisteAdd: 2, liftAdd: 2 };
+    const rank: Record<HandleKind, number> = { pistePoint: 0, linePoint: 0, liftBottom: 0, liftTop: 0, liftBend: 0, pisteWidth: 1, pisteAdd: 2, liftAdd: 2 };
     for (const h of this.handles()) {
       const p = cam.worldToScreen(h.xM, h.yM);
       const d = Math.hypot(p.xPx - xPx, p.yPx - yPx);
@@ -1289,13 +1567,22 @@ export class BuildController {
   /** Przeciąganie: zmiana tylko jednego obiektu i jego analizy (szybko) – reszta po puszczeniu. */
   private applyEdit(p: PointM): void {
     const e = this.edit!;
+    if (e.kind === 'linePoint') {
+      const sel = this.selection;
+      const lo = sel ? this.lineObj(sel.kind, e.id) : null;
+      if (!lo?.ctrl) return;
+      lo.ctrl[e.index] = { ...lo.ctrl[e.index], xM: p.xM, yM: p.yM };
+      lo.points = this.densify(lo.ctrl, lo.smooth ?? this.o.lines.defaultSmooth);
+      this.drawVersion++;
+      return;
+    }
     if (e.kind.startsWith('piste')) {
       const piste = this.layout.pistes.find((x) => x.id === e.id);
-      if (!piste) return;
-      const q = piste.points[e.index];
-      if (e.kind === 'pistePoint') piste.points[e.index] = { xM: p.xM, yM: p.yM, widthM: q.widthM };
+      if (!piste?.ctrl) return;
+      const q = piste.ctrl[e.index];
+      if (e.kind === 'pistePoint') piste.ctrl[e.index] = { xM: p.xM, yM: p.yM, widthM: q.widthM };
       else if (e.kind === 'pisteWidth') {
-        const pts = piste.points;
+        const pts = piste.ctrl;
         const a = pts[Math.max(0, e.index - 1)];
         const b = pts[Math.min(pts.length - 1, e.index + 1)];
         const len = Math.hypot(b.xM - a.xM, b.yM - a.yM) || 1;
@@ -1303,8 +1590,9 @@ export class BuildController {
         const ny = (b.xM - a.xM) / len;
         const half = Math.abs((p.xM - q.xM) * nx + (p.yM - q.yM) * ny);
         const w = Math.round(Math.min(this.o.pisteParams.maxWidthM, Math.max(this.o.pisteParams.minWidthM, 2 * half)));
-        piste.points[e.index] = { ...q, widthM: w };
+        piste.ctrl[e.index] = { ...q, widthM: w };
       }
+      piste.points = this.densify(piste.ctrl, piste.smooth ?? this.o.lines.defaultSmooth);
       this.analysis.pistes.set(piste.id, analyzePiste(piste, this.pisteCtx()));
     } else {
       const lift = this.layout.lifts.find((x) => x.id === e.id);
@@ -1349,12 +1637,16 @@ export class BuildController {
     const s = this.selection;
     if (!s) return false;
     const next = this.clone();
-    if (h.kind === 'pistePoint' && s.kind === 'piste') {
-      const p = next.pistes.find((x) => x.id === s.id);
-      if (!p || p.points.length <= 2) return false;
-      p.points.splice(h.index, 1);
+    if (h.kind === 'pistePoint' || h.kind === 'linePoint') {
+      const lo = this.lineObj(s.kind, s.id, next);
+      if (!lo) return false;
+      const c = this.ctrlOf(lo);
+      if (c.ctrl.length <= 2) return false;
+      lo.ctrl = c.ctrl.filter((_, i) => i !== h.index).map((q) => ({ ...q }));
+      lo.smooth = c.smooth;
+      lo.points = this.densify(lo.ctrl, lo.smooth);
       this.hoverHandle = null;
-      this.commit(next, 'Usunięto punkt osi trasy.');
+      this.commit(next, 'Usunięto punkt kontrolny.');
       return true;
     }
     if (h.kind === 'liftBend' && s.kind === 'lift') {
@@ -1522,6 +1814,9 @@ export class BuildController {
   // ------------------------------------------------------------------ co klatkę
 
   private refreshPanel(): void {
+    if (this.message && this.message !== this.lastMessage) this.o.onMessage?.(this.message);
+    this.lastMessage = this.message;
+    this.o.onState?.();
     this.panel.update({
       tool: this.tool,
       liftTypeId: this.liftTypeId,
@@ -1544,6 +1839,11 @@ export class BuildController {
     });
   }
 
+  /** Podgląd linii rysowanej punktami – od razu gładki łuk; ręką – surowy ślad. */
+  private draftLine(pts: PointM[]): PointM[] {
+    return !this.handStroke && pts.length >= 3 ? this.densify(pts, this.o.lines.defaultSmooth) : pts;
+  }
+
   update(cursor: { xPx: number; yPx: number } | null, timeS = performance.now() / 1000): void {
     // Podgląd: wyciąg do kursora, oś trasy do kursora.
     const key = cursor ? `${Math.round(cursor.xPx)}|${Math.round(cursor.yPx)}|${this.o.camera.centerXM}|${this.o.camera.centerYM}|${this.o.camera.metersPerPixel}` : '';
@@ -1551,7 +1851,7 @@ export class BuildController {
       this.lastCursorKey = key;
       const p = this.world(cursor.xPx, cursor.yPx);
       if (p && this.liftBottom) this.updateDraftLift(p);
-      if (p && this.tool === 'pisteAxis' && this.axisPoints.length) this.updateDraftPiste(this.axisPoints, p);
+      if (p && (this.tool === 'pisteAxis' || this.tool === 'catwalk') && this.axisPoints.length && !this.handStroke) this.updateDraftPiste(this.axisPoints, p);
       if (!this.edit) {
         const h = this.tool === 'select' ? this.hitHandle(cursor.xPx, cursor.yPx) : null;
         const k = (x: EditHandle | null) => (x ? `${x.kind}|${x.index}|${x.side ?? 0}` : '');
@@ -1576,9 +1876,9 @@ export class BuildController {
       thinMarks: this.thin,
       construction: this.construction,
       buildingTypes: this.o.buildingTypes ?? null,
-      snowNet: this.o.snowmaking ? { hydrants: this.hydrants(), draftPipe: this.pipePoints, plumes: this.plumes, cursor: this.hoverPoint } : null,
-      roadDraft: this.roadPoints.length ? { points: this.roadPoints, cursor: this.hoverPoint } : null,
-      trailDraft: this.trailPoints.length ? { kind: this.tool === 'bikeTrail' ? 'bike' : this.tool === 'walkTrail' ? 'walk' : 'toboggan', points: this.trailPoints, cursor: this.hoverPoint } : null,
+      snowNet: this.o.snowmaking ? { hydrants: this.hydrants(), draftPipe: this.draftLine(this.pipePoints), plumes: this.plumes, cursor: this.hoverPoint } : null,
+      roadDraft: this.roadPoints.length ? { points: this.draftLine(this.roadPoints), cursor: this.hoverPoint } : null,
+      trailDraft: this.trailPoints.length ? { kind: this.tool === 'bikeTrail' ? 'bike' : this.tool === 'walkTrail' ? 'walk' : 'toboggan', points: this.draftLine(this.trailPoints), cursor: this.hoverPoint } : null,
       version: this.version,
       drawVersion: this.drawVersion,
       timeS,

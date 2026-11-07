@@ -58,6 +58,9 @@ export interface RoadDesign {
   id: string;
   name: string;
   points: PointM[];
+  /** Etap 7c (edycja, tylko widok): punkty kontrolne linii i gładkość łuku (0 – łamana, 1 – łuk); `points` to gęsty przebieg z nich liczony. */
+  ctrl?: PointM[];
+  smooth?: number;
 }
 
 export interface RoadParams {
@@ -194,6 +197,14 @@ const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFin
 const isPoint = (p: unknown): p is PointM => typeof p === 'object' && p !== null && isNum((p as PointM).xM) && isNum((p as PointM).yM);
 
 /** Odczyt układu z JSON (pliku lub pamięci przeglądarki) z kontrolą formatu. */
+/** Etap 7c: punkty kontrolne linii i gładkość (edycja w widoku) – zachowane przy zapisie i cofaniu. */
+function ctrlFields(o: Record<string, unknown>, width: boolean): { ctrl?: { xM: number; yM: number; widthM?: number }[]; smooth?: number } {
+  if (!Array.isArray(o.ctrl)) return {};
+  const ctrl = (o.ctrl as Record<string, unknown>[]).filter((q) => isPoint(q) && (!width || isNum(q.widthM))).map((q) => ({ xM: q.xM as number, yM: q.yM as number, ...(width ? { widthM: q.widthM as number } : {}) }));
+  if (ctrl.length < 2) return {};
+  return { ctrl, ...(isNum(o.smooth) ? { smooth: Math.max(0, Math.min(1, o.smooth)) } : {}) };
+}
+
 export function parseLayout(raw: unknown): ResortLayout {
   if (typeof raw !== 'object' || raw === null) throw new Error('Plik układu ośrodka: oczekiwano obiektu JSON');
   const r = raw as Record<string, unknown>;
@@ -225,7 +236,7 @@ export function parseLayout(raw: unknown): ResortLayout {
     if (typeof p.id !== 'string' || !Array.isArray(p.points)) throw new Error('Plik układu ośrodka: uszkodzona trasa');
     const points = (p.points as Record<string, unknown>[]).filter((q) => isPoint(q) && isNum(q.widthM)).map((q) => ({ xM: q.xM as number, yM: q.yM as number, widthM: q.widthM as number }));
     if (points.length < 2) continue;
-    out.pistes.push({ id: p.id, name: typeof p.name === 'string' ? p.name : p.id, points, ...(p.closed === true ? { closed: true } : {}), ...(p.graded === true ? { graded: true } : {}), ...(p.catwalk === true ? { catwalk: true } : {}) });
+    out.pistes.push({ id: p.id, name: typeof p.name === 'string' ? p.name : p.id, points, ...(p.closed === true ? { closed: true } : {}), ...(p.graded === true ? { graded: true } : {}), ...(p.catwalk === true ? { catwalk: true } : {}), ...(ctrlFields(p, true) as { ctrl?: { xM: number; yM: number; widthM: number }[]; smooth?: number }) });
   }
   for (const b of bases as Record<string, unknown>[]) {
     if (typeof b.id === 'string' && isNum(b.xM) && isNum(b.yM)) out.bases.push({ id: b.id, name: typeof b.name === 'string' ? b.name : 'Baza', xM: b.xM, yM: b.yM, ...(typeof b.typeId === 'string' ? { typeId: b.typeId } : {}) });
@@ -241,7 +252,7 @@ export function parseLayout(raw: unknown): ResortLayout {
   for (const pp of pipes) {
     if (typeof pp.id !== 'string' || !Array.isArray(pp.points)) continue;
     const points = (pp.points as unknown[]).filter(isPoint).map((q) => ({ xM: q.xM, yM: q.yM }));
-    if (points.length >= 2) (out.pipelines ??= []).push({ id: pp.id, name: typeof pp.name === 'string' ? pp.name : pp.id, points, ...(pp.supply === true ? { supply: true } : {}) });
+    if (points.length >= 2) (out.pipelines ??= []).push({ id: pp.id, name: typeof pp.name === 'string' ? pp.name : pp.id, points, ...(pp.supply === true ? { supply: true } : {}), ...ctrlFields(pp, false) });
   }
   const gunsRaw = Array.isArray(r.snowGuns) ? (r.snowGuns as Record<string, unknown>[]) : [];
   for (const g of gunsRaw) {
@@ -251,13 +262,13 @@ export function parseLayout(raw: unknown): ResortLayout {
   for (const rr of roadsRaw) {
     if (typeof rr.id !== 'string' || !Array.isArray(rr.points)) continue;
     const points = (rr.points as unknown[]).filter(isPoint).map((q) => ({ xM: q.xM, yM: q.yM }));
-    if (points.length >= 2) (out.roads ??= []).push({ id: rr.id, name: typeof rr.name === 'string' ? rr.name : rr.id, points });
+    if (points.length >= 2) (out.roads ??= []).push({ id: rr.id, name: typeof rr.name === 'string' ? rr.name : rr.id, points, ...ctrlFields(rr, false) });
   }
   const trailsRaw = Array.isArray(r.trails) ? (r.trails as Record<string, unknown>[]) : [];
   for (const tr of trailsRaw) {
     if (typeof tr.id !== 'string' || !Array.isArray(tr.points) || (tr.kind !== 'bike' && tr.kind !== 'walk' && tr.kind !== 'toboggan')) continue;
     const points = (tr.points as unknown[]).filter(isPoint).map((q) => ({ xM: q.xM, yM: q.yM }));
-    if (points.length >= 2) (out.trails ??= []).push({ id: tr.id, name: typeof tr.name === 'string' ? tr.name : tr.id, kind: tr.kind, points, ...(tr.closed === true ? { closed: true } : {}) });
+    if (points.length >= 2) (out.trails ??= []).push({ id: tr.id, name: typeof tr.name === 'string' ? tr.name : tr.id, kind: tr.kind, points, ...(tr.closed === true ? { closed: true } : {}), ...ctrlFields(tr, false) });
   }
   const maxId = [...out.lifts, ...out.pistes, ...out.bases, ...(out.buildings ?? []), ...(out.pipelines ?? []), ...(out.snowGuns ?? []), ...(out.roads ?? []), ...(out.trails ?? [])].reduce((m, o) => Math.max(m, Number(/\d+$/.exec(o.id)?.[0] ?? 0)), 0);
   out.nextId = Math.max(out.nextId, maxId + 1);
