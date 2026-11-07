@@ -4,6 +4,7 @@
  * Same wartości – jednostki i źródła są w pliku.
  */
 import type { RoadParams } from './resort';
+import type { SummerParams } from './summerParams';
 import { readNumber, readNumberArray, readSection } from './params';
 import type { SnowmakingParams } from './snowmakingParams';
 
@@ -167,6 +168,13 @@ export interface EconomyParams {
   snowmaking?: SnowmakingParams | null;
   /** Etap 6b: drogi (odśnieżanie zimą) – dołączane przez withRoads. */
   roads?: RoadParams | null;
+  /** Etap 7b: sezon letni, przeglądy wyciągów (data/summer.json) – dołączane przez withSummer. */
+  summer?: SummerParams | null;
+}
+
+/** Ekonomia z sezonem letnim i przeglądami wyciągów (etap 7b). */
+export function withSummer(ep: EconomyParams, sp: SummerParams): EconomyParams {
+  return { ...ep, summer: sp };
 }
 
 /** Ekonomia z parametrami naśnieżania (koszty rurociągów, armatek, infrastruktury). */

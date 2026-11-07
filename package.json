@@ -25,7 +25,8 @@
     "snow-diagnosis": "tsx src/tools/snowDiagnosis.ts",
     "pilsko-economy": "tsx src/tools/pilskoEconomy.ts",
     "import-hydro": "tsx src/tools/importHydro.ts",
-    "water-check": "tsx src/tools/waterCheck.ts"
+    "water-check": "tsx src/tools/waterCheck.ts",
+    "import-storms": "tsx src/tools/importStorms.ts"
   },
   "engines": {
     "node": ">=22"

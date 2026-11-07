@@ -24,6 +24,10 @@ import type { RidingParams } from './snowRiding';
 import { minBaseCm, packedBaseCm, thinSeverity } from './snowRiding';
 import { addDays, formatIsoDate, parseIsoDate } from './time';
 import { pipelineCost } from './snowmaking';
+import type { InspectionState } from './inspections';
+import { inspectionStatus, processInspections } from './inspections';
+import type { SummerOutcome, SummerPlan, SummerState } from './summer';
+import { newSummerState, summerReputationOf } from './summer';
 import type { CalendarDate } from './weather';
 import type { DayWeather, WeatherBook } from './weatherBook';
 
@@ -31,12 +35,14 @@ import type { DayWeather, WeatherBook } from './weatherBook';
 
 export type GameMode = 'career' | 'sandbox';
 
-export const REVENUE_KEYS = ['passes', 'parking', 'gastronomy', 'rental', 'school', 'shuttle'] as const;
+export const REVENUE_KEYS = ['passes', 'parking', 'gastronomy', 'rental', 'school', 'shuttle', 'liftTickets', 'bikePasses', 'toboggan'] as const;
 export const COST_KEYS = [
   'energy', 'liftStaff', 'cashiers', 'patrol', 'seasonal', 'buildingsStaff', 'goods',
   'snowEnergy', 'water', 'groomFuel', 'groomStaff', 'groomService', 'leasing', 'repairs',
-  'permanent', 'admin', 'roads', 'insurance', 'maintenance', 'inspections', 'interest',
+  'permanent', 'admin', 'roads', 'trails', 'mowing', 'insurance', 'maintenance', 'inspections', 'interest',
 ] as const;
+/** Etap 7b: koszty stałe (nie przypisywane do zimy ani lata w raporcie roku). */
+export const COMMON_COST_KEYS: readonly CostKey[] = ['permanent', 'insurance', 'maintenance', 'inspections', 'interest', 'trails', 'mowing'];
 /** Inwestycje i finansowanie (nie są kosztem dnia, ale zmieniają saldo). */
 export const CAPITAL_KEYS = ['construction', 'equipment', 'refunds', 'loanIn', 'loanPrincipal'] as const;
 export type RevenueKey = (typeof REVENUE_KEYS)[number];
@@ -68,6 +74,11 @@ export const FLOW_NAMES: Record<keyof Flows, string> = {
   admin: 'administracja, marketing, sprzedaż',
   roads: 'odśnieżanie dróg dojazdowych',
   shuttle: 'transport do schroniska',
+  liftTickets: 'bilety kolei (lato)',
+  bikePasses: 'karnety rowerowe',
+  toboggan: 'tor saneczkowy',
+  trails: 'utrzymanie tras letnich, toru, placów zabaw',
+  mowing: 'koszenie tras',
   insurance: 'ubezpieczenie',
   maintenance: 'utrzymanie',
   inspections: 'przeglądy wyciągów',
@@ -91,7 +102,26 @@ export const sumCosts = (f: Flows) => COST_KEYS.reduce((a, k) => a + f[k], 0);
 export const balanceChange = (f: Flows) => sumRevenue(f) - sumCosts(f) - f.construction - f.equipment + f.refunds + f.loanIn - f.loanPrincipal;
 
 function addFlows(a: Flows, b: Flows): void {
-  for (const k of Object.keys(a) as (keyof Flows)[]) a[k] += b[k];
+  for (const k of [...REVENUE_KEYS, ...COST_KEYS, ...CAPITAL_KEYS]) a[k] = (a[k] ?? 0) + (b[k] ?? 0);
+}
+
+/** Uzupełnia brakujące pozycje (zapisy sprzed dodania nowych przychodów i kosztów). */
+export function normalizeFlows(f: Flows): Flows {
+  for (const k of [...REVENUE_KEYS, ...COST_KEYS, ...CAPITAL_KEYS]) if (typeof f[k] !== 'number') f[k] = 0;
+  return f;
+}
+
+export type SeasonKind = 'winter' | 'summer' | 'off';
+/** Przepływy roku gry rozdzielone: zima, lato, poza sezonem i koszty wspólne. */
+export interface SeasonFlows {
+  winter: Flows;
+  summer: Flows;
+  off: Flows;
+  common: Flows;
+}
+
+export function zeroSeasonFlows(): SeasonFlows {
+  return { winter: zeroFlows(), summer: zeroFlows(), off: zeroFlows(), common: zeroFlows() };
 }
 
 export interface Loan {
@@ -210,6 +240,10 @@ export interface DayRecord {
   groomed?: number;
   unfinished?: number;
   techOpen?: boolean;
+  /** Etap 7b: który sezon trwał (zima / lato / poza sezonem), burza [h], goście letni wg typu. */
+  season?: SeasonKind;
+  stormH?: number;
+  summerByType?: number[];
 }
 
 export interface SeasonReport {
@@ -226,6 +260,12 @@ export interface SeasonReport {
   balanceEnd: number;
   debtEnd: number;
   competitors: { name: string; openDays: number; guests: number; dayPln: number }[];
+  /** Etap 7b: przepływy rozdzielone na zimę, lato, poza sezonem i koszty wspólne. */
+  seasonFlows?: SeasonFlows;
+  summerOpenDays?: number;
+  summerGuests?: number;
+  summerRating?: number | null;
+  summerReputationEnd?: number;
   /** Etap 6b: zima na tle wielolecia (śnieg naturalny w punkcie odniesienia) – uzupełnia widok/raport. */
   winter?: { days: number; meanDays: number; cls: number; percentile: number; elevationM: number; thresholdCm: number } | null;
 }
@@ -248,6 +288,11 @@ export interface GameState {
   construction: Record<string, Construction>;
   /** Naśnieżanie i ratraki (etap 7; w starszych zapisach brak – uzupełnia ensureOps). */
   ops?: OpsState;
+  /** Etap 7b: sezon letni (otwarty, ceny, reputacja letnia) i przeglądy wyciągów. */
+  summer?: SummerState;
+  inspections?: Record<string, InspectionState>;
+  /** Etap 7b: przychody wg obiektu w roku gry (id → zł) – do kart obiektów. */
+  objectRevenue?: Record<string, number>;
   /** Zapłacony koszt i „podpis” geometrii obiektu (wykrywanie przebudowy). */
   paid: Record<string, { costPln: number; signature: string }>;
   negativeDays: number;
@@ -255,7 +300,7 @@ export interface GameState {
   /** Przepływy od początku dnia (budowa, kredyt) – dopisywane do rekordu dnia przy zamknięciu. */
   pending: Flows;
   /** Rok gry (od 1 maja): dni i przepływy. */
-  year: { startYear: number; balanceStart: number; flows: Flows; days: DayRecord[] };
+  year: { startYear: number; balanceStart: number; flows: Flows; days: DayRecord[]; seasonFlows?: SeasonFlows };
   history: SeasonReport[];
   /** Ostatnie komunikaty (budowy ukończone, przeglądy, raty…). */
   log: { date: string; text: string }[];
@@ -284,11 +329,12 @@ export function newGameState(o: { mode: GameMode; seed: number; date: CalendarDa
     negativeDays: 0,
     bankrupt: false,
     pending: zeroFlows(),
-    year: { startYear, balanceStart: balance, flows: zeroFlows(), days: [] },
+    year: { startYear, balanceStart: balance, flows: zeroFlows(), days: [], seasonFlows: zeroSeasonFlows() },
     history: [],
     log: [],
     lastDay: null,
     ops: { reservoirM3: 0, snowPlan: {}, gunModes: {}, groomers: [], nextGroomerId: 1, groomPlan: {}, dayGroom: [], last: null },
+    ...(ep.summer ? { summer: newSummerState(ep.summer), inspections: {} } : {}),
   };
 }
 
@@ -310,7 +356,7 @@ function log(state: GameState, text: string): void {
 
 export interface ObjectCost {
   id: string;
-  kind: 'lift' | 'piste' | 'building' | 'pipeline' | 'gun' | 'road';
+  kind: 'lift' | 'piste' | 'building' | 'pipeline' | 'gun' | 'road' | 'trail';
   summerOnly?: boolean;
   name: string;
   costPln: number;
@@ -336,11 +382,17 @@ export function objectCosts(layout: ResortLayout, analysis: ResortAnalysis, ep: 
   for (const b of [...layout.bases, ...(layout.buildings ?? [])]) {
     const t = buildingTypeById(ep, b.typeId);
     const infra = ep.snowmaking?.buildings.find((x) => x.id === b.typeId) ?? null;
-    out.push({ id: b.id, kind: 'building', name: b.name, costPln: t?.costPln ?? infra?.costPln ?? 0, buildDays: Math.max(1, Math.round(t?.buildDays ?? infra?.buildDays ?? 1)), signature: sig(b), ...(infra?.summerOnly ? { summerOnly: true } : {}) });
+    const sb = ep.summer?.buildings.find((x) => x.id === b.typeId) ?? null;
+    out.push({ id: b.id, kind: 'building', name: b.name, costPln: t?.costPln ?? infra?.costPln ?? sb?.costPln ?? 0, buildDays: Math.max(1, Math.round(t?.buildDays ?? infra?.buildDays ?? sb?.buildDays ?? 1)), signature: sig(b), ...(infra?.summerOnly ? { summerOnly: true } : {}) });
   }
   for (const r of layout.roads ?? []) {
     const a = analysis.roads?.get(r.id);
     if (a) out.push({ id: r.id, kind: 'road', name: r.name, costPln: a.costPln, buildDays: a.buildDays, signature: sig(r) });
+  }
+  // Etap 7b: trasy rowerowe, ścieżki, tor saneczkowy.
+  for (const t of layout.trails ?? []) {
+    const a = analysis.trails?.get(t.id);
+    if (a) out.push({ id: t.id, kind: 'trail', name: t.name, costPln: a.costPln, buildDays: a.buildDays, signature: sig(t) });
   }
   const sp = ep.snowmaking;
   if (sp) {
@@ -442,13 +494,15 @@ export function operationalLayout(layout: ResortLayout, state: GameState, blocke
   const ok = (id: string) => !state.construction[id];
   return {
     ...layout,
-    lifts: layout.lifts.filter((l) => ok(l.id)),
+    // Etap 7b: wyciąg w przeglądzie albo bez ważnego przeglądu – zamknięty.
+    lifts: layout.lifts.filter((l) => ok(l.id)).map((l) => (inspectionStatus(state, l.id, state.date) !== 'ok' ? { ...l, closed: true } : l)),
     // Trasy z pryzmami albo ratrakowane w dzień – zamknięte dla gości.
     pistes: layout.pistes.filter((p) => ok(p.id)).map((p) => (blocked?.has(p.id) ? { ...p, closed: true } : p)),
     bases: layout.bases.filter((b) => ok(b.id)),
     buildings: (layout.buildings ?? []).filter((b) => ok(b.id)),
     pipelines: (layout.pipelines ?? []).filter((p) => ok(p.id)),
     snowGuns: (layout.snowGuns ?? []).filter((g) => ok(g.id) && ok(g.pipelineId)),
+    trails: (layout.trails ?? []).filter((t) => ok(t.id)),
   };
 }
 
@@ -544,7 +598,7 @@ export function resortFacts(layout: ResortLayout, analysis: ResortAnalysis, net:
       rideMin: net && ni >= 0 ? net.lifts[ni].rideS / 60 : 0,
       lengthM,
       built,
-      operating: built && !l.closed && descent && (a?.ok ?? false) && !(net && ni >= 0 && net.lifts[ni].unreachable),
+      operating: built && !l.closed && descent && (a?.ok ?? false) && !(net && ni >= 0 && net.lifts[ni].unreachable) && inspectionStatus(state, l.id, state.date) === 'ok',
     };
   });
   const anyLift = lifts.some((l) => l.operating);
@@ -918,6 +972,10 @@ export interface DayExtra {
   fuelL: number;
   groomed: number;
   unfinished: number;
+  /** Etap 7b: dzień letni – plan i wynik (przepływy lata są już w `flows`). */
+  summer?: { plan: SummerPlan; outcome: SummerOutcome } | null;
+  /** Etap 7b: przychód dnia wg obiektu (karty obiektów). */
+  objectRevenue?: Record<string, number>;
 }
 
 export function closeDay(
@@ -931,7 +989,13 @@ export function closeDay(
 ): CloseDayResult {
   const c = ep.costs;
   const flows = zeroFlows();
+  normalizeFlows(state.year.flows);
+  state.year.seasonFlows ??= zeroSeasonFlows();
+  state.objectRevenue ??= {};
+  const objRev = state.objectRevenue;
   if (extra) for (const [k, v] of Object.entries(extra.flows)) flows[k as keyof Flows] += v ?? 0;
+  if (extra?.objectRevenue) for (const [id, v] of Object.entries(extra.objectRevenue)) objRev[id] = (objRev[id] ?? 0) + v;
+  const summerDay = extra?.summer && extra.summer.plan.open ? extra.summer : null;
   const facts = ctx.facts;
   const date = ctx.date;
   const wage = c.hourlyWagePln * c.employerCostFactor;
@@ -969,6 +1033,7 @@ export function closeDay(
         const here = Math.min(cars, t.cars);
         cars -= here;
         flows.parking += here * t.feePerCarPln;
+        objRev[b.id] = (objRev[b.id] ?? 0) + here * t.feePerCarPln;
         flows.buildingsStaff += t.staffPerDay * staffH * wage;
         continue;
       }
@@ -985,6 +1050,7 @@ export function closeDay(
       }
       const users = Math.min(t.capacityPerDay, (t.id === 'school' ? beginners : g) * t.useShare);
       const rev = users * t.revenuePerGuestPln;
+      objRev[b.id] = (objRev[b.id] ?? 0) + rev;
       if (t.id === 'gastronomy') flows.gastronomy += rev;
       else if (t.id === 'rental') flows.rental += rev;
       else flows.school += rev;
@@ -1019,7 +1085,12 @@ export function closeDay(
     state.loans = state.loans.filter((l) => l.remainingPln > 0.5 && l.monthsLeft > 0);
     if (state.loans.length < before) log(state, 'Kredyt spłacony.');
   }
-  if (date.day === 1 && date.month === ep.calendar.fixedChargesMonth) {
+  if (ep.summer) {
+    // Etap 7b: przeglądy w terminach wybranych przez gracza (koszt w dniu rozpoczęcia).
+    const r = processInspections(state, date, facts.lifts.map((l) => ({ id: l.id, name: l.name, aerial: l.aerial, built: l.built })), ep, ep.summer);
+    flows.inspections += r.costPln;
+    for (const m of r.messages) log(state, m);
+  } else if (date.day === 1 && date.month === ep.calendar.fixedChargesMonth) {
     const ins = facts.lifts.filter((l) => l.built).reduce((a, l) => a + (l.aerial ? c.inspectionAerialPln : c.inspectionSurfacePln), 0);
     flows.inspections += ins;
     if (ins > 0) log(state, `Przeglądy wyciągów przed sezonem: ${fmtPln(ins)}`);
@@ -1041,6 +1112,11 @@ export function closeDay(
   const rd = ep.reputation.dailyDecay;
   state.reputation.sum = state.reputation.sum * rd + (working ? outcome.ratingSum : 0);
   state.reputation.weight = state.reputation.weight * rd + (working ? outcome.ratingCount : 0);
+  if (ep.summer && state.summer) {
+    const sd = ep.summer.reputation.dailyDecay;
+    state.summer.reputation.sum = state.summer.reputation.sum * sd + (summerDay ? summerDay.outcome.ratingSum : 0);
+    state.summer.reputation.weight = state.summer.reputation.weight * sd + (summerDay ? summerDay.outcome.ratingCount : 0);
+  }
   // Saldo.
   const dayFlows = zeroFlows();
   addFlows(dayFlows, flows);
@@ -1048,6 +1124,18 @@ export function closeDay(
   state.balancePln += sumRevenue(flows) - sumCosts(flows) - flows.loanPrincipal - flows.equipment;
   state.pending = zeroFlows();
   addFlows(state.year.flows, dayFlows);
+  // Etap 7b: podział roku – operacje do sezonu dnia, koszty stałe osobno.
+  const season: SeasonKind = summerDay ? 'summer' : working ? 'winter' : 'off';
+  const common = zeroFlows();
+  const seasonal = zeroFlows();
+  for (const k of [...REVENUE_KEYS, ...COST_KEYS, ...CAPITAL_KEYS]) {
+    if ((COMMON_COST_KEYS as readonly string[]).includes(k) || (CAPITAL_KEYS as readonly string[]).includes(k)) common[k] = dayFlows[k];
+    else seasonal[k] = dayFlows[k];
+  }
+  normalizeFlows(state.year.seasonFlows.common);
+  normalizeFlows(state.year.seasonFlows[season]);
+  addFlows(state.year.seasonFlows.common, common);
+  addFlows(state.year.seasonFlows[season], seasonal);
   if (state.mode === 'career') {
     if (state.balancePln < 0) state.negativeDays++;
     else state.negativeDays = 0;
@@ -1059,20 +1147,22 @@ export function closeDay(
   }
   const record: DayRecord = {
     date: formatIsoDate(date),
-    open: working,
-    guests: working ? outcome.guests : 0,
-    demand: plan.demand,
-    rating: working && outcome.ratingCount > 0 ? outcome.ratingSum / outcome.ratingCount : null,
+    open: working || !!summerDay,
+    guests: working ? outcome.guests : summerDay ? summerDay.outcome.guests : 0,
+    demand: summerDay ? summerDay.plan.demand : plan.demand,
+    rating: working && outcome.ratingCount > 0 ? outcome.ratingSum / outcome.ratingCount : summerDay && summerDay.outcome.ratingCount > 0 ? summerDay.outcome.ratingSum / summerDay.outcome.ratingCount : null,
     revenuePln: sumRevenue(dayFlows),
     costPln: sumCosts(dayFlows),
     capitalPln: dayFlows.construction + dayFlows.equipment - dayFlows.refunds - dayFlows.loanIn + dayFlows.loanPrincipal,
     balancePln: state.balancePln,
-    src: working ? (outcome.source === 'agents' ? 'a' : 'q') : '-',
+    src: working ? (outcome.source === 'agents' ? 'a' : 'q') : summerDay ? (summerDay.outcome.source === 'agents' ? 'a' : 'q') : '-',
     snowScore: ctx.snow.score,
     kmOpen: facts.kmOpen,
     compGuests: plan.compGuests.map((x) => Math.round(x)),
     compOpen: ctx.competitors.map((x) => x.open),
-    label: plan.info.label,
+    label: summerDay ? summerDay.plan.info.label : plan.info.label,
+    season,
+    ...(summerDay ? { stormH: summerDay.plan.weather.storm ? summerDay.plan.weather.stormToH - summerDay.plan.weather.stormFromH : 0, summerByType: summerDay.outcome.byType.map((x) => Math.round(x)) } : {}),
     snowM3: extra?.snowM3 ?? 0,
     waterM3: extra?.waterM3 ?? 0,
     snowKWh: extra?.snowKWh ?? 0,
@@ -1087,12 +1177,17 @@ export function closeDay(
   // Następny dzień; 1 maja – koniec roku gry: raport sezonu, sezon zamknięty.
   const next = addDays(date, 1);
   let report: SeasonReport | null = null;
+  if (ep.summer && state.summer?.open && next.month > ep.summer.season.latestCloseMonth && date.month <= ep.summer.season.latestCloseMonth) {
+    state.summer.open = false;
+    log(state, 'Koniec października – sezon letni zamknięty.');
+  }
   if (next.month === ep.calendar.summerStartMonth && next.day === 1) {
     if (state.seasonOpen) log(state, 'Koniec kwietnia – sezon zamknięty.');
     state.seasonOpen = false;
     report = seasonReport(state, ep);
     state.history.push(report);
-    state.year = { startYear: next.year, balanceStart: state.balancePln, flows: zeroFlows(), days: [] };
+    state.year = { startYear: next.year, balanceStart: state.balancePln, flows: zeroFlows(), days: [], seasonFlows: zeroSeasonFlows() };
+    state.objectRevenue = {};
   }
   state.date = next;
   state.hour = 0;
@@ -1113,14 +1208,34 @@ export function seasonReport(state: GameState, ep: EconomyParams): SeasonReport 
       rN += d.guests;
     }
   }
+  let sOpen = 0;
+  let sGuests = 0;
+  let sR = 0;
+  let wOpen = 0;
+  let wGuests = 0;
+  for (const d of days) {
+    if (d.season === 'summer') {
+      sOpen++;
+      sGuests += d.guests;
+      if (d.rating !== null) sR += d.rating * d.guests;
+    } else if (d.open) {
+      wOpen++;
+      wGuests += d.guests;
+    }
+  }
   return {
+    seasonFlows: y.seasonFlows ? JSON.parse(JSON.stringify(y.seasonFlows)) : undefined,
+    summerOpenDays: sOpen,
+    summerGuests: sGuests,
+    summerRating: sGuests > 0 ? sR / sGuests : null,
+    summerReputationEnd: ep.summer ? summerReputationOf(state, ep.summer) : undefined,
     startYear: y.startYear,
     from: days[0]?.date ?? formatIsoDate(state.date),
     to: days[days.length - 1]?.date ?? formatIsoDate(state.date),
     flows: { ...y.flows },
     days: days.slice(),
-    openDays: days.filter((d) => d.open).length,
-    guests,
+    openDays: ep.summer ? wOpen : days.filter((d) => d.open).length,
+    guests: ep.summer ? wGuests : guests,
     meanRating: rN > 0 ? rSum / rN : null,
     reputationEnd: reputationOf(state, ep),
     balanceStart: y.balanceStart,
@@ -1148,6 +1263,21 @@ export function setSeasonOpen(state: GameState, open: boolean, ep: EconomyParams
   }
   if (state.seasonOpen !== open) log(state, open ? 'Sezon otwarty.' : 'Sezon zamknięty.');
   state.seasonOpen = open;
+  return null;
+}
+
+/** Etap 7b: otwarcie / zamknięcie sezonu letniego. */
+export function setSummerOpen(state: GameState, open: boolean, ep: EconomyParams): string | null {
+  const sp = ep.summer;
+  if (!sp) return 'Sezon letni niedostępny.';
+  if (state.bankrupt) return 'Ośrodek zbankrutował.';
+  state.summer ??= newSummerState(sp);
+  if (open) {
+    const m = state.date.month;
+    if (m < sp.season.earliestOpenMonth || m > sp.season.latestCloseMonth) return `Sezon letni można otworzyć od ${MONTHS[sp.season.earliestOpenMonth - 1]} do ${MONTHS[sp.season.latestCloseMonth - 1]}.`;
+  }
+  if (state.summer.open !== open) log(state, open ? 'Sezon letni otwarty.' : 'Sezon letni zamknięty.');
+  state.summer.open = open;
   return null;
 }
 

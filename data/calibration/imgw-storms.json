@@ -1,0 +1,126 @@
+{
+ "_opis": "Burze w poszczególnych miesiącach – stacja synoptyczna IMGW Bielsko-Biała (350190600, 398 m), dane dobowe (BRZA – czas trwania burzy, SMDB – opad, TMAX), lata 2001–2025. Wynik npm run import-storms – nie edytować ręcznie.",
+ "source": "IMGW-PIB, danepubliczne.imgw.pl, dane meteorologiczne dobowe synop (s_d)",
+ "generated": "2026-11-07",
+ "years": {
+  "value": 25,
+  "unit": "lat",
+  "source": "liczba lat z danymi"
+ },
+ "units": "stormDaysPerMonth – dni z burzą w miesiącu; pStormIfWet / pStormIfDry – udział dni z burzą wśród dni z opadem ≥ 0,5 mm / bez opadu; meanHours – średni czas trwania burzy w dniu z burzą [h]; temperatury [°C]",
+ "months": [
+  {
+   "month": 1,
+   "stormDaysPerMonth": 0.08,
+   "pStormIfWet": 0.006,
+   "pStormIfDry": 0,
+   "meanHours": 0.3,
+   "meanTmaxStormC": 6.85,
+   "meanTmaxC": 2.475
+  },
+  {
+   "month": 2,
+   "stormDaysPerMonth": 0.12,
+   "pStormIfWet": 0.01,
+   "pStormIfDry": 0,
+   "meanHours": 0.3,
+   "meanTmaxStormC": 8.667,
+   "meanTmaxC": 3.968
+  },
+  {
+   "month": 3,
+   "stormDaysPerMonth": 0.36,
+   "pStormIfWet": 0.031,
+   "pStormIfDry": 0,
+   "meanHours": 0.333,
+   "meanTmaxStormC": 9.533,
+   "meanTmaxC": 8.359
+  },
+  {
+   "month": 4,
+   "stormDaysPerMonth": 1.52,
+   "pStormIfWet": 0.124,
+   "pStormIfDry": 0.01,
+   "meanHours": 1.034,
+   "meanTmaxStormC": 17.455,
+   "meanTmaxC": 14.322
+  },
+  {
+   "month": 5,
+   "stormDaysPerMonth": 4.6,
+   "pStormIfWet": 0.261,
+   "pStormIfDry": 0.047,
+   "meanHours": 2.203,
+   "meanTmaxStormC": 21.837,
+   "meanTmaxC": 18.641
+  },
+  {
+   "month": 6,
+   "stormDaysPerMonth": 5.76,
+   "pStormIfWet": 0.326,
+   "pStormIfDry": 0.088,
+   "meanHours": 1.62,
+   "meanTmaxStormC": 23.686,
+   "meanTmaxC": 22.584
+  },
+  {
+   "month": 7,
+   "stormDaysPerMonth": 6.24,
+   "pStormIfWet": 0.381,
+   "pStormIfDry": 0.066,
+   "meanHours": 2.05,
+   "meanTmaxStormC": 26.047,
+   "meanTmaxC": 24.573
+  },
+  {
+   "month": 8,
+   "stormDaysPerMonth": 4.6,
+   "pStormIfWet": 0.325,
+   "pStormIfDry": 0.055,
+   "meanHours": 2.104,
+   "meanTmaxStormC": 25.79,
+   "meanTmaxC": 24.222
+  },
+  {
+   "month": 9,
+   "stormDaysPerMonth": 1.28,
+   "pStormIfWet": 0.112,
+   "pStormIfDry": 0.002,
+   "meanHours": 1.591,
+   "meanTmaxStormC": 22.038,
+   "meanTmaxC": 19.084
+  },
+  {
+   "month": 10,
+   "stormDaysPerMonth": 0.36,
+   "pStormIfWet": 0.031,
+   "pStormIfDry": 0,
+   "meanHours": 0.822,
+   "meanTmaxStormC": 16.067,
+   "meanTmaxC": 14.121
+  },
+  {
+   "month": 11,
+   "stormDaysPerMonth": 0,
+   "pStormIfWet": 0,
+   "pStormIfDry": 0,
+   "meanHours": 0,
+   "meanTmaxStormC": 0,
+   "meanTmaxC": 8.779
+  },
+  {
+   "month": 12,
+   "stormDaysPerMonth": 0.04,
+   "pStormIfWet": 0,
+   "pStormIfDry": 0.002,
+   "meanHours": 0.3,
+   "meanTmaxStormC": 4.3,
+   "meanTmaxC": 3.953
+  }
+ ],
+ "stormDaysPerYear": {
+  "value": 24.96,
+  "unit": "dni/rok",
+  "source": "suma miesięcy"
+ }
+}

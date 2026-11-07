@@ -6,7 +6,7 @@
 import type { ClimateProfile } from './climate';
 import type { CompetitorSeason } from './competition';
 import { competitorSeason, competitorsOn } from './competition';
-import type { CloseDayResult, DayContext, DayOutcome, GameMode, GameState, ResortFacts } from './economy';
+import type { CloseDayResult, DayContext, DayOutcome, Flows, GameMode, GameState, ResortFacts } from './economy';
 import { agentOutcome, closeDay, newGameState, objectCosts, operationalLayout, parkingCapacityPersons, planDay, quickDayOutcome, reconcileConstruction, resortFacts, resortSnow, skiSeasonYear } from './economy';
 import type { EconomyParams } from './economyParams';
 import { Environment } from './environment';
@@ -34,6 +34,8 @@ import type { GameSave } from './gameSave';
 import { makeSave } from './gameSave';
 import type { DayOpsResult } from './operations';
 import type { WaterContext } from './operations';
+import type { SeasonExtras, SummerFacts, SummerOutcome, SummerPlan } from './summer';
+import { seasonExtras } from './summer';
 import { blockedPistes, runDayOperations } from './operations';
 import type { SnowOps } from './snowOps';
 
@@ -67,6 +69,8 @@ export interface HeadlessGameOptions {
   publicRoads?: PointM[][] | null;
   /** Etap 6b: model wody (potoki, wodociąg, studnie, zlewnia); brak – uproszczony dopływ z ujęć. */
   water?: WaterContext | null;
+  /** Etap 7b: dzień letni z symulacji gości (brak – model zgrubny). */
+  summerAgents?: ((g: HeadlessGame, plan: SummerPlan, sf: SummerFacts) => SummerOutcome) | null;
 }
 
 export class HeadlessGame {
@@ -86,6 +90,7 @@ export class HeadlessGame {
   last: CloseDayResult | null = null;
   lastOutcome: DayOutcome | null = null;
   lastOps: DayOpsResult | null = null;
+  lastSummer: SeasonExtras | null = null;
 
   constructor(readonly o: HeadlessGameOptions, init?: { state: GameState; layout: ResortLayout; traffic?: Map<string, Float32Array>; ops?: Map<string, SnowOps> }) {
     const g = o.grid;
@@ -105,7 +110,7 @@ export class HeadlessGame {
 
   private analyze(): ResortAnalysis {
     const o = this.o;
-    return analyzeResort(this.layout, { grid: o.grid, lifts: o.liftParams, pistes: o.pisteParams, clearing: o.clearing, forest: o.forest, shrub: o.shrub, ground: o.ground, roads: o.roads, publicRoads: o.publicRoads });
+    return analyzeResort(this.layout, { grid: o.grid, lifts: o.liftParams, pistes: o.pisteParams, clearing: o.clearing, forest: o.forest, shrub: o.shrub, ground: o.ground, roads: o.roads, publicRoads: o.publicRoads, summer: o.economy.summer ?? null });
   }
 
   /** Trasy zamknięte przez pryzmy / ratrakowanie w dzień (etap 7). */
@@ -231,6 +236,27 @@ export class HeadlessGame {
         this.snow.setOperations(date, res.ops);
         this.lastSnap = null;
       }
+    }
+    // Etap 7b: dzień letni (gdy sezon letni otwarty), tor saneczkowy zimą, utrzymanie tras letnich, koszenie.
+    if (this.o.economy.summer) {
+      const ex = seasonExtras({
+        state: this.state,
+        layout: this.layout,
+        trails: this.analysis.trails ?? new Map(),
+        facts: this.facts,
+        lp: this.o.liftParams,
+        ep: this.o.economy,
+        book: this.book,
+        date,
+        winterGuests: plan.open ? outcome.guests : 0,
+        winterHours: Math.max(0, plan.hours.closeH - plan.hours.openH),
+        agents: this.o.summerAgents ? (p, sf) => this.o.summerAgents!(this, p, sf) : null,
+      });
+      this.lastSummer = ex;
+      extra ??= { flows: {}, snowM3: 0, waterM3: 0, snowKWh: 0, fuelL: 0, groomed: 0, unfinished: 0 };
+      for (const [k, v] of Object.entries(ex.flows)) extra.flows[k as keyof Flows] = (extra.flows[k as keyof Flows] ?? 0) + (v ?? 0);
+      extra.summer = ex.summer;
+      extra.objectRevenue = ex.objectRevenue;
     }
     const r = closeDay(this.state, ctx, plan, outcome, this.o.economy, names, extra);
     if (r.finishedConstruction.length) this.refreshFacts();

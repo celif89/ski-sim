@@ -165,6 +165,9 @@ export interface LiftDesign {
   bends?: LiftBend[];
   /** Etap 6b: zjazd wyciągiem w dół (kanapy, gondole – opcja; najwyżej downhillMaxSeatShare miejsc). */
   downhill?: boolean;
+  /** Etap 7b: kolej nie kursuje latem (gracz wyłączył); wieszaki na rowery (część miejsc dla rowerów). */
+  summerOff?: boolean;
+  bikeRacks?: boolean;
 }
 
 export interface LiftBend extends PointM {

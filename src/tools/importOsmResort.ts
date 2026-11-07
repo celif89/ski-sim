@@ -45,7 +45,22 @@ interface OsmNamedNode {
   tags: Record<string, string>;
 }
 
-function parseOsmXml(xml: string, nodes: Map<number, [number, number]>, ways: Map<number, OsmWay>, named?: Map<number, OsmNamedNode>): void {
+interface OsmRelation {
+  id: number;
+  ways: number[];
+  tags: Record<string, string>;
+}
+
+function parseOsmXml(xml: string, nodes: Map<number, [number, number]>, ways: Map<number, OsmWay>, named?: Map<number, OsmNamedNode>, relations?: Map<number, OsmRelation>): void {
+  if (relations) {
+    for (const m of xml.matchAll(/<relation id="(\d+)"[^>]*>([\s\S]*?)<\/relation>/g)) {
+      const tags: Record<string, string> = {};
+      for (const t of m[2].matchAll(/<tag k="([^"]*)" v="([^"]*)"/g)) tags[decodeEntities(t[1])] = decodeEntities(t[2]);
+      const wayIds = [...m[2].matchAll(/<member type="way" ref="(\d+)"/g)].map((x) => Number(x[1]));
+      const prev = relations.get(Number(m[1]));
+      relations.set(Number(m[1]), { id: Number(m[1]), ways: [...new Set([...(prev?.ways ?? []), ...wayIds])], tags });
+    }
+  }
   for (const m of xml.matchAll(/<node id="(\d+)"[^>]*?lat="([-\d.]+)" lon="([-\d.]+)"/g)) nodes.set(Number(m[1]), [Number(m[2]), Number(m[3])]);
   if (named) {
     for (const m of xml.matchAll(/<node id="(\d+)"[^>]*?lat="([-\d.]+)" lon="([-\d.]+)"[^>]*>([\s\S]*?)<\/node>/g)) {
@@ -102,11 +117,12 @@ async function main(): Promise<void> {
   const nodes = new Map<number, [number, number]>();
   const ways = new Map<number, OsmWay>();
   const named = new Map<number, OsmNamedNode>();
+  const relations = new Map<number, OsmRelation>();
   let tiles = 0;
   for (let lat = minLat; lat < maxLat; lat += TILE_LAT_DEG) {
     for (let lon = minLon; lon < maxLon; lon += TILE_LON_DEG) {
       const xml = await fetchTile(lon, lat, Math.min(lon + TILE_LON_DEG, maxLon), Math.min(lat + TILE_LAT_DEG, maxLat));
-      parseOsmXml(xml, nodes, ways, named);
+      parseOsmXml(xml, nodes, ways, named, relations);
       tiles++;
     }
   }
@@ -228,6 +244,45 @@ async function main(): Promise<void> {
     ) + '\n',
   );
   log(`Zapisano ${join(dir, 'osm-water.json')}.`);
+
+  // Szlaki turystyczne PTTK (etap 7b): relacje route=hiking z kolorem (osmc:symbol / colour), odcinki na mapie.
+  const PTTK = new Set(['red', 'blue', 'green', 'yellow', 'black']);
+  const trails: { osmId: number; name: string; colour: string; points: number[][] }[] = [];
+  for (const r of [...relations.values()].sort((a, b) => a.id - b.id)) {
+    if (r.tags.route !== 'hiking' || /zlikwidowany/i.test(r.tags.name ?? '')) continue;
+    const colour = (r.tags['osmc:symbol']?.split(':')[0] ?? r.tags.colour ?? '').toLowerCase();
+    if (!PTTK.has(colour)) continue;
+    for (const wid of r.ways) {
+      const w = ways.get(wid);
+      if (!w) continue;
+      let run: number[][] = [];
+      const flush = () => {
+        if (run.length >= 2) trails.push({ osmId: r.id, name: r.tags.name ?? '', colour, points: run });
+        run = [];
+      };
+      for (const pt of toPuwg(w)) {
+        if (inside([pt])) run.push(pt);
+        else flush();
+      }
+      flush();
+    }
+  }
+  log(`Szlaki: ${trails.length} odcinków w ${new Set(trails.map((t) => t.osmId)).size} szlakach`);
+  await writeFile(
+    join(dir, 'osm-trails.json'),
+    JSON.stringify(
+      {
+        _opis: 'Szlaki turystyczne PTTK z OpenStreetMap (relacje route=hiking z kolorem) – odcinki w obszarze mapy (etap 7b). Wynik npm run import-osm-resort – nie edytować ręcznie.',
+        source: out.source,
+        downloaded: out.downloaded,
+        units: 'punkty: [E, N] w PUWG 1992 [m]; colour – kolor znakowania PTTK',
+        trails,
+      },
+      null,
+      0,
+    ) + '\n',
+  );
+  log(`Zapisano ${join(dir, 'osm-trails.json')}.`);
 }
 
 main().catch((e) => {

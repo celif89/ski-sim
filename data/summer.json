@@ -1,0 +1,1142 @@
+{
+  "_opis": "Sezon letni (etap 7b): kalendarz lata, przeglądy wyciągów, burze i upał, wyciągi latem (piesi, rowery), atrakcje (bike park, ścieżki, tor saneczkowy, plac zabaw, punkt widokowy), ceny, popyt i goście latem, reputacja letnia, odblokowanie atrakcji w karierze. Kwoty w zł brutto dla gości, koszty netto. Wartości „do kalibracji” – zastąpić danymi prawdziwych ośrodków.",
+  "season": {
+    "earliestOpenMonth": {
+      "value": 5,
+      "unit": "miesiąc",
+      "source": "sezon letni najwcześniej od maja (po zamknięciu zimy i przeglądach)"
+    },
+    "latestCloseMonth": {
+      "value": 10,
+      "unit": "miesiąc",
+      "source": "najpóźniej do końca października (Jaworzyna, Szczyrk: koleje latem V–X)"
+    },
+    "holidayStartMonth": {
+      "value": 6,
+      "unit": "miesiąc",
+      "source": "wakacje szkolne od ostatniego tygodnia czerwca (zakończenie zajęć w ostatni piątek czerwca – rozporządzenie MEN o organizacji roku szkolnego)"
+    },
+    "holidayStartDay": {
+      "value": 27,
+      "unit": "dzień",
+      "source": "2026: zakończenie roku szkolnego 26 VI, wakacje od soboty 27 VI"
+    },
+    "holidayEndMonth": {
+      "value": 8,
+      "unit": "miesiąc",
+      "source": "wakacje do końca sierpnia"
+    },
+    "holidayEndDay": {
+      "value": 31,
+      "unit": "dzień",
+      "source": "31 sierpnia"
+    },
+    "fixedHolidays": {
+      "value": [
+        "05-01",
+        "05-03",
+        "08-15"
+      ],
+      "unit": "MM-DD",
+      "source": "święta ustawowe w sezonie letnim (1 i 3 maja, 15 sierpnia)"
+    },
+    "corpusChristiDaysAfterEaster": {
+      "value": 60,
+      "unit": "dni",
+      "source": "Boże Ciało – 60 dni po Wielkanocy (czwartek, długi weekend)"
+    },
+    "holidayDayFactor": {
+      "value": 1.0,
+      "unit": "× sobota",
+      "source": "dzień świąteczny jak sobota"
+    },
+    "bridgeDayFactor": {
+      "value": 0.85,
+      "unit": "× sobota",
+      "source": "piątek po czwartkowym święcie (Boże Ciało) – „most”; do kalibracji"
+    },
+    "openH": {
+      "value": 9,
+      "unit": "h",
+      "source": "godziny pracy kolei latem 9–17 (Jaworzyna, Czantoria); do kalibracji"
+    },
+    "closeH": {
+      "value": 17,
+      "unit": "h",
+      "source": "do 17:00"
+    }
+  },
+  "inspections": {
+    "aerialDays": {
+      "value": 7,
+      "unit": "dni",
+      "source": "przegląd roczny kolei krzesełkowej/gondolowej z badaniem UDT i konserwacją – ok. tydzień; do kalibracji"
+    },
+    "surfaceDays": {
+      "value": 2,
+      "unit": "dni",
+      "source": "przegląd orczyka / talerzyka – 1–2 dni; do kalibracji"
+    },
+    "validityDays": {
+      "value": 365,
+      "unit": "dni",
+      "source": "badanie okresowe UDT ważne rok (rozporządzenie w sprawie warunków technicznych dozoru technicznego dla kolei linowych)"
+    },
+    "defaultMonth": {
+      "value": 11,
+      "unit": "miesiąc",
+      "source": "domyślny termin przeglądu – listopad (między sezonami), gracz może przesunąć"
+    },
+    "defaultDay": {
+      "value": 3,
+      "unit": "dzień",
+      "source": "3 listopada"
+    }
+  },
+  "weather": {
+    "stormPIfWet": {
+      "value": [
+        0.006,
+        0.01,
+        0.031,
+        0.124,
+        0.261,
+        0.326,
+        0.381,
+        0.325,
+        0.112,
+        0.031,
+        0,
+        0
+      ],
+      "unit": "- (I…XII)",
+      "source": "udział dni z burzą wśród dni z opadem ≥ 0,5 mm – IMGW Bielsko-Biała 2001–2025 (data/calibration/imgw-storms.json, npm run import-storms)"
+    },
+    "stormPIfDry": {
+      "value": [
+        0,
+        0,
+        0,
+        0.01,
+        0.047,
+        0.088,
+        0.066,
+        0.055,
+        0.002,
+        0,
+        0,
+        0.002
+      ],
+      "unit": "- (I…XII)",
+      "source": "udział dni z burzą wśród dni bez opadu – jw."
+    },
+    "stormMeanHours": {
+      "value": [
+        1.0,
+        1.0,
+        1.0,
+        1.034,
+        2.203,
+        1.62,
+        2.05,
+        2.104,
+        1.591,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "unit": "h (I…XII)",
+      "source": "średni czas trwania burzy w dniu z burzą – jw. (co najmniej 1 h)"
+    },
+    "stormTempFactorPerC": {
+      "value": 0.12,
+      "unit": "1/°C",
+      "source": "w dzień cieplejszy od normy o 1 °C burza o 12 % bardziej prawdopodobna (konwekcja); do kalibracji"
+    },
+    "stormStartMinH": {
+      "value": 12,
+      "unit": "h",
+      "source": "burze w Beskidach najczęściej po południu: początek między 12…"
+    },
+    "stormStartMaxH": {
+      "value": 19,
+      "unit": "h",
+      "source": "…a 19 (cykl dobowy konwekcji); do kalibracji"
+    },
+    "heatTmaxC": {
+      "value": 27,
+      "unit": "°C",
+      "source": "upał – temperatura maksymalna w dolinie (650 m) od 27 °C: piesi szybciej się męczą, więcej jedzą i piją, chętniej jadą koleją; do kalibracji"
+    },
+    "rainHeavyMmPerH": {
+      "value": 1.0,
+      "unit": "mm/h",
+      "source": "deszcz, przy którym goście kończą wycieczkę; do kalibracji"
+    }
+  },
+  "lifts": {
+    "bikeRackCarrierShare": {
+      "value": 0.25,
+      "unit": "-",
+      "source": "co czwarte krzesełko z wieszakiem na rower (Szczyrk, Jaworzyna: wybrane krzesła/gondole przystosowane); do kalibracji"
+    },
+    "bikesPerRackSeat": {
+      "value": 0.5,
+      "unit": "rower/miejsce",
+      "source": "krzesło z wieszakiem: połowa miejsc dla rowerów (2 rowery + 2 osoby na kanapie 4-os.); do kalibracji"
+    },
+    "pedestrianSpeedFactor": {
+      "value": 1.0,
+      "unit": "×",
+      "source": "latem kolej jedzie z tą samą prędkością co zimą"
+    }
+  },
+  "prices": {
+    "liftUpPln": {
+      "value": 40,
+      "unit": "zł",
+      "source": "bilet w górę – Jaworzyna 41 zł (2026), Pilsko–Szczawiny 35 zł (korbielow.net); Jaworzyna Krynicka, cennik turystyczny 2026 (jaworzynakrynicka.pl/cennik-turystyczny): w górę 41 zł, góra-dół 58 zł (V–VI, IX), wakacje 43 / 62 zł"
+    },
+    "liftRoundTripPln": {
+      "value": 55,
+      "unit": "zł",
+      "source": "bilet góra-dół – Jaworzyna 58 zł, wakacje 62 zł; Pilsko–Szczawiny 40 zł; Jaworzyna Krynicka, cennik turystyczny 2026 (jaworzynakrynicka.pl/cennik-turystyczny): w górę 41 zł, góra-dół 58 zł (V–VI, IX), wakacje 43 / 62 zł"
+    },
+    "bikeDayPln": {
+      "value": 150,
+      "unit": "zł",
+      "source": "karnet rowerowy dzienny – Słotwiny Arena i Kasina 2025: 129–169 zł (slotwinyarena.pl, majatravels.com)"
+    },
+    "tobogganRidePln": {
+      "value": 15,
+      "unit": "zł",
+      "source": "przejazd torem saneczkowym – Czantoria (Wiegand): 15 zł za 1 przejazd (travel-mates.pl); Dębowiec 3,5 zł; do kalibracji"
+    },
+    "bikeRentalDayPln": {
+      "value": 180,
+      "unit": "zł",
+      "source": "wypożyczenie roweru enduro na dzień – rząd wielkości 150–250 zł; do kalibracji"
+    },
+    "reducedFactor": {
+      "value": 0.85,
+      "unit": "×",
+      "source": "bilet ulgowy (dzieci, młodzież) – Jaworzyna 48/58 zł = 0,83"
+    },
+    "schoolGroupFactor": {
+      "value": 0.7,
+      "unit": "×",
+      "source": "bilet grupowy dla wycieczek szkolnych; do kalibracji"
+    },
+    "minPricePln": {
+      "value": 0,
+      "unit": "zł",
+      "source": "cena najniższa"
+    },
+    "maxPricePln": {
+      "value": 400,
+      "unit": "zł",
+      "source": "cena najwyższa w cenniku"
+    }
+  },
+  "bike": {
+    "classMaxAvgSlopePercent": {
+      "value": [
+        5,
+        10,
+        15
+      ],
+      "unit": "% (zielona/niebieska/czerwona; powyżej – czarna)",
+      "source": "IMBA Trail Difficulty Rating System – średnie nachylenie trasy: łatwa ≤ 5 %, średnia ≤ 10 %, trudna ≤ 15 %, bardzo trudna > 15 %"
+    },
+    "maxSlopePercent": {
+      "value": 40,
+      "unit": "%",
+      "source": "powyżej – odcinek nie do przejechania, ostrzeżenie; do kalibracji"
+    },
+    "widthM": {
+      "value": 1.5,
+      "unit": "m",
+      "source": "szerokość singletracku / flow trailu 1–2 m"
+    },
+    "buildPlnPerM": {
+      "value": 125,
+      "unit": "zł/m",
+      "source": "trasa leśna pod Chrzanowem: ok. 2 km za ok. 250 tys. zł (radiokrakow.pl); flow trail w górach drożej – do kalibracji"
+    },
+    "maintenancePlnPerMYear": {
+      "value": 8,
+      "unit": "zł/(m·rok)",
+      "source": "utrzymanie (naprawy po deszczach, odwodnienie, wycinka) – rząd 5–10 % kosztu budowy rocznie; do kalibracji"
+    },
+    "buildMetersPerDay": {
+      "value": 40,
+      "unit": "m/dzień",
+      "source": "tempo budowy trasy ręcznie i minikoparką; do kalibracji"
+    },
+    "speedMs": {
+      "value": [
+        3.0,
+        4.5,
+        6.0,
+        7.0
+      ],
+      "unit": "m/s (zielona…czarna)",
+      "source": "średnia prędkość zjazdu; do kalibracji"
+    },
+    "lapsMax": {
+      "value": 8,
+      "unit": "zjazdów",
+      "source": "najwięcej zjazdów rowerzysty w dniu; do kalibracji"
+    }
+  },
+  "walk": {
+    "buildPlnPerM": {
+      "value": 60,
+      "unit": "zł/m",
+      "source": "ścieżka spacerowa szutrowa ok. 1,5 m z odwodnieniem; do kalibracji"
+    },
+    "maintenancePlnPerMYear": {
+      "value": 2,
+      "unit": "zł/(m·rok)",
+      "source": "do kalibracji"
+    },
+    "buildMetersPerDay": {
+      "value": 80,
+      "unit": "m/dzień",
+      "source": "do kalibracji"
+    },
+    "toblerMaxKmh": {
+      "value": 6,
+      "unit": "km/h",
+      "source": "funkcja Toblera: v = 6·exp(−3,5·|s + 0,05|) km/h (Tobler 1993)"
+    },
+    "toblerSlope": {
+      "value": 3.5,
+      "unit": "-",
+      "source": "jw."
+    },
+    "toblerOffset": {
+      "value": 0.05,
+      "unit": "-",
+      "source": "jw."
+    },
+    "connectRadiusM": {
+      "value": 400,
+      "unit": "m",
+      "source": "miejsce (parking, stacja, schronisko) łączy się z najbliższym punktem szlaku lub ścieżki do tej odległości"
+    },
+    "hutNamePattern": {
+      "value": "schronisko|chata|bacówka|szałas",
+      "unit": "wyrażenie",
+      "source": "nazwy schronisk w OSM – cele wycieczek (na mapie: Schronisko na Hali Miziowej, Chata Baców)"
+    }
+  },
+  "toboggan": {
+    "fixedCostPln": {
+      "value": 1500000,
+      "unit": "zł",
+      "source": "stacje, wyciąg sanek, sanki – tor na Równicy (2010) ok. 2 mln zł całość (czechowiceinfo.pl); Dawson Duel (Wiegand) 4 mln € – sportowy; do kalibracji"
+    },
+    "costPlnPerM": {
+      "value": 2500,
+      "unit": "zł/m",
+      "source": "tor rurowy na podporach; do kalibracji"
+    },
+    "minSlopePercent": {
+      "value": 4,
+      "unit": "%",
+      "source": "poniżej sanki zwalniają; do kalibracji"
+    },
+    "maxSlopePercent": {
+      "value": 40,
+      "unit": "%",
+      "source": "tor całoroczny (alpine coaster) prowadzony po stoku o nachyleniu do ok. 40 %; do kalibracji"
+    },
+    "maxLengthM": {
+      "value": 1500,
+      "unit": "m",
+      "source": "najdłuższe tory w Polsce ok. 1–1,5 km"
+    },
+    "capacityPerHour": {
+      "value": 300,
+      "unit": "przejazdów/h",
+      "source": "odstęp sanek ok. 12 s; do kalibracji"
+    },
+    "speedMs": {
+      "value": 7,
+      "unit": "m/s",
+      "source": "średnia prędkość zjazdu (maks. 40 km/h)"
+    },
+    "returnSpeedMs": {
+      "value": 2,
+      "unit": "m/s",
+      "source": "wyciąganie sanek pod górę – osoba siedzi w sankach"
+    },
+    "energyKWhPerRide": {
+      "value": 0.3,
+      "unit": "kWh",
+      "source": "napęd wyciągania sanek; do kalibracji"
+    },
+    "staffPerDay": {
+      "value": 3,
+      "unit": "osób",
+      "source": "obsługa startu i mety; do kalibracji"
+    },
+    "buildDays": {
+      "value": 120,
+      "unit": "dni",
+      "source": "do kalibracji"
+    },
+    "maintenanceRatePerYear": {
+      "value": 0.02,
+      "unit": "× koszt/rok",
+      "source": "do kalibracji"
+    },
+    "windStopMs": {
+      "value": 17,
+      "unit": "m/s",
+      "source": "silny wiatr zatrzymuje tor (jak kanapę); do kalibracji"
+    }
+  },
+  "unlocks": {
+    "_opis": "W karierze atrakcja odblokowuje się, gdy reputacja (lepsza z zimowej i letniej) i saldo osiągną progi.",
+    "bike": {
+      "reputation": {
+        "value": 3.2,
+        "unit": "gwiazdki",
+        "source": "do kalibracji"
+      },
+      "capitalPln": {
+        "value": 500000,
+        "unit": "zł",
+        "source": "do kalibracji"
+      }
+    },
+    "walk": {
+      "reputation": {
+        "value": 0,
+        "unit": "gwiazdki",
+        "source": "ścieżki od początku"
+      },
+      "capitalPln": {
+        "value": 0,
+        "unit": "zł",
+        "source": "od początku"
+      }
+    },
+    "toboggan": {
+      "reputation": {
+        "value": 3.5,
+        "unit": "gwiazdki",
+        "source": "do kalibracji"
+      },
+      "capitalPln": {
+        "value": 3000000,
+        "unit": "zł",
+        "source": "do kalibracji"
+      }
+    },
+    "playground": {
+      "reputation": {
+        "value": 3.0,
+        "unit": "gwiazdki",
+        "source": "do kalibracji"
+      },
+      "capitalPln": {
+        "value": 200000,
+        "unit": "zł",
+        "source": "do kalibracji"
+      }
+    },
+    "viewpoint": {
+      "reputation": {
+        "value": 3.3,
+        "unit": "gwiazdki",
+        "source": "do kalibracji"
+      },
+      "capitalPln": {
+        "value": 300000,
+        "unit": "zł",
+        "source": "do kalibracji"
+      }
+    }
+  },
+  "mowing": {
+    "plnPerHa": {
+      "value": 350,
+      "unit": "zł/ha",
+      "source": "koszenie łąki kosiarką bijakową (usługa 250–450 zł/ha); trasy narciarskie latem – łąka, koszone raz w lipcu; do kalibracji"
+    },
+    "month": {
+      "value": 7,
+      "unit": "miesiąc",
+      "source": "koszenie w lipcu"
+    }
+  },
+  "demand": {
+    "_opis": "Goście dnia = pula regionu × dzień × miesiąc × prognoza × szum; każdy typ osobno: udział = A/(A + A_inne); A = oferta^w × (reputacja/ref)^r × cena^−e.",
+    "regionPoolPerDay": {
+      "value": 9000,
+      "unit": "osób/dzień",
+      "source": "osoby na jednodniowej wycieczce w Beskidzie Żywieckim w letnią sobotę (wakacje); do kalibracji – frekwencja Pilska, Babiej Góry"
+    },
+    "monthFactors": {
+      "value": [
+        0,
+        0,
+        0,
+        0,
+        0.35,
+        0.55,
+        1.0,
+        1.0,
+        0.55,
+        0.4,
+        0,
+        0
+      ],
+      "unit": "× (I…XII)",
+      "source": "sezon turystyczny w górach – szczyt w wakacje; do kalibracji"
+    },
+    "weekdayFactors": {
+      "value": [
+        0.4,
+        0.4,
+        0.4,
+        0.45,
+        0.6,
+        1.0,
+        0.85
+      ],
+      "unit": "× (pn…nd)",
+      "source": "weekend dominuje; do kalibracji"
+    },
+    "holidayWeekdayFactor": {
+      "value": 0.75,
+      "unit": "× sobota",
+      "source": "dzień powszedni w wakacje; do kalibracji"
+    },
+    "rainProbabilityPenalty": {
+      "value": 0.7,
+      "unit": "-",
+      "source": "prognoza deszczu: × (1 − 0,7·P(opad)) – deszcz mocno zmniejsza ruch latem; do kalibracji"
+    },
+    "stormProbabilityPenalty": {
+      "value": 0.3,
+      "unit": "-",
+      "source": "zapowiadane burze: × (1 − 0,3·P(burza)); do kalibracji"
+    },
+    "sunnyFactor": {
+      "value": 1.2,
+      "unit": "×",
+      "source": "słoneczna prognoza (zachmurzenie < 0,3, opad < 30 %); do kalibracji"
+    },
+    "heatFactor": {
+      "value": 0.9,
+      "unit": "×",
+      "source": "upał – mniej pieszych wycieczek; do kalibracji"
+    },
+    "offerExponent": {
+      "value": 0.8,
+      "unit": "-",
+      "source": "do kalibracji"
+    },
+    "reputationRef": {
+      "value": 3.5,
+      "unit": "gwiazdki",
+      "source": "jak zimą"
+    },
+    "reputationExponent": {
+      "value": 1.2,
+      "unit": "-",
+      "source": "do kalibracji"
+    },
+    "priceElasticity": {
+      "value": 1.2,
+      "unit": "-",
+      "source": "do kalibracji"
+    },
+    "noiseSd": {
+      "value": 0.15,
+      "unit": "-",
+      "source": "losowy rozrzut dnia"
+    },
+    "marketLiftRoundTripPln": {
+      "value": 55,
+      "unit": "zł",
+      "source": "średnia cena biletu góra-dół w regionie (Jaworzyna 58, Szczawiny 40, Czantoria ok. 27–60)"
+    }
+  },
+  "reputation": {
+    "initial": {
+      "value": 3.0,
+      "unit": "gwiazdki",
+      "source": "reputacja letnia na start (osobna od zimowej)"
+    },
+    "priorWeight": {
+      "value": 2000,
+      "unit": "ocen",
+      "source": "jak zimą – waga oceny początkowej"
+    },
+    "dailyDecay": {
+      "value": 0.997,
+      "unit": "1/dzień",
+      "source": "jak zimą"
+    }
+  },
+  "types": [
+    {
+      "id": "hiker",
+      "name": "turysta pieszy",
+      "groupMin": {
+        "value": 1,
+        "unit": "os.",
+        "source": "do kalibracji"
+      },
+      "groupMax": {
+        "value": 4,
+        "unit": "os.",
+        "source": "do kalibracji"
+      },
+      "childShare": {
+        "value": 0.1,
+        "unit": "-",
+        "source": "do kalibracji"
+      },
+      "share": {
+        "value": [
+          0.55,
+          0.5,
+          0.35
+        ],
+        "unit": "- (dzień powszedni, weekend, wakacje)",
+        "source": "do kalibracji"
+      },
+      "base": {
+        "value": 1.0,
+        "unit": "-",
+        "source": "szlaki są zawsze – turyści przyjdą nawet bez kolei"
+      },
+      "wLift": {
+        "value": 1.0,
+        "unit": "-",
+        "source": "kolej w górę"
+      },
+      "wBike": {
+        "value": 0,
+        "unit": "-",
+        "source": "-"
+      },
+      "wToboggan": {
+        "value": 0.1,
+        "unit": "-",
+        "source": "-"
+      },
+      "wPlay": {
+        "value": 0,
+        "unit": "-",
+        "source": "-"
+      },
+      "wFood": {
+        "value": 0.3,
+        "unit": "-",
+        "source": "gastronomia na górze"
+      },
+      "wView": {
+        "value": 0.3,
+        "unit": "-",
+        "source": "punkt widokowy"
+      },
+      "other": {
+        "value": 4,
+        "unit": "-",
+        "source": "konkurencja: inne szlaki w regionie; do kalibracji"
+      },
+      "walkSpeedFactor": {
+        "value": 1.0,
+        "unit": "×",
+        "source": "Tobler"
+      },
+      "maxWalkH": {
+        "value": 5,
+        "unit": "h",
+        "source": "najdłuższa wycieczka; do kalibracji"
+      },
+      "liftUseShare": {
+        "value": 0.55,
+        "unit": "-",
+        "source": "część turystów z koleją w górę (gdy jest); do kalibracji"
+      },
+      "roundTripShare": {
+        "value": 0.35,
+        "unit": "-",
+        "source": "część z biletem góra-dół; do kalibracji"
+      },
+      "foodShare": {
+        "value": 0.5,
+        "unit": "-",
+        "source": "jedzą w gastronomii ośrodka (gdy po drodze); do kalibracji"
+      },
+      "stayMeanH": {
+        "value": 5,
+        "unit": "h",
+        "source": "do kalibracji"
+      }
+    },
+    {
+      "id": "family",
+      "name": "rodzina z dziećmi",
+      "groupMin": {
+        "value": 3,
+        "unit": "os.",
+        "source": "do kalibracji"
+      },
+      "groupMax": {
+        "value": 5,
+        "unit": "os.",
+        "source": "do kalibracji"
+      },
+      "childShare": {
+        "value": 0.5,
+        "unit": "-",
+        "source": "do kalibracji"
+      },
+      "share": {
+        "value": [
+          0.2,
+          0.3,
+          0.4
+        ],
+        "unit": "- (dzień powszedni, weekend, wakacje)",
+        "source": "do kalibracji"
+      },
+      "base": {
+        "value": 0.3,
+        "unit": "-",
+        "source": "spacer"
+      },
+      "wLift": {
+        "value": 1.0,
+        "unit": "-",
+        "source": "-"
+      },
+      "wBike": {
+        "value": 0,
+        "unit": "-",
+        "source": "-"
+      },
+      "wToboggan": {
+        "value": 1.0,
+        "unit": "-",
+        "source": "-"
+      },
+      "wPlay": {
+        "value": 0.8,
+        "unit": "-",
+        "source": "-"
+      },
+      "wFood": {
+        "value": 0.5,
+        "unit": "-",
+        "source": "-"
+      },
+      "wView": {
+        "value": 0.2,
+        "unit": "-",
+        "source": "-"
+      },
+      "other": {
+        "value": 3,
+        "unit": "-",
+        "source": "do kalibracji"
+      },
+      "walkSpeedFactor": {
+        "value": 0.75,
+        "unit": "×",
+        "source": "z dziećmi wolniej"
+      },
+      "maxWalkH": {
+        "value": 2.5,
+        "unit": "h",
+        "source": "do kalibracji"
+      },
+      "liftUseShare": {
+        "value": 0.85,
+        "unit": "-",
+        "source": "do kalibracji"
+      },
+      "roundTripShare": {
+        "value": 0.75,
+        "unit": "-",
+        "source": "do kalibracji"
+      },
+      "foodShare": {
+        "value": 0.8,
+        "unit": "-",
+        "source": "do kalibracji"
+      },
+      "stayMeanH": {
+        "value": 4,
+        "unit": "h",
+        "source": "do kalibracji"
+      },
+      "tobogganRides": {
+        "value": 2,
+        "unit": "przejazdy/os.",
+        "source": "do kalibracji"
+      }
+    },
+    {
+      "id": "cyclist",
+      "name": "rowerzysta",
+      "groupMin": {
+        "value": 1,
+        "unit": "os.",
+        "source": "do kalibracji"
+      },
+      "groupMax": {
+        "value": 3,
+        "unit": "os.",
+        "source": "do kalibracji"
+      },
+      "childShare": {
+        "value": 0.05,
+        "unit": "-",
+        "source": "do kalibracji"
+      },
+      "share": {
+        "value": [
+          0.15,
+          0.15,
+          0.15
+        ],
+        "unit": "- (dzień powszedni, weekend, wakacje)",
+        "source": "do kalibracji"
+      },
+      "base": {
+        "value": 0,
+        "unit": "-",
+        "source": "bez bike parku nie przyjadą"
+      },
+      "wLift": {
+        "value": 0,
+        "unit": "-",
+        "source": "-"
+      },
+      "wBike": {
+        "value": 0.6,
+        "unit": "1/km tras",
+        "source": "każdy km tras rowerowych (z koleją z wieszakami)"
+      },
+      "wToboggan": {
+        "value": 0,
+        "unit": "-",
+        "source": "-"
+      },
+      "wPlay": {
+        "value": 0,
+        "unit": "-",
+        "source": "-"
+      },
+      "wFood": {
+        "value": 0.1,
+        "unit": "-",
+        "source": "-"
+      },
+      "wView": {
+        "value": 0,
+        "unit": "-",
+        "source": "-"
+      },
+      "other": {
+        "value": 3,
+        "unit": "-",
+        "source": "konkurencja: Szczyrk, Kasina, Słotwiny; do kalibracji"
+      },
+      "walkSpeedFactor": {
+        "value": 1.0,
+        "unit": "×",
+        "source": "-"
+      },
+      "maxWalkH": {
+        "value": 1,
+        "unit": "h",
+        "source": "-"
+      },
+      "liftUseShare": {
+        "value": 1,
+        "unit": "-",
+        "source": "-"
+      },
+      "roundTripShare": {
+        "value": 0,
+        "unit": "-",
+        "source": "-"
+      },
+      "foodShare": {
+        "value": 0.4,
+        "unit": "-",
+        "source": "do kalibracji"
+      },
+      "stayMeanH": {
+        "value": 4.5,
+        "unit": "h",
+        "source": "do kalibracji"
+      },
+      "rentalShare": {
+        "value": 0.25,
+        "unit": "-",
+        "source": "część rowerzystów z wypożyczonym rowerem; do kalibracji"
+      }
+    },
+    {
+      "id": "school",
+      "name": "wycieczka szkolna",
+      "groupMin": {
+        "value": 15,
+        "unit": "os.",
+        "source": "klasa z opiekunami; do kalibracji"
+      },
+      "groupMax": {
+        "value": 30,
+        "unit": "os.",
+        "source": "do kalibracji"
+      },
+      "childShare": {
+        "value": 0.92,
+        "unit": "-",
+        "source": "jak zimą"
+      },
+      "share": {
+        "value": [
+          0.1,
+          0.05,
+          0.0
+        ],
+        "unit": "- (dzień powszedni, weekend, wakacje)",
+        "source": "wycieczki szkolne w maju–czerwcu w dni powszednie; do kalibracji"
+      },
+      "base": {
+        "value": 0.5,
+        "unit": "-",
+        "source": "-"
+      },
+      "wLift": {
+        "value": 1.0,
+        "unit": "-",
+        "source": "-"
+      },
+      "wBike": {
+        "value": 0,
+        "unit": "-",
+        "source": "-"
+      },
+      "wToboggan": {
+        "value": 0.5,
+        "unit": "-",
+        "source": "-"
+      },
+      "wPlay": {
+        "value": 0,
+        "unit": "-",
+        "source": "-"
+      },
+      "wFood": {
+        "value": 0.4,
+        "unit": "-",
+        "source": "-"
+      },
+      "wView": {
+        "value": 0.3,
+        "unit": "-",
+        "source": "-"
+      },
+      "other": {
+        "value": 3,
+        "unit": "-",
+        "source": "do kalibracji"
+      },
+      "walkSpeedFactor": {
+        "value": 0.85,
+        "unit": "×",
+        "source": "-"
+      },
+      "maxWalkH": {
+        "value": 3,
+        "unit": "h",
+        "source": "-"
+      },
+      "liftUseShare": {
+        "value": 0.8,
+        "unit": "-",
+        "source": "-"
+      },
+      "roundTripShare": {
+        "value": 0.7,
+        "unit": "-",
+        "source": "-"
+      },
+      "foodShare": {
+        "value": 0.6,
+        "unit": "-",
+        "source": "-"
+      },
+      "stayMeanH": {
+        "value": 4.5,
+        "unit": "h",
+        "source": "-"
+      },
+      "schoolMonths": {
+        "value": [
+          5,
+          6,
+          9
+        ],
+        "unit": "miesiące",
+        "source": "wycieczki szkolne tylko w tych miesiącach"
+      }
+    }
+  ],
+  "guests": {
+    "arrivalMeanH": {
+      "value": 10,
+      "unit": "h",
+      "source": "przyjazd latem średnio o 10:00; do kalibracji"
+    },
+    "arrivalSdH": {
+      "value": 1.3,
+      "unit": "h",
+      "source": "do kalibracji"
+    },
+    "arrivalMinH": {
+      "value": 7.5,
+      "unit": "h",
+      "source": "-"
+    },
+    "arrivalMaxH": {
+      "value": 14.5,
+      "unit": "h",
+      "source": "-"
+    },
+    "stayMinH": {
+      "value": 1.5,
+      "unit": "h",
+      "source": "-"
+    },
+    "staySdH": {
+      "value": 1.2,
+      "unit": "h",
+      "source": "-"
+    },
+    "mealMin": {
+      "value": 40,
+      "unit": "min",
+      "source": "posiłek w restauracji/schronisku; do kalibracji"
+    },
+    "summitStayMin": {
+      "value": 30,
+      "unit": "min",
+      "source": "odpoczynek na szczycie / w punkcie widokowym"
+    },
+    "playMin": {
+      "value": 45,
+      "unit": "min",
+      "source": "plac zabaw"
+    },
+    "fatiguePerWalkH": {
+      "value": 0.25,
+      "unit": "1/h",
+      "source": "zmęczenie na godzinę marszu (1 – wyczerpany); upał ×1,5; do kalibracji"
+    },
+    "heatFatigueFactor": {
+      "value": 1.5,
+      "unit": "×",
+      "source": "-"
+    },
+    "rainLeaveProbabilityPerH": {
+      "value": 0.5,
+      "unit": "1/h",
+      "source": "w deszczu część grup kończy wycieczkę; do kalibracji"
+    },
+    "queuePatienceMin": {
+      "value": 30,
+      "unit": "min",
+      "source": "dłużej w kolejce – rezygnacja; do kalibracji"
+    },
+    "ratingQueueRefMin": {
+      "value": 20,
+      "unit": "min",
+      "source": "20 min czekania obniża ocenę o połowę składnika kolejki; do kalibracji"
+    },
+    "ratingWeights": {
+      "value": [
+        0.3,
+        0.25,
+        0.25,
+        0.2
+      ],
+      "unit": "- (kolejki, pogoda, cel wycieczki, jedzenie)",
+      "source": "do kalibracji"
+    },
+    "mealSpendPln": {
+      "value": 55,
+      "unit": "zł/os.",
+      "source": "średni rachunek – obiad i napój w schronisku/restauracji w Beskidach 2025; do kalibracji"
+    },
+    "summerFoodSeatsPerBuilding": {
+      "value": 120,
+      "unit": "miejsc",
+      "source": "miejsca w restauracji (budynek „Gastronomia”); do kalibracji"
+    }
+  },
+  "buildings": [
+    {
+      "id": "playground",
+      "name": "Plac zabaw",
+      "costPln": {
+        "value": 250000,
+        "unit": "zł",
+        "source": "plac zabaw z certyfikowanymi urządzeniami 150–400 tys. zł; do kalibracji"
+      },
+      "buildDays": {
+        "value": 30,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "capacity": {
+        "value": 60,
+        "unit": "dzieci",
+        "source": "do kalibracji"
+      },
+      "maintenanceRatePerYear": {
+        "value": 0.05,
+        "unit": "× koszt/rok",
+        "source": "do kalibracji"
+      }
+    },
+    {
+      "id": "viewpoint",
+      "name": "Punkt widokowy",
+      "costPln": {
+        "value": 400000,
+        "unit": "zł",
+        "source": "drewniana wieża / platforma widokowa; do kalibracji"
+      },
+      "buildDays": {
+        "value": 45,
+        "unit": "dni",
+        "source": "do kalibracji"
+      },
+      "capacity": {
+        "value": 50,
+        "unit": "osób",
+        "source": "do kalibracji"
+      },
+      "maintenanceRatePerYear": {
+        "value": 0.03,
+        "unit": "× koszt/rok",
+        "source": "do kalibracji"
+      }
+    }
+  ]
+}
