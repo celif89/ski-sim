@@ -4,6 +4,8 @@
  */
 import type { CalendarDate } from '../sim';
 import type { GuestNet } from '../sim/guestNetwork';
+import type { SummerFacts, SummerOutcome, SummerPlan } from '../sim/summer';
+import type { SummerNet, SummerStats } from '../sim/summerGuests';
 import type { GuestCard, GuestConditions, GuestCounts, GuestDayReport, GuestEconomySummary, GuestEvent } from '../sim/guests';
 
 export type GuestRequest =
@@ -17,7 +19,10 @@ export type GuestRequest =
   | { type: 'report'; requestId: number }
   | { type: 'traffic'; requestId: number }
   | { type: 'dayTraffic'; requestId: number }
-  | { type: 'economy'; requestId: number };
+  | { type: 'economy'; requestId: number }
+  /** Etap 7b: dzień letni (sieć pieszych, plan, fakty) – zastępuje dzień zimowy; null – koniec lata. */
+  | { type: 'summerDay'; day: { net: SummerNet; plan: SummerPlan; sf: SummerFacts; summerJson: unknown; personsPerCar: number; seed: number; timeS: number } | null }
+  | { type: 'summerEconomy'; requestId: number };
 
 export interface GuestFrameMessage {
   type: 'frame';
@@ -41,4 +46,5 @@ export type GuestResponse =
   | { type: 'traffic'; requestId: number; perHour: Float32Array | null }
   | { type: 'dayTraffic'; requestId: number; date: CalendarDate | null; passes: Float32Array | null }
   | { type: 'economy'; requestId: number; date: CalendarDate | null; summary: GuestEconomySummary | null }
+  | { type: 'summerEconomy'; requestId: number; date: CalendarDate | null; outcome: SummerOutcome | null; stats: SummerStats | null }
   | { type: 'error'; message: string };

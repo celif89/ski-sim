@@ -300,6 +300,7 @@ export class TerrainRenderer {
       uSeed: { value: seed | 0, type: 'i32' },
       uLod: { value: new Float32Array([1, 0, 0]), type: 'vec3<f32>' },
       uHasSnow: { value: 0, type: 'f32' },
+      uSummer: { value: 0, type: 'f32' },
       uSurfT: { value: new Float32Array([t.surface.groomedMin, t.surface.skiedMin, t.surface.mogulsMin]), type: 'vec3<f32>' },
       uTreeA: { value: new Float32Array([t.treeIcons.spacingM, t.treeIcons.heightM, t.treeIcons.widthRatio, 2]), type: 'vec4<f32>' },
       uTreeB: { value: new Float32Array([t.trees.spacingM, t.trees.heightM, t.trees.widthRatio, 1]), type: 'vec4<f32>' },
@@ -370,6 +371,15 @@ export class TerrainRenderer {
       this.cellSource.update();
       u.uHasSnow = 1;
     }
+    this.gen++;
+  }
+
+  /** Etap 7b: wygląd lata (zielone łąki zamiast śniegu). */
+  setSummer(on: boolean): void {
+    const u = this.uni(this.bakeMesh, 'terrainUniforms');
+    const v = on ? 1 : 0;
+    if (u.uSummer === v) return;
+    u.uSummer = v;
     this.gen++;
   }
 

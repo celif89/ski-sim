@@ -596,3 +596,54 @@ export function connectSources(
   }
   return out;
 }
+
+/**
+ * Wycinek sieci cieków (okno siatki i0, j0, W × H): zlewnie i przepływy z całej mapy (potok
+ * wpływający z zewnątrz okna ma pełną zlewnię), spływ poza okno = wypływ; linie przycięte i przesunięte.
+ */
+export function cropStreamNet(net: StreamNet, i0: number, j0: number, W: number, H: number): StreamNet {
+  const N = W * H;
+  const down = new Int32Array(N).fill(-1);
+  const accM2 = new Float32Array(N);
+  const meanZM = new Float32Array(N);
+  const meanFlowM3s = new Float32Array(N);
+  const inside = (k: number) => {
+    const i = (k % net.widthCells) - i0;
+    const j = Math.floor(k / net.widthCells) - j0;
+    return i >= 0 && j >= 0 && i < W && j < H ? j * W + i : -1;
+  };
+  for (let j = 0; j < H; j++) {
+    for (let i = 0; i < W; i++) {
+      const kf = (j0 + j) * net.widthCells + (i0 + i);
+      const k = j * W + i;
+      accM2[k] = net.accM2[kf];
+      meanZM[k] = net.meanZM[kf];
+      meanFlowM3s[k] = net.meanFlowM3s[kf];
+      down[k] = net.down[kf] >= 0 ? inside(net.down[kf]) : -1;
+    }
+  }
+  const cs = net.cellSizeM;
+  const x0 = i0 * cs;
+  const y0 = j0 * cs;
+  const lines: StreamLine[] = [];
+  for (const l of net.lines) {
+    let pts: PointM[] = [];
+    let flows: number[] = [];
+    let part = 0;
+    const flush = () => {
+      if (pts.length >= 2) lines.push({ ...l, id: `${l.id}.${part++}`, points: pts, meanFlowM3s: flows });
+      pts = [];
+      flows = [];
+    };
+    l.points.forEach((p, n) => {
+      const x = p.xM - x0;
+      const y = p.yM - y0;
+      if (x >= 0 && y >= 0 && x < W * cs && y < H * cs) {
+        pts.push({ xM: x, yM: y });
+        flows.push(l.meanFlowM3s[n]);
+      } else flush();
+    });
+    flush();
+  }
+  return { widthCells: W, heightCells: H, cellSizeM: cs, down, accM2, meanZM, meanFlowM3s, lines };
+}

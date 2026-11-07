@@ -19,6 +19,21 @@ import { DayReportView, GuestCardView, GuestPanel } from './guestPanels';
 import type { LiftRow, SnowWarningRow } from './guestPanels';
 import { KIND_BOARD, KIND_SKI } from './movers';
 import type { MoverLayer } from './movers';
+import type { SummerFacts, SummerOutcome, SummerPlan } from '../sim/summer';
+import type { SummerNet, SummerStats } from '../sim/summerGuests';
+
+/** Etap 7b: dzień letni do wątku gości. */
+export interface SummerDayPayload {
+  plan: SummerPlan;
+  net: SummerNet;
+  sf: SummerFacts;
+  summerJson: unknown;
+  personsPerCar: number;
+  seed: number;
+  note: string;
+  /** Zmiana sieci (nowy obiekt) – dzień od nowa. */
+  netKey: string;
+}
 import type { TrackBuffer } from './terrainRenderer';
 
 /** Ile czasu gry wątek może zostać w tyle, zanim zegar poczeka [s] (przy ×20 i wolnym ekranie jedna klatka to kilka minut gry). */
@@ -49,6 +64,8 @@ export interface GuestControllerOptions {
   onResortOpen?(open: boolean): void;
   /** Koniec dnia z gośćmi: podsumowanie dla ekonomii (etap 6). */
   onDaySummary?(date: CalendarDate, summary: GuestEconomySummary): void;
+  /** Etap 7b: wynik dnia letniego z wątku gości. */
+  onSummerDay?(date: CalendarDate, outcome: SummerOutcome, stats: SummerStats | null): void;
   /** Czy gracz może sam wpisać liczbę gości (piaskownica); w karierze – z popytu. */
   manualGuests?(): boolean;
 }
@@ -142,6 +159,40 @@ export class GuestController {
     this.restart();
   }
 
+  /** Etap 7b: dzień letni – goście letni w wątku gości (null – dzień zimowy). */
+  private summerDay: SummerDayPayload | null = null;
+  private summerActive = false;
+
+  setSummerDay(p: SummerDayPayload | null): void {
+    const key = (x: SummerDayPayload | null) => (x ? `${x.plan.date.year}-${x.plan.date.month}-${x.plan.date.day}|${x.plan.guests}|${x.netKey}` : '');
+    if (key(p) === key(this.summerDay)) return;
+    const same = !!p && sameDate(p.plan.date, this.day);
+    this.summerDay = p;
+    if (p) this.panel.setPlanNote(p.note);
+    if (same || (!p && this.summerActive)) this.restart();
+  }
+
+  /** Etap 7b: stan wyciągów teraz (karty obiektów, zima). */
+  liveLifts(): Map<string, { queue: number; waitMin: number; utilization: number; rides: number; closed: boolean }> {
+    const m = new Map<string, { queue: number; waitMin: number; utilization: number; rides: number; closed: boolean }>();
+    if (!this.net || this.summerActive) return m;
+    this.net.lifts.forEach((l, i) => {
+      const r = this.liftRows[i];
+      if (r) m.set(l.id, { queue: r.queue, waitMin: r.waitMin, utilization: r.utilization, rides: r.rides, closed: r.closed });
+    });
+    return m;
+  }
+
+  /** Etap 7b: statystyki bieżącego dnia letniego (co 15 min) – karty obiektów. */
+  async liveSummerStats(): Promise<SummerStats | null> {
+    if (!this.summerActive) return null;
+    return (await this.o.client.summerEconomy()).stats;
+  }
+
+  get isSummerDay(): boolean {
+    return this.summerActive;
+  }
+
   /** Plan dnia z ekonomii – gdy inny niż bieżący, dzień liczy się od nowa. */
   setDayPlan(plan: GuestDayPlan | null): void {
     const key = (p: GuestDayPlan | null) => (p ? `${p.date.year}-${p.date.month}-${p.date.day}|${p.guests}|${p.hours.openH}|${p.hours.closeH}|${p.typeShares.join(',')}` : '');
@@ -228,6 +279,17 @@ export class GuestController {
       this.lastPos.clear();
       this.events = [];
       this.panel.setEvents([]);
+      const sd = this.summerDay && sameDate(this.summerDay.plan.date, date) ? this.summerDay : null;
+      this.o.movers.summer = !!sd;
+      if (sd) {
+        this.summerActive = true;
+        this.o.client.setSummerDay({ net: sd.net, plan: sd.plan, sf: sd.sf, summerJson: sd.summerJson, personsPerCar: sd.personsPerCar, seed: sd.seed, timeS });
+        return;
+      }
+      if (this.summerActive) {
+        this.summerActive = false;
+        this.o.client.setSummerDay(null);
+      }
       const plan = this.plan && sameDate(this.plan.date, date) ? this.plan : null;
       const n = !this.resortOpen ? 0 : plan ? plan.guests : this.guests;
       this.o.client.startDay(date, n, timeS, plan?.hours, plan?.typeShares);
@@ -244,7 +306,7 @@ export class GuestController {
     this.frame = f;
     if (f.catchingUp === null) {
       this.o.movers.setFrame(f.data, f.count, f.timeS);
-      this.stampTracks(f);
+      if (!this.summerActive) this.stampTracks(f);
     } else this.o.movers.setFrame(f.data, 0, f.timeS);
     if (f.counts) this.counts = f.counts;
     if (f.events.length) {
@@ -265,6 +327,13 @@ export class GuestController {
     this.panel.update(this.counts, this.liftRows, f.catchingUp);
     // Koniec dnia: przejazdy do modelu śniegu, raport dnia.
     const key = f.date ? `${f.date.year}-${f.date.month}-${f.date.day}` : '';
+    // Etap 7b: koniec dnia letniego – wynik i statystyki do ekonomii i kart obiektów.
+    if (this.summerActive && f.done && this.summarySent !== key) {
+      this.summarySent = key;
+      void this.o.client.summerEconomy().then((r) => {
+        if (r.date && r.outcome) this.o.onSummerDay?.(r.date, r.outcome, r.stats);
+      });
+    }
     if (f.done && f.counts && f.counts.arrived > 0 && this.trafficSent !== key) {
       this.trafficSent = key;
       void this.o.client.dayTraffic().then((r) => {

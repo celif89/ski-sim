@@ -11,6 +11,9 @@ import type { TerrainGrid } from './terrainGrid';
 import type { GroundParams } from './ground';
 import { groundAfterWorks, initialGround } from './ground';
 import type { PipelineDesign, SnowGunDesign } from './snowmaking';
+import type { TrailAnalysis, TrailDesign } from './summer';
+import { analyzeTrails } from './summer';
+import type { SummerParams } from './summerParams';
 
 export interface BaseDesign {
   id: string;
@@ -42,6 +45,8 @@ export interface ResortLayout {
   snowGuns?: SnowGunDesign[];
   /** Etap 6b: drogi dojazdowe do parkingów. */
   roads?: RoadDesign[];
+  /** Etap 7b: trasy letnie – rowerowe, ścieżki spacerowe, tor saneczkowy. */
+  trails?: TrailDesign[];
   /** Kolejne numery nowych obiektów. */
   nextId: number;
   /** Ośrodek otwarty (sezon trwa) – decyduje gracz; zamknięty – nie ma gości. Brak pola = otwarty. */
@@ -212,6 +217,8 @@ export function parseLayout(raw: unknown): ResortLayout {
       manualTowers: l.manualTowers === true,
       ...(l.closed === true ? { closed: true } : {}),
       ...(l.downhill === true ? { downhill: true } : {}),
+      ...(l.summerOff === true ? { summerOff: true } : {}),
+      ...(l.bikeRacks === true ? { bikeRacks: true } : {}),
     });
   }
   for (const p of pistes as Record<string, unknown>[]) {
@@ -246,7 +253,13 @@ export function parseLayout(raw: unknown): ResortLayout {
     const points = (rr.points as unknown[]).filter(isPoint).map((q) => ({ xM: q.xM, yM: q.yM }));
     if (points.length >= 2) (out.roads ??= []).push({ id: rr.id, name: typeof rr.name === 'string' ? rr.name : rr.id, points });
   }
-  const maxId = [...out.lifts, ...out.pistes, ...out.bases, ...(out.buildings ?? []), ...(out.pipelines ?? []), ...(out.snowGuns ?? []), ...(out.roads ?? [])].reduce((m, o) => Math.max(m, Number(/\d+$/.exec(o.id)?.[0] ?? 0)), 0);
+  const trailsRaw = Array.isArray(r.trails) ? (r.trails as Record<string, unknown>[]) : [];
+  for (const tr of trailsRaw) {
+    if (typeof tr.id !== 'string' || !Array.isArray(tr.points) || (tr.kind !== 'bike' && tr.kind !== 'walk' && tr.kind !== 'toboggan')) continue;
+    const points = (tr.points as unknown[]).filter(isPoint).map((q) => ({ xM: q.xM, yM: q.yM }));
+    if (points.length >= 2) (out.trails ??= []).push({ id: tr.id, name: typeof tr.name === 'string' ? tr.name : tr.id, kind: tr.kind, points, ...(tr.closed === true ? { closed: true } : {}) });
+  }
+  const maxId = [...out.lifts, ...out.pistes, ...out.bases, ...(out.buildings ?? []), ...(out.pipelines ?? []), ...(out.snowGuns ?? []), ...(out.roads ?? []), ...(out.trails ?? [])].reduce((m, o) => Math.max(m, Number(/\d+$/.exec(o.id)?.[0] ?? 0)), 0);
   out.nextId = Math.max(out.nextId, maxId + 1);
   return out;
 }
@@ -306,6 +319,8 @@ export interface ResortContext {
   /** Etap 6b: drogi – parametry i drogi publiczne (OSM); brak – każdy parking ma dojazd. */
   roads?: RoadParams | null;
   publicRoads?: PointM[][] | null;
+  /** Etap 7b: parametry lata (analiza tras letnich). */
+  summer?: SummerParams | null;
 }
 
 export interface ResortAnalysis {
@@ -321,6 +336,8 @@ export interface ResortAnalysis {
   /** Etap 6b: drogi i parkingi z dojazdem. */
   roads: Map<string, RoadAnalysis>;
   accessibleBases: Set<string>;
+  /** Etap 7b: trasy letnie. */
+  trails?: Map<string, TrailAnalysis>;
 }
 
 export function analyzeResort(layout: ResortLayout, ctx: ResortContext): ResortAnalysis {
@@ -355,7 +372,9 @@ export function analyzeResort(layout: ResortLayout, ctx: ResortContext): ResortA
     costPln += a.costPln;
     buildDays += a.buildDays;
   }
-  return { lifts, pistes, network: buildNetwork(layout, lifts, pistes, ctx.pistes, access.accessibleBases), clearedMask, baseGround, ground, totals: { costPln, buildDays, clearedForestM2 }, ...access };
+  const trails = ctx.summer ? analyzeTrails(layout, ctx.grid, ctx.summer) : undefined;
+  if (trails) for (const a of trails.values()) costPln += a.costPln;
+  return { lifts, pistes, network: buildNetwork(layout, lifts, pistes, ctx.pistes, access.accessibleBases), clearedMask, baseGround, ground, totals: { costPln, buildDays, clearedForestM2 }, ...access, ...(trails ? { trails } : {}) };
 }
 
 /** Maska wycinki: pasy pod wyciągami (szerokość z typu) i obrysy tras. */

@@ -9,6 +9,9 @@ import type { GuestNet } from '../sim/guestNetwork';
 import type { GuestConditions, GuestSnow } from '../sim/guests';
 import { FRAME_STRIDE, GuestDay, LIFT_STRIDE } from '../sim/guests';
 import type { CalendarDate } from '../sim';
+import type { SummerFacts } from '../sim/summer';
+import { SUMMER_FRAME_STRIDE, SummerDay } from '../sim/summerGuests';
+import { parseSummerParams } from '../sim/summerParams';
 import type { GuestFrameMessage, GuestRequest, GuestResponse } from './guestProtocol';
 
 interface WorkerScope {
@@ -22,6 +25,9 @@ let seed = 0;
 let elevation: Float32Array | null = null;
 let net: GuestNet | null = null;
 let day: GuestDay | null = null;
+/** Etap 7b: dzień letni (gdy trwa sezon letni) – zamiast dnia zimowego. */
+let summer: { day: SummerDay; sf: SummerFacts; date: CalendarDate } | null = null;
+const SUMMER_STEP_S = 2;
 let dayInfo: { date: CalendarDate; guests: number; hours?: { openH: number; closeH: number }; typeShares?: number[] } | null = null;
 let cond: GuestConditions | null = null;
 let snow: GuestSnow | null = null;
@@ -35,7 +41,24 @@ const yieldToEvents = () => new Promise<void>((r) => setTimeout(r, 0));
 let advanceTarget = 0;
 let advancing = false;
 
+async function runAdvanceSummer(budgetMs: number): Promise<void> {
+  advancing = true;
+  const s = summer;
+  try {
+    while (s && s === summer && s.day.t + SUMMER_STEP_S <= advanceTarget + 1e-9) {
+      const start = performance.now();
+      while (s.day.t + SUMMER_STEP_S <= advanceTarget + 1e-9 && performance.now() - start < budgetMs) s.day.step(SUMMER_STEP_S);
+      frame(null);
+      await yieldToEvents();
+    }
+  } finally {
+    advancing = false;
+  }
+  frame(null);
+}
+
 async function runAdvance(budgetMs: number): Promise<void> {
+  if (summer) return runAdvanceSummer(budgetMs);
   advancing = true;
   const d = day;
   let stepped = false;
@@ -62,6 +85,15 @@ function post(m: GuestResponse, transfer: Transferable[] = []): void {
 }
 
 function frame(catching: number | null): void {
+  if (summer) {
+    const sd = summer.day;
+    const people = sd.gSize.reduce((a, b) => a + Math.min(12, b), 0);
+    const data = new Float32Array((people + 64) * SUMMER_FRAME_STRIDE);
+    const count = catching === null ? sd.writeFrame(data) : 0;
+    const msg: GuestFrameMessage = { type: 'frame', date: summer.date, timeS: sd.t, count, data, lifts: new Float32Array(0), events: [], counts: null, done: sd.t >= 22 * 3600, catchingUp: catching };
+    post(msg, [data.buffer]);
+    return;
+  }
   const d = day;
   const empty: GuestFrameMessage = { type: 'frame', date: dayInfo?.date ?? null, timeS: d?.t ?? 0, count: 0, data: new Float32Array(0), lifts: new Float32Array(0), events: [], counts: null, done: false, catchingUp: catching };
   if (!d) {
@@ -87,7 +119,25 @@ function newDay(): void {
 }
 
 /** Przewinięcie dnia do godziny `to` w kawałkach po ok. 40 ms (z postępem). */
+async function catchUpSummer(to: number): Promise<void> {
+  const id = ++catchUpId;
+  catchingUp = true;
+  target = to;
+  const s = summer!;
+  const from = s.day.t;
+  while (s.day.t + SUMMER_STEP_S <= target + 1e-9) {
+    const start = performance.now();
+    while (s.day.t + SUMMER_STEP_S <= target + 1e-9 && performance.now() - start < 40) s.day.step(SUMMER_STEP_S);
+    frame(Math.min(1, (s.day.t - from) / Math.max(1, target - from)));
+    await yieldToEvents();
+    if (id !== catchUpId) return;
+  }
+  catchingUp = false;
+  frame(null);
+}
+
 async function catchUp(to: number): Promise<void> {
+  if (summer) return catchUpSummer(to);
   const id = ++catchUpId;
   catchingUp = true;
   target = to;
@@ -158,6 +208,22 @@ function handle(r: GuestRequest): void {
     case 'traffic': {
       const perHour = day ? day.trafficPerHour() : null;
       post({ type: 'traffic', requestId: r.requestId, perHour }, perHour ? [perHour.buffer] : []);
+      return;
+    }
+    case 'summerDay': {
+      if (!r.day) {
+        summer = null;
+        frame(null);
+        return;
+      }
+      const sp = parseSummerParams(r.day.summerJson);
+      summer = { day: new SummerDay(r.day.net, sp, { seed: r.day.seed, date: r.day.plan.date, plan: r.day.plan, personsPerCar: r.day.personsPerCar }), sf: r.day.sf, date: r.day.plan.date };
+      void catchUp(r.day.timeS);
+      return;
+    }
+    case 'summerEconomy': {
+      const s = summer;
+      post({ type: 'summerEconomy', requestId: r.requestId, date: s?.date ?? null, outcome: s && s.day.t >= 20 * 3600 ? s.day.outcome(s.sf) : null, stats: s ? s.day.stats : null });
       return;
     }
     case 'economy': {

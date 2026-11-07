@@ -18,6 +18,9 @@ export const KIND_STAND = 2;
 export const KIND_SEATED = 3;
 export const KIND_WALK = 4;
 export const KIND_GROOMER = 5;
+/** Etap 7b (lato): rowerzysta i sanki toru (rodzaje w ramce z SummerDay). */
+export const KIND_BIKE = 5;
+export const KIND_SLED = 6;
 
 /** Rozmiary w terenie [m]. */
 const PERSON_LENGTH_M = 1.9;
@@ -45,7 +48,7 @@ interface Frames {
 
 function buildAtlas(): Frames {
   const cols = JACKETS.length;
-  const rows = 9;
+  const rows = 13;
   const canvas = document.createElement('canvas');
   canvas.width = CELL * cols;
   canvas.height = CELL * rows;
@@ -136,6 +139,45 @@ function buildAtlas(): Frames {
       body(cx, cy, jacket, 0);
     }
   });
+  // Etap 7b – lato: piechur bez nart (2 pozy, wiersze 9–10), rowerzysta (11), sanki toru (12).
+  JACKETS.forEach((jacket, i) => {
+    const cx = i * CELL + CELL / 2;
+    for (let k = 0; k < 2; k++) {
+      const cy = (9 + k) * CELL + CELL / 2;
+      ctx.fillStyle = '#3f3f46';
+      ctx.fillRect(cx - 5 + (k ? 2 : -2), cy - 4, 4, 12);
+      ctx.fillRect(cx + 1 + (k ? -2 : 2), cy - 4, 4, 12);
+      ctx.fillStyle = '#a16207';
+      ctx.fillRect(cx - 6, cy + 1, 12, 6); // plecak
+      body(cx, cy - 2, jacket, 0);
+    }
+    {
+      const cy = 11 * CELL + CELL / 2;
+      ctx.strokeStyle = '#111827';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 24);
+      ctx.lineTo(cx, cy + 24);
+      ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx - 9, cy - 16);
+      ctx.lineTo(cx + 9, cy - 16);
+      ctx.stroke();
+      body(cx, cy + 2, jacket, 0);
+    }
+    {
+      const cy = 12 * CELL + CELL / 2;
+      ctx.fillStyle = '#dc2626';
+      ctx.beginPath();
+      ctx.roundRect(cx - 9, cy - 18, 18, 36, 6);
+      ctx.fill();
+      ctx.strokeStyle = '#7f1d1d';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      body(cx, cy + 2, jacket, 0);
+    }
+  });
   const row = 8 * CELL;
   const soft = (x: number, y: number, rx: number, ry: number) => {
     const g = ctx.createRadialGradient(x, y, 0, x, y, rx);
@@ -194,7 +236,7 @@ function buildAtlas(): Frames {
   const base = Texture.from(canvas);
   const frame = (x: number, y: number) => new Texture({ source: base.source, frame: new Rectangle(x * CELL, y * CELL, CELL, CELL) });
   return {
-    person: JACKETS.map((_, i) => Array.from({ length: 8 }, (_, pose) => frame(i, pose))),
+    person: JACKETS.map((_, i) => Array.from({ length: 12 }, (_, pose) => frame(i, pose < 8 ? pose : pose + 1))),
     shadow: frame(0, 8),
     shadowGroomer: frame(1, 8),
     groomer: frame(2, 8),
@@ -214,6 +256,8 @@ export class MoverLayer {
   groomers: { xM: number; yM: number; headingRad: number; lightsOn: boolean }[] = [];
   /** Liczba postaci narysowanych w ostatniej klatce (widocznych na ekranie). */
   visibleCount = 0;
+  /** Etap 7b: ramka z gości letnich (piesi bez nart, rowerzyści, sanki). */
+  summer = false;
 
   constructor(world: Container) {
     this.frames = buildAtlas();
@@ -297,7 +341,33 @@ export class MoverLayer {
       const child = variant >= 16;
       const jacket = this.frames.person[(variant % 16) % JACKETS.length];
       const phase = d[o + 8];
-      const pose = kind === KIND_SKI ? (phase < 0.33 ? 0 : phase < 0.66 ? 1 : 2) : kind === KIND_BOARD ? 3 : kind === KIND_STAND ? 4 : kind === KIND_SEATED ? 5 : phase < 0.5 ? 6 : 7;
+      const pose = this.summer
+        ? kind === KIND_BIKE
+          ? 10
+          : kind === KIND_SLED
+            ? 11
+            : kind === KIND_SEATED
+              ? 5
+              : kind === KIND_STAND
+                ? 8
+                : phase < 0.5
+                  ? 8
+                  : 9
+        : kind === KIND_SKI
+          ? phase < 0.33
+            ? 0
+            : phase < 0.66
+              ? 1
+              : 2
+          : kind === KIND_BOARD
+            ? 3
+            : kind === KIND_STAND
+              ? 4
+              : kind === KIND_SEATED
+                ? 5
+                : phase < 0.5
+                  ? 6
+                  : 7;
       const scale = (personLen / CELL / 0.82) * (child ? CHILD_SCALE : 1);
       const rot = d[o + 5] + Math.PI / 2;
       const p = bo[i];

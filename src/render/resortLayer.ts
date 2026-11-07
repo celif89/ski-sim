@@ -44,7 +44,7 @@ export interface MapLabel {
 export interface ResortDrawState {
   layout: ResortLayout;
   analysis: ResortAnalysis;
-  selection: { kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road'; id: string } | null;
+  selection: { kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road' | 'trail'; id: string } | null;
   showNetwork: boolean;
   showReality: boolean;
   realLifts: OsmResort['lifts'] | null;
@@ -64,6 +64,8 @@ export interface ResortDrawState {
   construction?: Map<string, number>;
   buildingTypes?: { id: string; name: string }[] | null;
   /** Etap 7: hydranty (z armatkami), rysowany rurociąg, chmury śniegu pracujących armatek. */
+  /** Etap 7b: rysowana trasa letnia (rower, ścieżka, tor) i kursor. */
+  trailDraft?: { kind: 'bike' | 'walk' | 'toboggan'; points: { xM: number; yM: number }[]; cursor: { xM: number; yM: number } | null } | null;
   /** Etap 6b: rysowana droga (punkty) i kursor. */
   roadDraft?: { points: { xM: number; yM: number }[]; cursor: { xM: number; yM: number } | null } | null;
   snowNet?: {
@@ -133,6 +135,11 @@ export class ResortLayer {
   private readonly roadsG = new Graphics();
   /** Etap 6b: potoki (z OSM i z modelu terenu) – pod drogami. */
   private readonly streamsG = new Graphics();
+  /** Etap 7b: szlaki PTTK (tylko latem) – przerywane linie w kolorach znakowania. */
+  private readonly hikingG = new Graphics();
+  private hikingLines: { colour: string; points: { xM: number; yM: number }[] }[] = [];
+  private hikingMpp = -1;
+  private summerOn = false;
   private readonly buildingsFar = new Graphics();
   private readonly buildingsNear = new Graphics();
   private lastKey = '';
@@ -152,7 +159,7 @@ export class ResortLayer {
     private readonly borderLinesLocal: number[][][],
   ) {
     this.local = (p) => grid.puwg92ToLocal(p[0], p[1]);
-    this.contextLayer.addChild(this.streamsG, this.roadsG, this.buildingsFar, this.buildingsNear);
+    this.contextLayer.addChild(this.streamsG, this.roadsG, this.hikingG, this.buildingsFar, this.buildingsNear);
     world.addChild(this.contextLayer);
     screenLayer.addChild(this.g);
     screenLayer.addChild(this.labels);
@@ -166,6 +173,52 @@ export class ResortLayer {
   setStreams(lines: { points: { xM: number; yM: number }[]; meanFlowM3s: number[]; osm: boolean }[]): void {
     this.streamLines = lines;
     this.streamMpp = -1;
+  }
+
+  /** Etap 7b: szlaki PTTK z OSM. */
+  setHikingTrails(lines: { colour: string; points: { xM: number; yM: number }[] }[]): void {
+    this.hikingLines = lines;
+    this.hikingMpp = -1;
+  }
+
+  /** Etap 7b: lato – szlaki widoczne. */
+  setSummer(on: boolean): void {
+    if (on === this.summerOn) return;
+    this.summerOn = on;
+    this.hikingG.visible = on;
+    this.hikingMpp = -1;
+    this.lastKey = '';
+  }
+
+  private drawHiking(mpp: number): void {
+    if (!this.summerOn) return;
+    const bucket = Math.round(Math.log2(mpp) * 4) / 4;
+    if (bucket === this.hikingMpp) return;
+    this.hikingMpp = bucket;
+    const px = 2 ** bucket;
+    const g = this.hikingG.clear();
+    const COLORS: Record<string, number> = { red: 0xd62828, blue: 0x1d4ed8, green: 0x2b8a3e, yellow: 0xf2c200, black: 0x111111 };
+    const w = Math.max(2, 2.2 * px);
+    const dash = 7 * px;
+    const gap = 5 * px;
+    for (const l of this.hikingLines) {
+      g.moveTo(l.points[0].xM, l.points[0].yM);
+      for (const q of l.points) g.lineTo(q.xM, q.yM);
+      g.stroke({ width: w + 2 * px, color: 0xffffff, alpha: 0.85, cap: 'round', join: 'round' });
+    }
+    for (const l of this.hikingLines) {
+      for (let i = 1; i < l.points.length; i++) {
+        const a = l.points[i - 1];
+        const b = l.points[i];
+        const L = Math.hypot(b.xM - a.xM, b.yM - a.yM);
+        for (let d = 0; d < L; d += dash + gap) {
+          const t0 = d / L;
+          const t1 = Math.min(1, (d + dash) / L);
+          g.moveTo(a.xM + (b.xM - a.xM) * t0, a.yM + (b.yM - a.yM) * t0).lineTo(a.xM + (b.xM - a.xM) * t1, a.yM + (b.yM - a.yM) * t1);
+        }
+      }
+      g.stroke({ width: w, color: COLORS[l.colour] ?? 0xd62828, cap: 'butt' });
+    }
   }
 
   private streamLines: { points: { xM: number; yM: number }[]; meanFlowM3s: number[]; osm: boolean }[] = [];
@@ -305,6 +358,7 @@ export class ResortLayer {
     }
     const mpp = cam.metersPerPixel;
     this.drawStreams(mpp);
+    this.drawHiking(mpp);
     const w = lodWeights(mpp, this.lod);
     this.buildingsFar.alpha = w.w1;
     this.buildingsNear.alpha = 1 - w.w1;
@@ -430,6 +484,13 @@ export class ResortLayer {
         g.stroke({ width: Math.max(16, a.meanWidthM * pxPerM), color: SELECT_COLOR, alpha: 0.4, cap: 'round', join: 'round' });
       }
       const closed = p.closed === true;
+      if (this.summerOn) {
+        // Latem trasa narciarska to łąka – tylko cienka, blada linia (żeby było wiadomo, gdzie jest).
+        g.moveTo(pts[0].xPx, pts[0].yPx);
+        for (const q of pts) g.lineTo(q.xPx, q.yPx);
+        g.stroke({ width: 3, color, alpha: 0.35, cap: 'round', join: 'round' });
+        continue;
+      }
       g.moveTo(pts[0].xPx, pts[0].yPx);
       for (const q of pts) g.lineTo(q.xPx, q.yPx);
       g.stroke({ width: 10, color: 0xffffff, alpha: closed ? 0.6 : 0.95, cap: 'round', join: 'round' });
@@ -604,6 +665,49 @@ export class ResortLayer {
       g.moveTo(pts[0].xPx, pts[0].yPx);
       for (const q of pts) g.lineTo(q.xPx, q.yPx);
       g.stroke({ width: w, color: 0x6b7280, cap: 'round', join: 'round' });
+    }
+    // ---- trasy letnie (etap 7b): rowerowe w kolorze trudności (przerywane), ścieżki, tor saneczkowy
+    const dashLine = (pts: { xPx: number; yPx: number }[], on: number, off: number, width: number, color: number) => {
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1];
+        const b = pts[i];
+        const L = Math.hypot(b.xPx - a.xPx, b.yPx - a.yPx);
+        for (let d = 0; d < L; d += on + off) {
+          const t0 = d / L;
+          const t1 = Math.min(1, (d + on) / L);
+          g.moveTo(a.xPx + (b.xPx - a.xPx) * t0, a.yPx + (b.yPx - a.yPx) * t0).lineTo(a.xPx + (b.xPx - a.xPx) * t1, a.yPx + (b.yPx - a.yPx) * t1);
+        }
+      }
+      g.stroke({ width, color, cap: 'round' });
+    };
+    const BIKE_COLORS = [0x2f9e44, 0x1c7ed6, 0xe03131, 0x212529];
+    for (const t of st.layout.trails ?? []) {
+      const a = st.analysis.trails?.get(t.id);
+      const pts = (a && a.axis.length > 1 ? a.axis : t.points).map((q) => toS(q.xM, q.yM));
+      if (pts.length < 2) continue;
+      const sel = st.selection?.kind === 'trail' && st.selection.id === t.id;
+      const line = (width: number, color: number, alpha = 1) => {
+        g.moveTo(pts[0].xPx, pts[0].yPx);
+        for (const q of pts) g.lineTo(q.xPx, q.yPx);
+        g.stroke({ width, color, alpha, cap: 'round', join: 'round' });
+      };
+      if (t.kind === 'bike') {
+        line(6, sel ? SELECT_COLOR : 0xffffff, 0.95);
+        dashLine(pts, 9, 5, 3, BIKE_COLORS[Math.max(0, a?.classIndex ?? 1)]);
+      } else if (t.kind === 'walk') {
+        line(5, sel ? SELECT_COLOR : 0xffffff, 0.9);
+        dashLine(pts, 4, 4, 2.5, 0x8d5524);
+      } else {
+        line(8, sel ? SELECT_COLOR : 0x64748b, 0.95);
+        line(4, 0xe2e8f0);
+        line(1.5, 0xdc2626);
+      }
+    }
+    if (st.trailDraft && st.trailDraft.points.length) {
+      const pts = [...st.trailDraft.points, ...(st.trailDraft.cursor ? [st.trailDraft.cursor] : [])].map((q) => toS(q.xM, q.yM));
+      g.moveTo(pts[0].xPx, pts[0].yPx);
+      for (const q of pts) g.lineTo(q.xPx, q.yPx);
+      g.stroke({ width: 4, color: st.trailDraft.kind === 'bike' ? 0x1c7ed6 : st.trailDraft.kind === 'walk' ? 0x8d5524 : 0xdc2626, alpha: 0.6 });
     }
     if (st.roadDraft && st.roadDraft.points.length) {
       const pts = [...st.roadDraft.points, ...(st.roadDraft.cursor ? [st.roadDraft.cursor] : [])].map((q) => toS(q.xM, q.yM));
