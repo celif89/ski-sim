@@ -113,7 +113,13 @@ import { reputationOf, sumCosts, sumRevenue } from './sim/economy';
 import { presenceProfile, parkingProfiles } from './sim/objectCards';
 import { summerReputationOf } from './sim/summer';
 import type { GuestDayReport } from './sim/guests';
+import { queueLayout } from './sim/guests';
 import { formatIsoDate } from './sim/time';
+import detailJson from '../data/detail.json';
+import { SpriteAtlas } from './render/atlasTexture';
+import { PropLayer } from './render/propLayer';
+import { ParticleFx, parseParticleParams } from './render/particleFx';
+import { DetailView } from './render/detailView';
 import { createAspectOverlayCanvas, createSlopeOverlayCanvas } from './render/overlays';
 import type { OverlayKind } from './render/overlays';
 import { OVERLAY_KEYS, WET_BULB_COLORS } from './render/panels';
@@ -229,6 +235,10 @@ async function start(): Promise<void> {
       return sprite;
     };
     const terrain = new TerrainRenderer(world, app.renderer, grid, style.illustrated, simSettings.seed, landCover?.forest ?? null, landCover?.shrub ?? null);
+    // Etap 7d: warstwa detalu 1 m w korytarzach tras i jej rysowanie z bliska.
+    const detail = new DetailView(world, terrain, grid, detailJson, simSettings.seed, parseGuestParams(guestsJson).snowImpact);
+    let detailSummer = false;
+    const dayIndex = (d: CalendarDate) => Math.round(Date.UTC(d.year, d.month - 1, d.day) / 86400000);
     let topoSprite: Sprite | null = null;
     const showTopo = (on: boolean) => {
       if (on && !topoSprite) {
@@ -418,6 +428,7 @@ async function start(): Promise<void> {
       borderLinesLocal,
       onLandCover: (f, sh) => onLandCoverChange(f, sh),
       onLayoutChange: (layout, analysis) => {
+        detail.setLayout(layout, analysis, detailSummer);
         if (buildBar) refreshMinimapLayout();
         terrain.setLayout(layout, new Map([...analysis.pistes].map(([id, a]) => [id, a.axis.filter((x) => !Number.isNaN(x.elevationM))])), liftParams);
         if (game?.state) game.onLayoutChange(layout, analysis);
@@ -772,6 +783,7 @@ async function start(): Promise<void> {
     setOverlay('none');
 
     // ---------------------------------------------------------------- słońce i pogoda
+    let freshDayKey = '';
     let environmentReady = false;
     let inflight = false;
     let pendingTime: TimeChange | null = null;
@@ -786,6 +798,13 @@ async function start(): Promise<void> {
         .then((s) => {
           lastState = s;
           terrain.setSun(s.sun.elevationDeg, s.sun.azimuthDeg);
+          {
+            const key = fmtDate(s.date);
+            if (key !== freshDayKey) {
+              freshDayKey = key;
+              if (s.top.dayPhase === 'snow') detail.freshSnow(s.top.dayPrecipitationMm);
+            }
+          }
           weatherPanel.update(s);
           topBar.setWeather(s, snowAtStations());
           guests?.setConditions({
@@ -852,6 +871,10 @@ async function start(): Promise<void> {
           build.setSnow(m.sweMm);
           sendGuestSnow();
           terrain.setSnow(m.depthCm, m.quality, m.moguls);
+          {
+            const gm = build.groundMap;
+            detail.syncSnow(m.moguls, m.pileMm, m.quality, gm ? thinField(m.sweMm, gm, ridingParams) : null);
+          }
           minimap.setSnow(m.depthCm, false);
           if (lastState) topBar.setWeather(lastState, snowAtStations());
           // Śnieg na dachach: gdy w dolnych partiach (do ok. 750 m) zwykle leży śnieg.
@@ -1038,7 +1061,15 @@ async function start(): Promise<void> {
     requestState({ date: timePanel.date, hour: timePanel.hour });
 
     // ---------------------------------------------------------------- goście (etap 5), pogoda na ekranie
+    // Etap 7d: atlas postaci i maszyn (generowany przy budowaniu), obiekty z bliska, cząsteczki.
+    const atlas = new SpriteAtlas();
+    const props = new PropLayer(atlas, queueLayout(parseGuestParams(guestsJson).movement));
+    worldOver.addChild(props.root);
     const movers = new MoverLayer(worldOver);
+    movers.setAtlas(atlas);
+    const particles = new ParticleFx(parseParticleParams(detailJson));
+    worldOver.addChild(particles.container);
+    void atlas.load().then(() => (timingsMs['atlas postaci (wczytanie)'] = Math.round(atlas.loadMs))).catch((e: unknown) => console.warn('Atlas postaci niedostępny – rysunki zastępcze', e));
     const guestOverlay = new Container(); // ikony wypadków, kolejki – nad postaciami
     app.stage.addChild(guestOverlay);
     const weatherFx = new WeatherFx(screenLayer);
@@ -1061,7 +1092,10 @@ async function start(): Promise<void> {
       client: guestClient,
       params: guestParams,
       movers,
-      ski: terrain.ski,
+      ski: { stamp: (ax: number, ay: number, bx: number, by: number, w: number, st: number) => {
+        terrain.ski.stamp(ax, ay, bx, by, w, st);
+        detail.ski(ax, ay, bx, by);
+      } },
       screenLayer: guestOverlay,
       camera,
       panelParent: slotGuests,
@@ -1088,6 +1122,7 @@ async function start(): Promise<void> {
       onSummerDay: (date, outcome, stats) => game?.onSummerDay(date, outcome, stats),
       manualGuests: () => !game?.state || game.mode === 'sandbox',
       onDayTraffic: (date, passes) => {
+        detail.dayPasses(passes);
         // Przejazdy dnia → model śniegu (ubijanie, zsuwanie, muldy); śnieg na mapie od nowa.
         game?.onDayTraffic(date, passes);
         sim.setTraffic(date, passes);
@@ -1325,7 +1360,11 @@ async function start(): Promise<void> {
       const sameDay = sameDate(st.date, timePanel.date);
       const pv = sameDay ? (game!.preview?.summary ?? null) : null;
       build.setPlumes(plumesAt(pv, opsInfra, timePanel.hour));
-      movers.groomers = opsView.groomers(timePanel.date, timePanel.hour, pv, st.ops?.last ?? null, build.current.analysis, terrain.groom);
+      movers.groomers = opsView.groomers(timePanel.date, timePanel.hour, pv, st.ops?.last ?? null, build.current.analysis, detail.groomStamp);
+      // Etap 7d: sztruks z nocy przewiniętej, pryzmy pracujących armatek (co godzinę).
+      detail.applyNight(st.ops?.last ?? null, build.current.analysis, dayIndex(timePanel.date));
+      const pls = plumesAt(pv, opsInfra, timePanel.hour);
+      detail.plumes(`${fmtDate(timePanel.date)} ${Math.floor(timePanel.hour)}`, pls, snowmakingParams.snow.driftPerMs);
     }
     {
       const mode = new URLSearchParams(window.location.search).get('tryb');
@@ -1684,7 +1723,71 @@ async function start(): Promise<void> {
       summerLook = on;
       terrain.setSummer(on);
       build.setSummerLook(on);
+      detailSummer = on;
+      detail.setLayout(build.current.layout, build.current.analysis, on);
       if (on) minimap.setSnow(null, true);
+    }
+
+    /** Etap 7d: śnieg z bliska, obiekty z atlasu, cząsteczki (tylko przy dużym przybliżeniu). */
+    const winchTypes = new Set(snowmakingParams.groomers.types.filter((t) => t.winch).map((t) => t.id));
+    function detailFrame(night: number): void {
+      const t0 = performance.now();
+      detail.gameH = dayIndex(timePanel.date) * 24 + timePanel.hour;
+      const light = terrain.lighting();
+      const tint = (Math.round(light.tint[0] * 255) << 16) | (Math.round(light.tint[1] * 255) << 8) | Math.round(light.tint[2] * 255);
+      const sun = lastState?.sun ?? { elevationDeg: 30, azimuthDeg: 180 };
+      detail.update(camera, sun.elevationDeg, sun.azimuthDeg, (1 - night) * Math.min(1, 1.2 - (lastState?.cloudFraction ?? 0) * 0.7), tint);
+      build.setPropsActive(atlas.ready && camera.metersPerPixel <= PropLayer.SHOW_MPP);
+      if (camera.metersPerPixel > PropLayer.SHOW_MPP) {
+        props.update(camera, { lifts: [], guns: [], winches: [], accidents: [], parked: [], timeS: 0, night });
+        particles.update(camera, 0, [], []);
+        timingsMs['detal z bliska (ms/klatkę)'] = Math.round((performance.now() - t0) * 10) / 10;
+        return;
+      }
+      const lay = build.current.layout;
+      const an = build.current.analysis;
+      const st = game?.state;
+      const gunsAll = (opsInfra?.guns ?? []).map((g) => ({ xM: g.xM, yM: g.yM, aimXM: g.aimXM, aimYM: g.aimYM, lance: g.typeId === 'lance' }));
+      const anchors = opsInfra?.anchors ?? [];
+      const winches = movers.groomers
+        .filter((g) => {
+          if (!g.id || !st?.ops) return false;
+          const gr = st.ops.groomers.find((x) => x.id === g.id);
+          if (!gr || !winchTypes.has(gr.typeId)) return false;
+          const c = grid.cellAt(g.xM, g.yM);
+          return !!c && detail.layer.slopePercent[grid.index(c.i, c.j)] >= snowmakingParams.groomers.winchSlopePercent;
+        })
+        .map((g) => {
+          let best: { xM: number; yM: number } | null = null;
+          let bd = Infinity;
+          for (const a of anchors) {
+            const d = Math.hypot(a.xM - g.xM, a.yM - g.yM);
+            if (d <= a.rangeM && d < bd) {
+              bd = d;
+              best = a;
+            }
+          }
+          return best ? { fromX: g.xM, fromY: g.yM, toX: best.xM, toY: best.yM } : null;
+        })
+        .filter((w): w is { fromX: number; fromY: number; toX: number; toY: number } => w !== null);
+      const gameTimeS = guestCtl.gameTimeS ?? timePanel.hour * 3600;
+      const firstLift = lay.lifts[0];
+      props.update(camera, {
+        lifts: lay.lifts.map((l) => ({ design: l, analysis: an.lifts.get(l.id)! })).filter((x) => x.analysis),
+        guns: gunsAll,
+        winches,
+        accidents: guestCtl.recentAccidents(gameTimeS),
+        parked: firstLift && !detailSummer ? [{ xM: firstLift.bottom.xM + 12, yM: firstLift.bottom.yM + 6, headingRad: 0 }] : [],
+        timeS: gameTimeS,
+        night,
+      });
+      const powder = lastSnow ? movers.skiersInView(camera, gameTimeS, 300).filter((p) => {
+        const c = grid.cellAt(p.xM, p.yM);
+        return !!c && lastSnow!.quality[grid.index(c.i, c.j)] === 1;
+      }) : [];
+      const pls = st && sameDate(st.date, timePanel.date) ? plumesAt(game!.preview?.summary ?? null, opsInfra, timePanel.hour) : [];
+      particles.update(camera, performance.now() / 1000, pls, powder);
+      timingsMs['detal z bliska (ms/klatkę)'] = Math.round((performance.now() - t0) * 10) / 10;
     }
 
     app.ticker.add((ticker) => {
@@ -1716,6 +1819,7 @@ async function start(): Promise<void> {
       guestCtl.sync(timePanel.date, timePanel.hour);
       terrain.update(camera, nowS, ticker.deltaMS / 1000, snowing);
       guestCtl.update(camera, night, timePanel.hour * 3600, ticker.deltaMS / 1000);
+      detailFrame(night);
       if (overlay === 'traffic') trafficTick(ticker.deltaMS / 1000);
       profile.update(input.cursor);
       opsFrame();
@@ -1749,6 +1853,10 @@ async function start(): Promise<void> {
       game,
       sim,
       ui: { shell, buildBar, drawer, notices, reportWindow, dataViews, cardView, minimap },
+      detail,
+      props,
+      particles,
+      atlas,
     };
   } catch (error) {
     console.error(error);

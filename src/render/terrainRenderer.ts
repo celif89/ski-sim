@@ -200,6 +200,8 @@ interface Tile {
  */
 export class TerrainRenderer {
   readonly groom: TrackBuffer;
+  /** Normalne terenu 10 m (etap 7d – śnieg z bliska). */
+  readonly normals: BufferImageSource;
   readonly ski: TrackBuffer;
   private readonly cells: Uint8Array;
   private readonly cellSource: BufferImageSource;
@@ -209,6 +211,8 @@ export class TerrainRenderer {
   private readonly bakeMesh: Mesh<Geometry, Shader>;
   private readonly tileLayer = new Container();
   private readonly tracksMesh: Mesh<Geometry, Shader>;
+  /** Etap 7d: udział warstwy detalu 1 m (0–1) – stara nakładka śladów 2 m/px wtedy wygasa. */
+  detailFade = 0;
   private readonly glowMesh: Mesh<Geometry, Shader>;
   private readonly tiles = new Map<string, Tile>();
   private readonly levelMpp: number[];
@@ -259,7 +263,7 @@ export class TerrainRenderer {
         nrm.set([Math.round(127.5 + 127.5 * (nx / len)), Math.round(127.5 + 127.5 * (ny / len)), Math.round(127.5 + 127.5 * (1 / len)), 255], k * 4);
       }
     }
-    const normalSource = new BufferImageSource({ resource: nrm, width: grid.widthCells, height: grid.heightCells, format: 'rgba8unorm', alphaMode: 'no-premultiply-alpha', scaleMode: 'linear' });
+    const normalSource = (this.normals = new BufferImageSource({ resource: nrm, width: grid.widthCells, height: grid.heightCells, format: 'rgba8unorm', alphaMode: 'no-premultiply-alpha', scaleMode: 'linear' }));
     this.cells = new Uint8Array(n * 4);
     for (let k = 0; k < n; k++) {
       this.cells[k * 4] = 120;
@@ -330,6 +334,7 @@ export class TerrainRenderer {
             uLight: { value: new Float32Array([0, 0, 1]), type: 'vec3<f32>' },
             uSurfT: { value: new Float32Array([t.surface.groomedMin, t.surface.skiedMin, t.surface.mogulsMin]), type: 'vec3<f32>' },
             uCord: { value: new Float32Array([t.surface.corduroyPeriodM, t.surface.groomerWidthM]), type: 'vec2<f32>' },
+            uDetailFade: { value: 0, type: 'f32' },
           },
         },
       }),
@@ -425,6 +430,11 @@ export class TerrainRenderer {
   setSun(elevationDeg: number, azimuthDeg: number): void {
     this.sunElevationDeg = elevationDeg;
     this.sunAzimuthDeg = azimuthDeg;
+  }
+
+  /** Nakładka śladów w świecie – śnieg z bliska (etap 7d) rysowany zaraz nad nią. */
+  get tracksLayer(): Mesh<Geometry, Shader> {
+    return this.tracksMesh;
   }
 
   /** Noc 0–1 i barwa światła (dla innych warstw – np. światła ratraków). */
@@ -586,7 +596,8 @@ export class TerrainRenderer {
     // Ślady: widoczne przy zbliżeniu.
     const tu = this.uni(this.tracksMesh, 'tracksUniforms');
     tu.uMpp = mpp;
-    this.tracksMesh.visible = mpp < 2.5;
+    tu.uDetailFade = this.detailFade;
+    this.tracksMesh.visible = mpp < 2.5 && this.detailFade < 0.999;
     this.tracksMesh.tint = tint;
     // Zanik śladów: połowa w tracksHalfLifeS (szybciej, gdy pada śnieg).
     const half = this.style.tracksHalfLifeS / (1 + snowingFactor * this.style.tracksSnowfallFactor);

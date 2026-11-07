@@ -530,6 +530,11 @@ export class BuildController {
     return b ? { xM: b.xM, yM: b.yM } : null;
   }
 
+  /** Etap 7d: z bliska obiekty z atlasu zamiast uproszczonych wektorów. */
+  setPropsActive(on: boolean): void {
+    this.layer.propsActive = on;
+  }
+
   /** Zdjęcie zaznaczenia (zamknięcie karty obiektu). */
   clearSelection(): void {
     if (this.selection) this.select(null);

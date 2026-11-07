@@ -20,6 +20,9 @@ export interface Plume {
 }
 
 export interface GroomerSprite {
+  /** Etap 7d: ratrak i trasa (wyciągarka, sztruks). */
+  id?: string;
+  pisteId?: string;
   xM: number;
   yM: number;
   headingRad: number;
@@ -95,7 +98,7 @@ export class OpsView {
         const x = p.xM - p.dirY * off;
         const y = p.yM + p.dirX * off;
         const sgn = k % 2 === 0 ? 1 : -1;
-        out.push({ xM: x, yM: y, headingRad: Math.atan2(p.dirY * sgn, p.dirX * sgn), lightsOn: true });
+        out.push({ id: j.groomerId, pisteId: j.pisteId, xM: x, yM: y, headingRad: Math.atan2(p.dirY * sgn, p.dirX * sgn), lightsOn: true });
         seen.add(j.groomerId);
         const q = this.prev.get(j.groomerId);
         if (track && q && Math.hypot(q.xM - x, q.yM - y) < 40) track.stamp(q.xM, q.yM, x, y, GROOMER_WIDTH_M, 1);

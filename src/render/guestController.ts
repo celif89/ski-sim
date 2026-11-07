@@ -51,7 +51,8 @@ export interface GuestControllerOptions {
   client: GuestClient;
   params: GuestParams;
   movers: MoverLayer;
-  ski: TrackBuffer;
+  /** Ślady nart: bufor 2 m (oddalenie) i warstwa detalu 1 m (etap 7d). */
+  ski: Pick<TrackBuffer, 'stamp'>;
   screenLayer: Container;
   camera: Camera;
   panelParent: HTMLElement;
@@ -487,6 +488,12 @@ export class GuestController {
   private async refreshCard(): Promise<void> {
     const c = await this.o.client.card(this.selected);
     if (c && this.selected === c.id) this.card.show(c);
+  }
+
+  /** Etap 7d: wypadki z ostatnich godzin (ratownik i skuter przy miejscu). */
+  recentAccidents(renderTimeS: number): { xM: number; yM: number }[] {
+    const iconS = this.o.params.accidents.iconHours * 3600;
+    return this.events.filter((e) => renderTimeS - e.timeS >= 0 && renderTimeS - e.timeS < iconS).map((e) => ({ xM: e.xM, yM: e.yM }));
   }
 
   /** Etap 7c: raport dnia z wątku gości (okno raportu). */

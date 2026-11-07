@@ -153,8 +153,9 @@
     "flatSlopePercent": { "value": 4, "unit": "%", "source": "poniżej – jazda wolna (płasko, odpychanie)" },
     "minSpeedMs": { "value": 1.2, "unit": "m/s", "source": "najmniejsza prędkość na płaskim" },
     "groupGapM": { "value": 6, "unit": "m", "source": "odstęp członków grupy jadących razem" },
-    "queueRowSize": { "value": 6, "unit": "os.", "source": "osób w rzędzie kolejki przy stacji (rysowanie)" },
-    "queueSpacingM": { "value": 1.3, "unit": "m", "source": "odstęp osób w kolejce" }
+    "queueRowSize": { "value": 6, "unit": "szpalery", "source": "liczba szpalerów (pasów między taśmami) kolejki przy dolnej stacji – kolejka idzie zygzakiem (rysowanie)" },
+    "queueSpacingM": { "value": 1.3, "unit": "m", "source": "odstęp osób w kolejce i szerokość szpaleru" },
+    "queueLaneLengthM": { "value": 12, "unit": "m", "source": "długość szpaleru (taśmy) przy stacji; dłuższa kolejka – dalsze osoby za szpalerami (rysowanie)" }
   },
   "satisfaction": {
     "rideRatioWeight": { "value": 0.32, "unit": "-", "source": "waga: czas jazdy do czasu w kolejkach (wagi sumują się do 1)" },

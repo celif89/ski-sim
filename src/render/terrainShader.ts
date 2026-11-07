@@ -100,6 +100,23 @@ vec4 cellAt(vec2 p) {
   return texelFetch(uCells, c, 0);
 }
 
+// Etap 7d: grubość śniegu [cm] i udział stanu „przetarty” interpolowane między środkami komórek
+// (z bliska bez schodków 10 m na brzegach płatów).
+vec2 depthThinAt(vec2 p) {
+  vec2 g = p / uCellM - 0.5;
+  ivec2 c0 = ivec2(floor(g));
+  vec2 t = g - vec2(c0);
+  ivec2 hi = ivec2(uGrid) - 1;
+  vec4 a = texelFetch(uCells, clamp(c0, ivec2(0), hi), 0);
+  vec4 b = texelFetch(uCells, clamp(c0 + ivec2(1, 0), ivec2(0), hi), 0);
+  vec4 c = texelFetch(uCells, clamp(c0 + ivec2(0, 1), ivec2(0), hi), 0);
+  vec4 d = texelFetch(uCells, clamp(c0 + ivec2(1, 1), ivec2(0), hi), 0);
+  vec4 th = vec4((int(a.g * 255.0 + 0.5) >> 4) == 7, (int(b.g * 255.0 + 0.5) >> 4) == 7, (int(c.g * 255.0 + 0.5) >> 4) == 7, (int(d.g * 255.0 + 0.5) >> 4) == 7);
+  float dep = mix(mix(a.r, b.r, t.x), mix(c.r, d.r, t.x), t.y) * 255.0;
+  float thin = mix(mix(th.x, th.y, t.x), mix(th.z, th.w, t.x), t.y);
+  return vec2(dep, thin);
+}
+
 // ---------------------------------------------------------------- faktury śniegu
 // Ślady (sztruks, muldy, narty) rysuje osobna nakładka TRACKS_FRAGMENT – zmieniają się co chwilę.
 vec3 surfaceDetail(vec3 col, vec2 p, int q, float shade) {
@@ -265,15 +282,17 @@ void main() {
 
   vec2 jit = (vec2(fbm(p * 0.06, 1u), fbm(p * 0.06, 2u)) - 0.5) * 22.0;
   vec4 cell = cellAt(p + jit);
-  float depthCm = uSummer > 0.5 ? 0.0 : uHasSnow > 0.5 ? cell.r * 255.0 : 120.0;
+  vec2 dt = uHasSnow > 0.5 && uSummer < 0.5 ? depthThinAt(p + jit) : vec2(0.0);
+  float depthCm = uSummer > 0.5 ? 0.0 : uHasSnow > 0.5 ? dt.x : 120.0;
   // Kanał G: stan śniegu × 16 + muldy (0–15) – stan w górnych 4 bitach.
   int q = uSummer > 0.5 ? 0 : uHasSnow > 0.5 ? (int(cell.g * 255.0 + 0.5) >> 4) : 3;
   vec4 msk = texture(uMask, uv);
 
   // Pokrycie śniegiem: gruby – biały, cienki – płaty, brak – trawa.
   float n1 = fbm(p * 0.08, 11u);
-  float cover = q == 0 ? 0.0 : smoothstep(1.0, 14.0, depthCm + (n1 - 0.5) * 12.0);
-  if (q == 7) cover = min(cover, smoothstep(0.38, 0.62, fbm(p * 0.14, 13u)));
+  float cover = (uSummer > 0.5 || depthCm < 0.5) ? 0.0 : smoothstep(1.0, 14.0, depthCm + (n1 - 0.5) * 12.0);
+  // Przetarty: płaty trawy – udział przenika się między komórkami.
+  cover = min(cover, mix(1.0, smoothstep(0.38, 0.62, fbm(p * 0.14, 13u)), dt.y));
   vec3 snowLit = vec3(1.0);
   vec3 snowShade = vec3(0.68, 0.76, 0.89);
   vec3 snow = mix(snowShade, snowLit, clamp(shade * 0.9, 0.0, 1.0));
@@ -373,6 +392,7 @@ uniform float uMpp;
 uniform vec3 uLight;
 uniform vec3 uSurfT;
 uniform vec2 uCord;
+uniform float uDetailFade;
 ${NOISE_GLSL}
 float detailAmp(float periodM) { return clamp((periodM / uMpp - 2.0) / 2.0, 0.0, 1.0); }
 void main() {
@@ -428,7 +448,8 @@ void main() {
     float line = 1.0 - smoothstep(0.03, 0.08, abs(fract(s / 1.7) - 0.5) - 0.38);
     f *= 1.0 - 0.12 * line * detailAmp(1.7) * min(1.0, si * 2.0) * kt;
   }
-  fragColor = vec4(vec3(min(f, 1.0)), 1.0);
+  // Etap 7d: z bliska ślady, sztruks i muldy rysuje warstwa detalu 1 m.
+  fragColor = vec4(vec3(mix(min(f, 1.0), 1.0, uDetailFade)), 1.0);
 }
 `;
 

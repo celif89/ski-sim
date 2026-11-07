@@ -213,10 +213,18 @@ wtedy sezon od nowa (na przecince więcej słońca i wiatru, brak zatrzymywania 
     płaty, bez śniegu – trawa), las jako gęsta faktura świerków, kosodrzewina;
   - **średnie przybliżenie** (ok. 1–4 m/px): pojedyncze świerki z cieniem (wielkość i odcień
     losowane z ziarnem – zawsze te same drzewa), przecinki z ostrymi krawędziami, dachy ze śniegiem;
-  - **detal** (poniżej ok. 1 m/px, do 0,25 m/px): faktura śniegu według stanu – puch, przewiany,
-    firn, breja, lód z połyskiem, przetarcia z trawą i kamieniami, a za ratrakiem sztruks (prążki
-    w kierunku przejazdu, styki pasów), za narciarzami ślady na puchu i muldy. Ślady z czasem
-    znikają, przy opadzie szybciej.
+  - **detal** (poniżej ok. 1 m/px, do 0,125 m/px): faktura śniegu według stanu – puch, przewiany,
+    firn, breja, lód z połyskiem, przetarcia z trawą i kamieniami, a za ratrakiem sztruks.
+  - **śnieg z bliska** (etap 7d; pojawia się od 0,5 m/px, w pełni od 0,35 m/px – najlepiej
+    przybliżyć do końca, 0,125 m/px): na trasach osobna warstwa co 1 m – sztruks w kierunku
+    ostatniego przejazdu ratraka (blednie w ciągu dnia i pod śladami nart), ślady nart, muldy
+    z cieniem zależnym od położenia Słońca (rano cienie długie z południowego wschodu, po
+    południu z południowego zachodu), pryzmy spod armatek, lód z połyskiem, breja, firn, plamy
+    trawy i kamieni tam, gdzie śniegu jest wyraźnie za mało. Od 1,2 m/px zamiast uproszczonych
+    znaczków: podpory z rolkami, stacje z kołem zwrotnym i bramkami, krzesełka z siedzącymi,
+    orczyki i talerzyki z pasażerami, armatki z chmurą śniegu znoszoną przez wiatr, lina
+    wyciągarki ratraka do punktu kotwienia, skuter i ratownik przy wypadku, pył spod nart w puchu.
+    Zrzuty: `docs/ui/detal/`. Wygląd postaci i maszyn opisuje jeden plik `data/atlas.json`.
   Pora dnia zmienia światło (poranek chłodny, zmierzch ciepły, noc ciemna z oświetlonymi trasami
   i światłami ratraków); gdy pada, na ekranie widać płatki śniegu lub deszcz.
 - **Goście** (etap 5) – patrz niżej „Dzień z gośćmi”. Ślady nart, muldy i przetarcia najlepiej

@@ -1,0 +1,119 @@
+{
+  "_opis": "Etap 7d: warstwa detalu 1 m w korytarzach tras (sztruks, ślady nart, muldy, lód, pryzmy, przetarcia) i jej rysowanie z bliska. Bilans masy śniegu liczy siatka 10 m – warstwa 1 m tylko rozkłada go w przestrzeni (średnie w komórce 10 m się zgadzają).",
+  "layer": {
+    "cellM": {
+      "value": 1,
+      "unit": "m",
+      "source": "polecenie etapu 7d: siatka co 1 m w korytarzach tras"
+    },
+    "corridorRingCells": {
+      "value": 1,
+      "unit": "komórki 10 m",
+      "source": "korytarz = komórki trasy + pierścień sąsiadów (brzegi trasy, ratrak wyjeżdża poza oś)"
+    },
+    "trackCoverPerPass": {
+      "value": 0.04,
+      "unit": "1/przejazd",
+      "source": "do kalibracji: sztruks zatarty w ok. 2/3 po 25 przejazdach przez komórkę 10 m (obserwacja tras rano i w południe)"
+    },
+    "trackDecayFreshMm": {
+      "value": 4,
+      "unit": "mm w.e.",
+      "source": "do kalibracji: świeży śnieg zasypuje ślady i sztruks – spadek e^(−opad/4 mm), ok. 4 cm puchu"
+    },
+    "mogulSpacingM": {
+      "value": 5,
+      "unit": "m",
+      "source": "odstęp muld 4–6 m (rytm skrętów narciarza na stromym stoku; Mogul formation, Reuter i in. 2010 – do kalibracji)"
+    },
+    "mogulMaxHeightM": {
+      "value": 0.8,
+      "unit": "m",
+      "source": "dojrzałe muldy 0,5–1 m wysokości (do kalibracji)"
+    },
+    "mogulTurnBoost": {
+      "value": 1.5,
+      "unit": "×",
+      "source": "do kalibracji: muldy rosną szybciej tam, gdzie narciarze skręcają (zakręt trasy) – × (1 + 1,5 · skręt)"
+    },
+    "pileRadiusM": {
+      "value": 7,
+      "unit": "m",
+      "source": "do kalibracji: pryzma pod armatką śmigłową ok. 10–15 m średnicy"
+    },
+    "wornFromThin": {
+      "value": 1,
+      "unit": "0–1",
+      "source": "przetarcie = udział za cienkiej bazy (snowRiding.thinField) albo stan „przetarty”"
+    },
+    "wornThinThreshold": {
+      "value": 0.5,
+      "unit": "0–1",
+      "source": "do kalibracji: przy bazie trochę za cienkiej do jazdy śnieg jeszcze kryje trawę – plamy trawy i kamieni dopiero przy bazie poniżej połowy wymaganej"
+    },
+    "wornPatchM": {
+      "value": 3,
+      "unit": "m",
+      "source": "stylizacja: wielkość plam przetarć (kępy trawy, wierzchołki kamieni)"
+    },
+    "seedSalt": {
+      "value": 7919,
+      "unit": "-",
+      "source": "stała do ziarna wzorów (położenie muld i śladów – tylko układ, nie bilans)"
+    }
+  },
+  "render": {
+    "fadeStartMpp": {
+      "value": 0.5,
+      "unit": "m/px",
+      "source": "detal zaczyna się pokazywać przy tym przybliżeniu – widok (ok. 960 × 540 m) mieści się w oknie tekstury 1024 m"
+    },
+    "fadeFullMpp": {
+      "value": 0.35,
+      "unit": "m/px",
+      "source": "pełny detal od tego przybliżenia (maks. 0,125 m/px)"
+    },
+    "windowM": {
+      "value": 1024,
+      "unit": "m",
+      "source": "okno tekstury detalu wokół widoku (1024 × 1024 komórek 1 m) – większe niż ekran przy 0,75 m/px"
+    },
+    "corduroyPeriodM": {
+      "value": 1,
+      "unit": "m",
+      "source": "stylizacja: w naturze prążki 2–3 cm, na rysunku 1 m (4 px przy 0,25 m/px – drobniejsze migotałyby)"
+    },
+    "corduroyDepthM": {
+      "value": 0.05,
+      "unit": "m",
+      "source": "stylizacja: głębokość prążków na rysunku (w naturze 1–2 cm) – tak, by sztruks był widoczny w słońcu"
+    },
+    "corduroyFadeH": {
+      "value": 18,
+      "unit": "h",
+      "source": "do kalibracji: sztruks blednie w ciągu dnia (słońce, wiatr) także bez przejazdów"
+    },
+    "refreshGameMin": {
+      "value": 20,
+      "unit": "min gry",
+      "source": "co tyle minut gry okno detalu jest odświeżane (słońce, ślady); przesunięcie widoku – od razu"
+    }
+  },
+  "particles": {
+    "powderPerSkier": {
+      "value": 3,
+      "unit": "cząstki/s",
+      "source": "pył spod nart w puchu – stylizacja"
+    },
+    "plumeParticles": {
+      "value": 160,
+      "unit": "szt.",
+      "source": "chmura jednej armatki z bliska – stylizacja"
+    },
+    "plumeLengthPerWindM": {
+      "value": 3,
+      "unit": "m/(m/s)",
+      "source": "do kalibracji: zniesienie chmury z wiatrem (jak „zniesienie 2,5 m na 1 m/s” pryzmy w data/snowmaking.json)"
+    }
+  }
+}
