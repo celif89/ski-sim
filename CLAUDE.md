@@ -608,6 +608,39 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
     o > 20 % okna), mieści się w 20 ms (50 kl./s); czas klatki w kontenerze 540–680 ms z detalem, 170–420 ms
     bez (procesor zamiast karty graficznej) – samych kl./s nie da się tu zmierzyć; pierwsza wersja shadera
     była 6× droższa od reszty sceny (2263 wobec 347 ms) – przepisana; do sprawdzenia na Macu (menu `Dev`).
+- **Etap 7e – zrobiony** (listopad 2026): czytelność rzeźby terenu (tylko rysowanie, symulacja bez zmian).
+  - parametry `data/map-style.json` sekcja `relief`, wzory w `src/render/relief.ts` (wspólne z shaderem
+    terenu i testami): cieniowanie z 4 kierunków naraz (MDOW; 315° waga 0,5, 270° i 0° po 0,2, 225° 0,1;
+    wysokość 45°; kierunki związane z ekranem – po obrocie mapy światło dalej z lewej góry,
+    `lightVectors`), przewyższenie `shading.zFactor` 2,2 liczone w shaderze (normalne w teksturze nadal
+    z `illustrated.reliefZFactor` – tylko dokładność zapisu); cieniowanie nachyleniem niezależne od
+    kierunku (`slopeTone`: 1 płasko → 0,95 przy 25 % → 0,86 przy 40 % → 0,74 od 70 %, chłodniej,
+    progi z klas tras w `pistes.json`); przyciemnienie wklęsłości (`concavityField`: komórka niżej niż
+    średnia w promieniu 60 m, pełne przy 8 m, siła 0,18; tekstura pomocnicza R = wklęsłość, G/B/A =
+    wysokość w cm – 24 bity, interpolacja dwuliniowa w shaderze); las – drzewa przyciemnione wg
+    cieniowania (`treeShadeStrength`), ikony z daleka rzadziej (`iconDensity` 0,6);
+  - kreski spadku (`hachureAt` w TS i GLSL): siatka o odstępie 10 px × m/px (6–48 m), punkt w oczku
+    ze skrótu (ziarno – bez migania), kreska wzdłuż linii spadku, zwężona w dół stoku; brak poniżej
+    15 %, pełne od 20 %, przy 70 % najdłuższe, najgrubsze i najgęstsze; tylko teren otwarty i trasy
+    (las, kosodrzewina – nie; przecinki i trasy z maski – tak); zanik powyżej 5–9 m/px i poniżej
+    0,55–0,35 m/px (tam faktury 7d);
+  - warstwice w shaderze (`contourLine`: grubość w px przez `fwidth`): co 50 m, przy zbliżeniu
+    co 10 m (1,5–3 m/px przejście), grubsze co 100 m; opisy co 100 m (`render/contourLabels.ts`,
+    `traceLevel` z etapu 1, co 650 m wzdłuż linii, góra napisu pod górę stoku – `contourLabelAngle`,
+    stała wielkość 11 px, od 2,5 m/px);
+  - przełączniki „Kreski spadku” i „Warstwice” w widokach danych → „Teren i mapa” (zapamiętane
+    w przeglądarce, `ski-sim:rzezba`), `TerrainRenderer.setRelief` / `setReliefLayers` (przeliczenie kafli);
+  - menu `Dev` → „Rzeźba terenu (etap 7e)”: 22 suwaki (`RELIEF_SLIDERS`), zmiana od razu na mapie,
+    „Kopiuj ustawienia” (JSON ścieżek i wartości do przeniesienia do pliku), „Przywróć z pliku”;
+  - pomoc przy budowie (`render/slopeRing.ts`): przy rysowaniu trasy, nartostrady, wyciągu, drogi,
+    trasy rowerowej i toru – pierścień w kolorze klasy nachylenia, strzałka w dół stoku (z ekspozycji,
+    także po obrocie mapy – `downhillScreen`) i nachylenie w %;
+  - testy `tests/relief.test.ts` (9): płasko – jednolita jasność i zero kresek; płaszczyzna 30 % na
+    północ – kreski równoległe, w dół stoku; jasność 4 ekspozycji przy tym samym nachyleniu równa;
+    stromiej – ciemniej i chłodniej, progi klas tras; światło z lewej góry ekranu przy obu ustawieniach
+    mapy; wklęsłości; kreski tylko na terenie otwartym, stałe, zanik z przybliżeniem; opis warstwicy
+    pod górę; pierścień – klasa i kierunek;
+  - zrzuty przed / po: `docs/ui/rzezba/` (cała mapa, Hala Miziowa, zbliżenie na trasę, pierścień).
 - **Następny: etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja.**
 
 Uwagi techniczne:
@@ -719,6 +752,10 @@ Uwagi techniczne:
   garbów w układzie mapy (zaburzone szumem), nie wzdłuż linii spadku; sztruks nocą ledwie widoczny (światło
   reflektorów nie oświetla faktury); pył spod nart tylko w stanie „puch”; atlas rysowany wektorowo
   (styl prosty) – do wymiany na rysunki w stylu docelowym bez zmian w kodzie (`data/atlas.json`).
+- Rzeźba (7e): wartości cieniowania, kresek i warstwic „do wyczucia” – stroić suwakami w menu Dev
+  na Macu i przenieść do pliku; opisy warstwic czasem do góry nogami (konwencja: góra pod górę) i bez
+  przerwy w linii pod napisem; kreski z gradientu siatki 10 m (na krótkich stromiznach < 20 m słabo);
+  kafle przeliczają się po każdej zmianie suwaka (chwilę widać stary wygląd).
 - **Docelowa oprawa graficzna o szczegółowości w stylu The Settlers** – ręcznie rysowane lub gotowe
   sprite'y i animacje (narciarze, ratraki, budynki, drzewa), do wymiany w warstwie rysowania
   (`src/render`: atlas w `movers.ts`, drzewa w shaderze terenu, budynki w `resortLayer.ts`) po etapie 6.

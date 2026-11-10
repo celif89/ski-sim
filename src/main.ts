@@ -95,6 +95,9 @@ import { CursorTip } from './render/cursorTip';
 import type { TipContent } from './render/cursorTip';
 import { MapInput } from './render/input';
 import { parseMapStyle } from './render/mapStyle';
+import { RELIEF_SLIDERS, getPath, parseReliefParams, setPath } from './render/relief';
+import { ContourLabels } from './render/contourLabels';
+import { RING_TOOLS, SlopeRing } from './render/slopeRing';
 import { TopBar, type GameSpeed, type SnowAtPoints } from './render/topBar';
 import { BuildBar } from './render/buildBar';
 import type { BuildCategory, PaletteCard } from './render/buildBar';
@@ -235,6 +238,13 @@ async function start(): Promise<void> {
       return sprite;
     };
     const terrain = new TerrainRenderer(world, app.renderer, grid, style.illustrated, simSettings.seed, landCover?.forest ?? null, landCover?.shrub ?? null);
+    // Etap 7e: czytelność rzeźby – progi cieniowania nachyleniem z klas tras (niebieska, czerwona).
+    const relief = parseReliefParams(mapStyleJson);
+    const reliefClasses = (() => {
+      const cl = parsePisteParams(pistesJson).classes;
+      return { blue: cl.find((c) => c.id === 'blue')?.maxSlopePercent ?? 25, red: cl.find((c) => c.id === 'red')?.maxSlopePercent ?? 40 };
+    })();
+    terrain.setRelief(relief, reliefClasses.blue, reliefClasses.red);
     // Etap 7d: warstwa detalu 1 m w korytarzach tras i jej rysowanie z bliska.
     const detail = new DetailView(world, terrain, grid, detailJson, simSettings.seed, parseGuestParams(guestsJson).snowImpact);
     let detailSummer = false;
@@ -255,6 +265,9 @@ async function start(): Promise<void> {
     overlaySprite.alpha = style.overlayOpacity;
     world.addChild(overlaySprite);
     app.stage.addChild(world);
+    // Etap 7e: opisy warstwic co 100 m (góra napisu pod górę stoku).
+    const contourLabels = new ContourLabels(grid, relief.contours);
+    world.addChild(contourLabels.root);
     const screenLayer = new Container(); // elementy w pikselach ekranu (np. profil)
     app.stage.addChild(screenLayer);
     // Nad liniami tras i wyciągów (warstwa ekranu): postacie i nakładka ruchu – osobny kontener
@@ -296,7 +309,17 @@ async function start(): Promise<void> {
       },
       onNetwork: () => build.toggleNetwork(),
       onReality: () => build.toggleReality(),
+      onReliefLayers: (layers) => {
+        terrain.setReliefLayers(layers);
+        contourLabels.enabled = layers.contours;
+      },
     });
+    // Etap 7e: kreski spadku i warstwice – stan zapamiętany w przeglądarce.
+    {
+      const layers = dataViews.loadReliefLayers();
+      terrain.setReliefLayers(layers);
+      contourLabels.enabled = layers.contours;
+    }
     const legend = dataViews.legend;
     dataViews.setTipActive(cursorTip.enabled);
     const notices = new Notifications(ui, noticeParams);
@@ -1373,6 +1396,40 @@ async function start(): Promise<void> {
       else if (mode !== 'widok') void game.showStart();
     }
     const devMenu = new DevMenu(ui);
+    // Etap 7e: pierścień nachylenia przy budowie (na ekranie, nad wszystkim) i suwaki rzeźby w menu Dev.
+    const slopeRing = new SlopeRing(
+      grid,
+      parsePisteParams(pistesJson).classes.map((c) => ({ color: c.color, maxSlopePercent: c.maxSlopePercent })),
+      relief.buildRing,
+      style.flatSlopePercent,
+    );
+    app.stage.addChild(slopeRing.root);
+    let reliefPending = false;
+    const applyReliefLater = () => {
+      if (reliefPending) return;
+      reliefPending = true;
+      requestAnimationFrame(() => {
+        reliefPending = false;
+        terrain.setRelief(relief, reliefClasses.blue, reliefClasses.red);
+        contourLabels.setParams(relief.contours);
+        slopeRing.setParams(relief.buildRing);
+      });
+    };
+    devMenu.addSliders(
+      'Rzeźba terenu (etap 7e)',
+      RELIEF_SLIDERS,
+      (path) => getPath(relief, path),
+      (path, v) => {
+        setPath(relief, path, v);
+        applyReliefLater();
+      },
+      () => JSON.stringify(Object.fromEntries(RELIEF_SLIDERS.map((sl) => [`relief.${sl.path}`, getPath(relief, sl.path)])), null, 2),
+      () => {
+        const fresh = parseReliefParams(mapStyleJson);
+        for (const sl of RELIEF_SLIDERS) setPath(relief, sl.path, getPath(fresh, sl.path));
+        applyReliefLater();
+      },
+    );
 
     // ---------------------------------------------------------------- raport z doradcą (etap 7c)
     const g0 = guestParams.scenario;
@@ -1825,6 +1882,8 @@ async function start(): Promise<void> {
       opsFrame();
       refreshSnowOps(false);
       cursorTip.update(input.cursor, performance.now(), () => tipContent(input.cursor!));
+      contourLabels.update(camera);
+      slopeRing.update(camera, input.cursor, RING_TOOLS.has(build.currentTool));
       build.update(input.cursor, guestCtl.gameTimeS ?? nowS);
       hud.update(camera, grid, input.cursor, lastSnow ? { ...lastSnow, ground: build.groundMap, riding: ridingParams } : null);
       const wx = lastState?.top.now;
