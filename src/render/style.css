@@ -1859,6 +1859,49 @@ button.u-stat:hover .u-label {
 .dev-stats {
   color: var(--soft);
 }
+/* Etap 7e: suwaki rzeźby terenu w menu deweloperskim. */
+.dev-panel {
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+.dev-sliders summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+  padding: 2px 0;
+}
+.dev-slider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0;
+}
+.dev-slider {
+  display: grid;
+  grid-template-columns: 1fr 96px 38px;
+  align-items: center;
+  gap: 6px;
+  color: var(--soft);
+}
+.dev-slider input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.dev-slider output {
+  font-family: var(--cond);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text);
+}
+.dev-slider-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.dev-copy-note {
+  color: var(--good);
+}
 .dev-panel button {
   font: inherit;
   color: var(--text);

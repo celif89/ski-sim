@@ -18,6 +18,8 @@ import type { TerrainGrid } from '../sim/terrainGrid';
 import type { Camera } from './camera';
 import type { LodThresholds } from './illustration';
 import { lightingForSun, lodWeights } from './illustration';
+import type { ReliefParams } from './relief';
+import { concavityField, contourIntervals, hachureSpacingM, hachureZoomFade, lightVectors } from './relief';
 import { GLOW_FRAGMENT, TERRAIN_FRAGMENT, TERRAIN_VERTEX, TRACKS_FRAGMENT } from './terrainShader';
 
 export interface IllustrationStyle {
@@ -216,12 +218,20 @@ export class TerrainRenderer {
   private readonly glowMesh: Mesh<Geometry, Shader>;
   private readonly tiles = new Map<string, Tile>();
   private readonly levelMpp: number[];
+  private readonly elevBaseM: number;
   private gen = 0;
   private flushTimerS = 0;
   private frame = 0;
   private rotatedBaked: boolean | null = null;
   private sunElevationDeg = 30;
   private sunAzimuthDeg = 180;
+  /** Etap 7e: rzeźba – parametry, progi klas tras, warstwy włączone (kreski, warstwice). */
+  private relief: ReliefParams | null = null;
+  private reliefClasses = { blueMax: 25, redMax: 40 };
+  private readonly aux: Uint8Array;
+  private readonly auxSource: BufferImageSource;
+  private auxRadiusM = -1;
+  reliefLayers = { hachures: true, contours: true };
   /** Statystyka do pomiarów: kafle policzone w ostatniej klatce i łącznie. */
   stats = { bakedLastFrame: 0, bakedTotal: 0, visibleTiles: 0 };
 
@@ -240,6 +250,8 @@ export class TerrainRenderer {
     const nrm = new Uint8Array(n * 4);
     const cs = grid.cellSizeM;
     const z = grid.elevationM;
+    // Normalne zapisane z przewyższeniem reliefZFactor (dokładność łagodnych stoków w 8 bitach);
+    // widoczne przewyższenie ustawia shader (relief.shading.zFactor) – gradient = −n.xy / n.z / zf.
     const zf = style.reliefZFactor;
     const at = (i: number, j: number, fallback: number) => {
       const ii = Math.min(grid.widthCells - 1, Math.max(0, i));
@@ -264,6 +276,18 @@ export class TerrainRenderer {
       }
     }
     const normalSource = (this.normals = new BufferImageSource({ resource: nrm, width: grid.widthCells, height: grid.heightCells, format: 'rgba8unorm', alphaMode: 'no-premultiply-alpha', scaleMode: 'linear' }));
+    // Etap 7e: tekstura pomocnicza – R: wklęsłość (0–255), G/B/A: wysokość nad minimum [cm] (24 bity).
+    const { minM } = grid.elevationRangeM();
+    this.elevBaseM = Number.isFinite(minM) ? Math.floor(minM) : 0;
+    this.aux = new Uint8Array(n * 4);
+    for (let k = 0; k < n; k++) {
+      const h = z[k];
+      const cm = Number.isNaN(h) ? 0 : Math.max(0, Math.min(16777215, Math.round((h - this.elevBaseM) * 100)));
+      this.aux[k * 4 + 1] = (cm >> 16) & 255;
+      this.aux[k * 4 + 2] = (cm >> 8) & 255;
+      this.aux[k * 4 + 3] = cm & 255;
+    }
+    this.auxSource = new BufferImageSource({ resource: this.aux, width: grid.widthCells, height: grid.heightCells, format: 'rgba8unorm', alphaMode: 'no-premultiply-alpha', scaleMode: 'nearest' });
     this.cells = new Uint8Array(n * 4);
     for (let k = 0; k < n; k++) {
       this.cells[k * 4] = 120;
@@ -309,12 +333,28 @@ export class TerrainRenderer {
       uTreeA: { value: new Float32Array([t.treeIcons.spacingM, t.treeIcons.heightM, t.treeIcons.widthRatio, 2]), type: 'vec4<f32>' },
       uTreeB: { value: new Float32Array([t.trees.spacingM, t.trees.heightM, t.trees.widthRatio, 1]), type: 'vec4<f32>' },
       uShrub: { value: new Float32Array([t.shrub.spacingM, t.shrub.radius, t.shrub.iconSpacingM, t.shrub.iconRadius]), type: 'vec4<f32>' },
+      uElevBase: { value: this.elevBaseM, type: 'f32' },
+      uNormZ: { value: zf, type: 'f32' },
+      uL0: { value: new Float32Array([-0.5, -0.5, 0.707, 1]), type: 'vec4<f32>' },
+      uL1: { value: new Float32Array([0, 0, 1, 0]), type: 'vec4<f32>' },
+      uL2: { value: new Float32Array([0, 0, 1, 0]), type: 'vec4<f32>' },
+      uL3: { value: new Float32Array([0, 0, 1, 0]), type: 'vec4<f32>' },
+      uShadeP: { value: new Float32Array([1, zf]), type: 'vec2<f32>' },
+      uSlopeA: { value: new Float32Array([1, 1, 1, 70]), type: 'vec4<f32>' },
+      uSlopeB: { value: new Float32Array([0, 0, 25, 40]), type: 'vec4<f32>' },
+      uConcS: { value: 0, type: 'f32' },
+      uHachA: { value: new Float32Array([15, 20, 70, 10]), type: 'vec4<f32>' },
+      uHachB: { value: new Float32Array([0.5, 1, 0.7, 1.9]), type: 'vec4<f32>' },
+      uHachC: { value: new Float32Array([0.5, 0, 0, 1]), type: 'vec4<f32>' },
+      uContA: { value: new Float32Array([0, 0.8, 1.5, 0]), type: 'vec4<f32>' },
+      uContB: { value: new Float32Array([0, 10, 50, 100]), type: 'vec4<f32>' },
+      uForestP: { value: new Float32Array([1, 1]), type: 'vec2<f32>' },
     };
     this.bakeMesh = new Mesh({
       geometry: quad(),
       shader: Shader.from({
         gl: { vertex: TERRAIN_VERTEX, fragment: TERRAIN_FRAGMENT, name: 'terrain-a-bake' },
-        resources: { uNormals: normalSource, uCells: this.cellSource, uMask: this.maskSource, terrainUniforms: bakeUniforms },
+        resources: { uNormals: normalSource, uCells: this.cellSource, uMask: this.maskSource, uAux: this.auxSource, terrainUniforms: bakeUniforms },
       }),
     });
     this.bakeRoot.addChild(this.bakeMesh);
@@ -427,6 +467,51 @@ export class TerrainRenderer {
     this.gen++;
   }
 
+  /**
+   * Etap 7e: parametry rzeźby (cieniowanie, kreski, warstwice, las) – zmiana przelicza kafle.
+   * blueMax / redMax – progi klas tras [%] (data/pistes.json).
+   */
+  setRelief(p: ReliefParams, blueMaxPercent: number, redMaxPercent: number): void {
+    this.relief = p;
+    this.reliefClasses = { blueMax: blueMaxPercent, redMax: redMaxPercent };
+    if (this.auxRadiusM !== p.concavity.radiusM + p.concavity.depthForFullM * 1e-3) {
+      this.auxRadiusM = p.concavity.radiusM + p.concavity.depthForFullM * 1e-3;
+      const g = this.grid;
+      const c = concavityField(g.elevationM, g.widthCells, g.heightCells, g.cellSizeM, p.concavity);
+      for (let k = 0; k < c.length; k++) this.aux[k * 4] = Math.round(255 * c[k]);
+      this.auxSource.update();
+    }
+    this.applyRelief();
+  }
+
+  /** Etap 7e: kreski spadku i warstwice włączone / wyłączone (widoki danych). */
+  setReliefLayers(layers: { hachures: boolean; contours: boolean }): void {
+    this.reliefLayers = { ...layers };
+    this.applyRelief();
+  }
+
+  private applyRelief(): void {
+    const p = this.relief;
+    if (!p) return;
+    const u = this.uni(this.bakeMesh, 'terrainUniforms');
+    const rotated = this.rotatedBaked === true;
+    const L = lightVectors(p.shading, rotated);
+    ['uL0', 'uL1', 'uL2', 'uL3'].forEach((k, i) => (u[k] as Float32Array).set(L[i] ? [L[i].x, L[i].y, L[i].z, L[i].w] : [0, 0, 1, 0]));
+    (u.uShadeP as Float32Array).set([p.shading.strength, p.shading.zFactor]);
+    (u.uSlopeA as Float32Array).set([p.slope.lightAtBlue, p.slope.lightAtRed, p.slope.lightAtSteep, p.slope.steepPercent]);
+    (u.uSlopeB as Float32Array).set([p.slope.coolStrength, p.slope.strength, this.reliefClasses.blueMax, this.reliefClasses.redMax]);
+    u.uConcS = p.concavity.strength;
+    const h = p.hachures;
+    (u.uHachA as Float32Array).set([h.minSlopePercent, h.fullSlopePercent, h.maxSlopePercent, 10]);
+    (u.uHachB as Float32Array).set([h.lengthMin, h.lengthMax, h.widthMinPx, h.widthMaxPx]);
+    (u.uHachC as Float32Array).set([h.densityMin, h.strength, 0, h.seedSalt]);
+    const c = p.contours;
+    (u.uContB as Float32Array).set([this.reliefLayers.contours ? c.majorStrength : 0, c.intervalNearM, c.intervalFarM, c.majorIntervalM]);
+    (u.uContA as Float32Array).set([0, c.minorWidthPx, c.majorWidthPx, this.reliefLayers.contours ? c.minorStrength : 0]);
+    (u.uForestP as Float32Array).set([p.forest.treeShadeStrength, p.forest.iconDensity]);
+    this.gen++;
+  }
+
   setSun(elevationDeg: number, azimuthDeg: number): void {
     this.sunElevationDeg = elevationDeg;
     this.sunAzimuthDeg = azimuthDeg;
@@ -485,6 +570,13 @@ export class TerrainRenderer {
     u.uMpp = m;
     const w = lodWeights(m, this.style.lod);
     (u.uLod as Float32Array).set([w.w1, w.w2, w.w3]);
+    // Etap 7e: kreski i warstwice zależne od rozdzielczości kafla.
+    const rp = this.relief;
+    if (rp) {
+      (u.uHachA as Float32Array)[3] = hachureSpacingM(m, rp.hachures);
+      (u.uHachC as Float32Array)[2] = this.reliefLayers.hachures ? hachureZoomFade(m, rp.hachures) : 0;
+      (u.uContA as Float32Array)[0] = contourIntervals(m, rp.contours).nearWeight;
+    }
     const size = this.tileWorldM(tile.level);
     const tr = new Matrix(1 / m, 0, 0, 1 / m, -(tile.tx * size) / m, -(tile.ty * size) / m);
     this.renderer.render({ container: this.bakeRoot, target: tile.rt, clear: true, clearColor: [0, 0, 0, 0], transform: tr });
@@ -510,6 +602,8 @@ export class TerrainRenderer {
       (bu.uShadowDir as Float32Array).set([s * c45, s * c45]);
       const tu = this.uni(this.tracksMesh, 'tracksUniforms');
       (tu.uLight as Float32Array).set([-s * 0.5, -s * 0.5, c45]);
+      // Etap 7e: światło rzeźby związane z ekranem – po obrocie mapy dalej z lewej góry.
+      this.applyRelief();
       this.gen++;
     }
     const mpp = camera.metersPerPixel;

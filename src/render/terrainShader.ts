@@ -53,6 +53,24 @@ uniform vec3 uSurfT;
 uniform vec4 uTreeA;
 uniform vec4 uTreeB;
 uniform vec4 uShrub;
+// Etap 7e: czytelność rzeźby (parametry: data/map-style.json, sekcja „relief”; wzory jak w relief.ts).
+uniform sampler2D uAux;      // R – wklęsłość 0–1, G/B/A – wysokość względem uElevBase [cm] (24 bity)
+uniform float uElevBase;
+uniform float uNormZ;        // przewyższenie, z którym zapisano normalne w teksturze
+uniform vec4 uL0;            // kierunek do światła (mapa) i waga – 4 światła związane z ekranem
+uniform vec4 uL1;
+uniform vec4 uL2;
+uniform vec4 uL3;
+uniform vec2 uShadeP;        // siła cieniowania kierunkowego, przewyższenie
+uniform vec4 uSlopeA;        // jasność przy 25 %, 40 %, stromo; nachylenie „stromo” [%]
+uniform vec4 uSlopeB;        // chłód, siła, próg trasy niebieskiej, czerwonej [%]
+uniform float uConcS;
+uniform vec4 uHachA;         // od [%], pełne [%], max [%], odstęp [m] (dla poziomu kafla)
+uniform vec4 uHachB;         // długość min, max (× odstępu), grubość min, max [px]
+uniform vec4 uHachC;         // gęstość min, siła, zanik z przybliżeniem, warstwa skrótu
+uniform vec4 uContA;         // udział warstwic co 10 m, grubość cienkiej, grubej [px], siła cienkiej
+uniform vec4 uContB;         // siła grubej, odstęp gęsty, rzadki, co 100 m [m]
+uniform vec2 uForestP;       // cieniowanie drzew, gęstość ikon z daleka
 
 // ---------------------------------------------------------------- skróty i szum
 uint pcg(uint v) {
@@ -117,6 +135,95 @@ vec2 depthThinAt(vec2 p) {
   return vec2(dep, thin);
 }
 
+// ---------------------------------------------------------------- rzeźba (etap 7e)
+float auxElev(vec4 t) {
+  return uElevBase + (t.g * 255.0 * 65536.0 + t.b * 255.0 * 256.0 + t.a * 255.0) / 100.0;
+}
+// Wysokość [m] i wklęsłość (0–1) – dwuliniowo między środkami komórek (dokładnie, bez filtrowania 8 bitów).
+vec2 elevConcAt(vec2 p) {
+  vec2 g = p / uCellM - 0.5;
+  ivec2 c0 = ivec2(floor(g));
+  vec2 t = g - vec2(c0);
+  ivec2 hi = ivec2(uGrid) - 1;
+  vec4 a = texelFetch(uAux, clamp(c0, ivec2(0), hi), 0);
+  vec4 b = texelFetch(uAux, clamp(c0 + ivec2(1, 0), ivec2(0), hi), 0);
+  vec4 c = texelFetch(uAux, clamp(c0 + ivec2(0, 1), ivec2(0), hi), 0);
+  vec4 d = texelFetch(uAux, clamp(c0 + ivec2(1, 1), ivec2(0), hi), 0);
+  float h = mix(mix(auxElev(a), auxElev(b), t.x), mix(auxElev(c), auxElev(d), t.x), t.y);
+  float k = mix(mix(a.r, b.r, t.x), mix(c.r, d.r, t.x), t.y);
+  return vec2(h, k);
+}
+// Gradient terenu [m/m] z tekstury normalnych (bez przewyższenia).
+vec2 gradAt(vec2 p) {
+  vec3 n = texture(uNormals, p / uMapSize).xyz * 2.0 - 1.0;
+  return -n.xy / max(n.z, 0.05) / uNormZ;
+}
+float lightTerm(vec3 n, vec4 L) { return L.w * max(0.0, dot(n, L.xyz)); }
+// Cieniowanie z 4 kierunków (1 = płasko) – multiShade w relief.ts.
+float multiShade(vec2 g) {
+  vec3 n = normalize(vec3(-g * uShadeP.y, 1.0));
+  float sum = lightTerm(n, uL0) + lightTerm(n, uL1) + lightTerm(n, uL2) + lightTerm(n, uL3);
+  float flat0 = uL0.w * uL0.z + uL1.w * uL1.z + uL2.w * uL2.z + uL3.w * uL3.z;
+  float s = flat0 > 1e-6 ? sum / flat0 : 1.0;
+  return 1.0 + (s - 1.0) * uShadeP.x;
+}
+// Jasność od samego nachylenia i udział chłodnej barwy – slopeTone w relief.ts.
+vec2 slopeTone(float s) {
+  float v;
+  if (s <= uSlopeB.z) v = mix(1.0, uSlopeA.x, s / uSlopeB.z);
+  else if (s <= uSlopeB.w) v = mix(uSlopeA.x, uSlopeA.y, (s - uSlopeB.z) / (uSlopeB.w - uSlopeB.z));
+  else v = mix(uSlopeA.y, uSlopeA.z, min(1.0, (s - uSlopeB.w) / (uSlopeA.w - uSlopeB.w)));
+  float light = 1.0 - (1.0 - v) * uSlopeB.y;
+  return vec2(light, min(1.0, (1.0 - light) * uSlopeB.x * 3.0));
+}
+// Teren otwarty (0–1): bez lasu i kosodrzewiny; przecinki i trasy otwarte.
+float openAt(vec2 c) {
+  vec4 cl = cellAt(c);
+  vec4 m = texture(uMask, c / uMapSize);
+  float cleared = max(m.r, m.g);
+  return clamp(1.0 - max(cl.b, cl.a) * (1.0 - cleared) * 1.6, 0.0, 1.0);
+}
+// Kreski spadku – hachureAt w relief.ts: oczko siatki, punkt ze skrótu, kreska wzdłuż spadku
+// zwężona w dół stoku. Zwraca krycie 0–1.
+float hachureCover(vec2 p) {
+  float S = uHachA.w;
+  vec2 cb = floor(p / S);
+  float best = 0.0;
+  float aa = 0.6 * uMpp;
+  for (int dj = -1; dj <= 1; dj++) {
+    for (int di = -1; di <= 1; di++) {
+      ivec2 c = ivec2(cb) + ivec2(di, dj);
+      if (c.x < 0 || c.y < 0) continue;
+      uint hs = cellHash(c.x, c.y, uint(uSeed), uint(uHachC.w));
+      vec2 ctr = (vec2(c) + vec2(0.2 + 0.6 * hashUnit(hs, 0u), 0.2 + 0.6 * hashUnit(hs, 1u))) * S;
+      if (texture(uNormals, ctr / uMapSize).a < 0.5) continue;
+      vec2 g = gradAt(ctr);
+      float gl = length(g);
+      float sl = gl * 100.0;
+      float vis = smoothstep(uHachA.x, uHachA.y, sl);
+      if (vis <= 0.0) continue;
+      float t = clamp((sl - uHachA.y) / (uHachA.z - uHachA.y), 0.0, 1.0);
+      if (hashUnit(hs, 2u) >= mix(uHachC.x, 1.0, t)) continue;
+      vec2 dir = -g / gl;
+      float len = S * mix(uHachB.x, uHachB.y, t);
+      vec2 a = ctr - dir * len * 0.5;
+      vec2 ap = p - a;
+      float u = clamp(dot(ap, dir) / len, 0.0, 1.0);
+      float d = length(ap - dir * u * len);
+      float w = mix(uHachB.z, uHachB.w, t) * uMpp * (1.0 - 0.65 * u);
+      float cov = 1.0 - smoothstep(w * 0.5 - aa, w * 0.5 + aa, d);
+      if (cov <= 0.0) continue;
+      best = max(best, cov * vis * openAt(ctr));
+    }
+  }
+  return best * uHachC.z;
+}
+// Warstwica co interval [m] o grubości widthPx (wygładzona na brzegu).
+float contourLine(float h, float fw, float interval, float widthPx) {
+  float d = abs(fract(h / interval + 0.5) - 0.5) * interval / fw;
+  return 1.0 - smoothstep(widthPx * 0.5 - 0.5, widthPx * 0.5 + 0.5, d);
+}
+
 // ---------------------------------------------------------------- faktury śniegu
 // Ślady (sztruks, muldy, narty) rysuje osobna nakładka TRACKS_FRAGMENT – zmieniają się co chwilę.
 vec3 surfaceDetail(vec3 col, vec2 p, int q, float shade) {
@@ -176,7 +283,7 @@ vec4 treeLayer(vec2 p, vec4 prm, float shade, float snowCover, float withShadow,
       vec2 base = (vec2(c) + vec2(0.15 + 0.7 * hashUnit(h, 0u), 0.15 + 0.7 * hashUnit(h, 1u))) * S;
       vec2 jit = (vec2(vnoise(base * 0.11, 1u), vnoise(base * 0.11, 2u)) - 0.5) * 6.0;
       vec4 cl = cellAt(base + jit);
-      float dens = cl.b * (1.0 - texture(uMask, base / uMapSize).r) * (layer == 2u ? 0.8 : 1.0);
+      float dens = cl.b * (1.0 - texture(uMask, base / uMapSize).r) * (layer == 2u ? 0.8 * uForestP.y : 1.0);
       if (hashUnit(h, 2u) >= dens) continue;
       float th = H * (0.75 + 0.5 * hashUnit(h, 3u));
       float tone = hashUnit(h, 4u);
@@ -200,7 +307,8 @@ vec4 treeLayer(vec2 p, vec4 prm, float shade, float snowCover, float withShadow,
       vec3 c3 = mix(dark, light, step(x, 0.0) * 0.75);
       // ciemniejszy brzeg sylwetki (jak rysunek)
       c3 *= mix(0.72, 1.0, smoothstep(w - aa * 2.0, w - aa * 3.5, abs(x)));
-      c3 *= clamp(0.55 + 0.5 * shade, 0.55, 1.1);
+      // Etap 7e: drzewa przyciemnione zgodnie z cieniowaniem terenu (stok w cieniu – ciemniejsze).
+      c3 *= mix(1.0, clamp(0.5 + 0.55 * shade, 0.4, 1.15), uForestP.x);
       if (y < 0.0) c3 = vec3(0.30, 0.22, 0.16);
       // śnieg na gałęziach: dolne brzegi pięter i czubek
       float snowy = (step(tier, 0.16) * step(w * 0.55, abs(x)) + step(0.86, t)) * snowCover;
@@ -219,7 +327,7 @@ vec4 treeLayer(vec2 p, vec4 prm, float shade, float snowCover, float withShadow,
       uint h = cellHash(c.x, c.y, seed, layer);
       vec2 base = (vec2(c) + vec2(0.15 + 0.7 * hashUnit(h, 0u), 0.15 + 0.7 * hashUnit(h, 1u))) * S;
       vec2 jit = (vec2(vnoise(base * 0.11, 1u), vnoise(base * 0.11, 2u)) - 0.5) * 6.0;
-      float dens = cellAt(base + jit).b * (1.0 - texture(uMask, base / uMapSize).r);
+      float dens = cellAt(base + jit).b * (1.0 - texture(uMask, base / uMapSize).r) * (layer == 2u ? 0.8 * uForestP.y : 1.0);
       if (hashUnit(h, 2u) >= dens) continue;
       float th = H * (0.75 + 0.5 * hashUnit(h, 3u));
       float len = th * uShadowLen;
@@ -276,9 +384,14 @@ void main() {
     fragColor = vec4(c * uTint, 1.0);
     return;
   }
-  vec3 n = normalize(nrm.xyz * 2.0 - 1.0);
-  float relief = clamp(dot(n, uLight), 0.0, 1.0);
-  float shade = relief / max(uLight.z, 0.05);
+  // Etap 7e: cieniowanie z 4 kierunków (światło związane z ekranem), z przewyższeniem.
+  vec2 grad = gradAt(p);
+  float slopePct = length(grad) * 100.0;
+  float shade = multiShade(grad);
+  vec2 tone = slopeTone(slopePct);
+  vec2 ec = elevConcAt(p);
+  // Jasność rzeźby niezależna od kierunku: nachylenie i wklęsłość (dolina – mniej nieba).
+  float reliefB = tone.x * (1.0 - uConcS * ec.y);
 
   vec2 jit = (vec2(fbm(p * 0.06, 1u), fbm(p * 0.06, 2u)) - 0.5) * 22.0;
   vec4 cell = cellAt(p + jit);
@@ -325,6 +438,14 @@ void main() {
   if (uSummer > 0.5) floorBare = mix(vec3(0.30, 0.40, 0.22), vec3(0.24, 0.33, 0.18), fbm(p * 0.4, 29u)) * clamp(0.7 + 0.35 * shade, 0.5, 1.2);
   col = mix(col, mix(floorBare, floorSnow, cover), forest * 0.85);
   col = mix(col, mix(col, vec3(0.98, 0.99, 1.0), 0.3), msk.g * cover);
+  // Etap 7e: stromo – ciemniej i chłodniej (niebieskoszaro), dno doliny ciemniejsze.
+  col *= reliefB;
+  col = mix(col, col * vec3(0.80, 0.87, 1.0), tone.y);
+  // Kreski spadku (teren otwarty i trasy; stałe położenie w świecie).
+  if (uHachC.z > 0.001 && slopePct > uHachA.x * 0.6) {
+    float hc = hachureCover(p);
+    col = mix(col, col * vec3(0.42, 0.48, 0.60), hc * uHachC.y);
+  }
 
   // Kosodrzewina i świerki.
   float shadowAcc = 0.0;
@@ -344,6 +465,15 @@ void main() {
     col *= 1.0 - shadowAcc * 0.32 * wB * (1.0 - tB.a);
     col = mix(col, tB.rgb, tB.a * wB);
     col = mix(col, tA.rgb, tA.a * wA);
+  }
+
+  // Etap 7e: delikatne warstwice (co 10 m z bliska, co 50 m z daleka, grubsze co 100 m).
+  if (uContA.w > 0.0 || uContB.x > 0.0) {
+    float fw = max(fwidth(ec.x), 1e-4);
+    float minor = max(contourLine(ec.x, fw, uContB.y, uContA.y) * uContA.x, contourLine(ec.x, fw, uContB.z, uContA.y));
+    float major = contourLine(ec.x, fw, uContB.w, uContA.z);
+    float ca = max(minor * uContA.w, major * uContB.x);
+    col = mix(col, col * vec3(0.46, 0.50, 0.62), ca);
   }
 
   // Światło pory dnia; nocą oświetlone trasy.

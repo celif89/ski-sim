@@ -251,7 +251,7 @@
     "reliefZFactor": {
       "value": 1.6,
       "unit": "-",
-      "source": "przewyższenie cieniowania rzeźby (śnieg z niebieskawymi cieniami); do wyczucia (makieta A)"
+      "source": "przewyższenie, z którym zapisano normalne w teksturze (dokładność łagodnych stoków); widoczne przewyższenie – relief.shading.zFactor (etap 7e)"
     },
     "tiles": {
       "_opis": "Piramida kafli terenu: teren liczony raz do kafli w kilku rozdzielczościach i odświeżany tylko przy zmianie śniegu, wycinki lub obrotu mapy.",
@@ -284,6 +284,298 @@
         "value": 0.25,
         "unit": "s",
         "source": "nowy kafel pojawia się płynnie (bez przeskoków)"
+      }
+    }
+  },
+  "relief": {
+    "_opis": "Etap 7e: czytelność rzeźby na mapie w stylu A – cieniowanie z kilku kierunków (światło związane z ekranem), nachyleniem, wklęsłości, kreski spadku, warstwice, las. Tylko rysowanie; suwaki w menu deweloperskim (Dev).",
+    "shading": {
+      "_opis": "Cieniowanie wielokierunkowe (jak MDOW, Mark 1992 / USGS): kilka świateł naraz z wagami; kierunek na ekranie: 0° = z góry ekranu, 90° = z prawej, 270° = z lewej, 315° = z lewej góry.",
+      "altitudeDeg": {
+        "value": 45,
+        "unit": "° nad horyzontem",
+        "source": "standard cieniowania (GDAL, ArcGIS); do wyczucia (etap 7e)"
+      },
+      "strength": {
+        "value": 0.8,
+        "unit": "0–1",
+        "source": "udział cieniowania kierunkowego w jasności (1 – pełne); do wyczucia (etap 7e)"
+      },
+      "zFactor": {
+        "value": 2.2,
+        "unit": "-",
+        "source": "przewyższenie cieniowania: łagodne stoki (10–20 %) wyraźniejsze; do wyczucia (etap 7e)"
+      },
+      "light1AzimuthDeg": {
+        "value": 315,
+        "unit": "° na ekranie",
+        "source": "główne – z lewej góry ekranu (konwencja map)"
+      },
+      "light1Weight": {
+        "value": 0.5,
+        "unit": "0–1",
+        "source": "waga światła (wagi normowane); do wyczucia (etap 7e)"
+      },
+      "light2AzimuthDeg": {
+        "value": 270,
+        "unit": "° na ekranie",
+        "source": "z lewej – wydobywa stoki biegnące w pionie ekranu"
+      },
+      "light2Weight": {
+        "value": 0.2,
+        "unit": "0–1",
+        "source": "waga światła (wagi normowane); do wyczucia (etap 7e)"
+      },
+      "light3AzimuthDeg": {
+        "value": 0,
+        "unit": "° na ekranie",
+        "source": "z góry ekranu – wydobywa stoki biegnące w poziomie"
+      },
+      "light3Weight": {
+        "value": 0.2,
+        "unit": "0–1",
+        "source": "waga światła (wagi normowane); do wyczucia (etap 7e)"
+      },
+      "light4AzimuthDeg": {
+        "value": 225,
+        "unit": "° na ekranie",
+        "source": "z lewego dołu – rozjaśnia głębokie cienie"
+      },
+      "light4Weight": {
+        "value": 0.1,
+        "unit": "0–1",
+        "source": "waga światła (wagi normowane); do wyczucia (etap 7e)"
+      }
+    },
+    "slope": {
+      "_opis": "Cieniowanie nachyleniem – niezależne od kierunku stoku: płasko jasno, im stromiej, tym ciemniej i chłodniej. Progi 25 % i 40 % z klas tras (data/pistes.json: niebieska, czerwona).",
+      "lightAtBlue": {
+        "value": 0.95,
+        "unit": "× jasności",
+        "source": "jasność przy 25 % (granica tras niebieskich); do wyczucia (etap 7e)"
+      },
+      "lightAtRed": {
+        "value": 0.86,
+        "unit": "× jasności",
+        "source": "jasność przy 40 % (granica tras czerwonych); do wyczucia (etap 7e)"
+      },
+      "lightAtSteep": {
+        "value": 0.74,
+        "unit": "× jasności",
+        "source": "jasność od steepPercent w górę; do wyczucia (etap 7e)"
+      },
+      "steepPercent": {
+        "value": 70,
+        "unit": "%",
+        "source": "nachylenie, od którego jasność już nie maleje (żleby, ściany); do wyczucia (etap 7e)"
+      },
+      "coolStrength": {
+        "value": 0.6,
+        "unit": "0–1",
+        "source": "jak mocno przyciemnienie stromizn przechodzi w niebieskoszary; do wyczucia (etap 7e)"
+      },
+      "strength": {
+        "value": 1.0,
+        "unit": "0–2",
+        "source": "siła cieniowania nachyleniem (0 – wyłączone); do wyczucia (etap 7e)"
+      }
+    },
+    "concavity": {
+      "_opis": "Przyciemnienie wklęsłości (doliny, żleby – mniejszy widok nieba): komórka niżej niż średnia otoczenia.",
+      "radiusM": {
+        "value": 60,
+        "unit": "m",
+        "source": "promień otoczenia (doliny potoków Pilska ok. 50–150 m szerokości); do wyczucia (etap 7e)"
+      },
+      "depthForFullM": {
+        "value": 8,
+        "unit": "m",
+        "source": "zagłębienie względem otoczenia dające pełne przyciemnienie; do wyczucia (etap 7e)"
+      },
+      "strength": {
+        "value": 0.18,
+        "unit": "0–1",
+        "source": "największe przyciemnienie dna doliny; do wyczucia (etap 7e)"
+      }
+    },
+    "hachures": {
+      "_opis": "Kreski spadku (jak na klasycznych mapach górskich – kreskowanie Lehmanna): krótkie kreski wzdłuż linii największego spadku, zwężone w dół stoku; tylko teren otwarty i trasy.",
+      "minSlopePercent": {
+        "value": 15,
+        "unit": "%",
+        "source": "poniżej brak kresek (polecenie etapu: brak poniżej ok. 15–20 %)"
+      },
+      "fullSlopePercent": {
+        "value": 20,
+        "unit": "%",
+        "source": "od tego nachylenia kreski w pełni widoczne"
+      },
+      "maxSlopePercent": {
+        "value": 70,
+        "unit": "%",
+        "source": "nachylenie najgęstszych, najdłuższych i najgrubszych kresek; do wyczucia (etap 7e)"
+      },
+      "spacingPx": {
+        "value": 10,
+        "unit": "px",
+        "source": "odstęp kresek na ekranie (siatka w terenie: odstęp × m/px); do wyczucia (etap 7e)"
+      },
+      "spacingMinM": {
+        "value": 6,
+        "unit": "m",
+        "source": "najmniejszy odstęp w terenie (z bliska kreski nie gęstnieją bez końca)"
+      },
+      "spacingMaxM": {
+        "value": 48,
+        "unit": "m",
+        "source": "największy odstęp w terenie (z daleka)"
+      },
+      "lengthMin": {
+        "value": 0.6,
+        "unit": "× odstępu",
+        "source": "długość kreski przy fullSlopePercent; do wyczucia (etap 7e)"
+      },
+      "lengthMax": {
+        "value": 1.2,
+        "unit": "× odstępu",
+        "source": "długość kreski przy maxSlopePercent; do wyczucia (etap 7e)"
+      },
+      "widthMinPx": {
+        "value": 1.0,
+        "unit": "px",
+        "source": "grubość (górny koniec) przy łagodnym stoku; do wyczucia (etap 7e)"
+      },
+      "widthMaxPx": {
+        "value": 2.4,
+        "unit": "px",
+        "source": "grubość przy maxSlopePercent; do wyczucia (etap 7e)"
+      },
+      "densityMin": {
+        "value": 0.45,
+        "unit": "0–1",
+        "source": "udział oczek siatki z kreską przy fullSlopePercent (przy max – wszystkie); do wyczucia (etap 7e)"
+      },
+      "strength": {
+        "value": 0.6,
+        "unit": "0–1",
+        "source": "krycie (przyciemnienie) kresek; do wyczucia (etap 7e)"
+      },
+      "farFadeStartMpp": {
+        "value": 5,
+        "unit": "m/px",
+        "source": "od tego oddalenia kreski zanikają"
+      },
+      "farFadeEndMpp": {
+        "value": 9,
+        "unit": "m/px",
+        "source": "dalej – brak kresek (cała mapa: rzeźbę niesie cieniowanie)"
+      },
+      "nearFadeStartMpp": {
+        "value": 0.55,
+        "unit": "m/px",
+        "source": "przy większym zbliżeniu kreski zanikają (od 0,5 m/px widać faktury śniegu z etapu 7d)"
+      },
+      "nearFadeEndMpp": {
+        "value": 0.35,
+        "unit": "m/px",
+        "source": "bliżej – brak kresek"
+      },
+      "seedSalt": {
+        "value": 4243,
+        "unit": "-",
+        "source": "numer warstwy skrótu (położenie kresek ustalone ziarnem gry)"
+      }
+    },
+    "contours": {
+      "_opis": "Delikatne warstwice na mapie w stylu A: co 50 m z daleka, co 10 m z bliska, pogrubione co 100 m z opisem wysokości (góra napisu pod górę stoku).",
+      "intervalNearM": {
+        "value": 10,
+        "unit": "m",
+        "source": "polecenie etapu 7e: co 10 m przy zbliżeniu"
+      },
+      "intervalFarM": {
+        "value": 50,
+        "unit": "m",
+        "source": "polecenie etapu 7e: co 50 m przy oddaleniu"
+      },
+      "majorIntervalM": {
+        "value": 100,
+        "unit": "m",
+        "source": "polecenie etapu 7e: pogrubione co 100 m"
+      },
+      "nearBelowMpp": {
+        "value": 1.5,
+        "unit": "m/px",
+        "source": "poniżej – warstwice co 10 m w pełni"
+      },
+      "farAboveMpp": {
+        "value": 3,
+        "unit": "m/px",
+        "source": "powyżej – tylko co 50 m (płynne przejście między progami)"
+      },
+      "minorWidthPx": {
+        "value": 0.8,
+        "unit": "px",
+        "source": "grubość cienkiej warstwicy; do wyczucia (etap 7e)"
+      },
+      "majorWidthPx": {
+        "value": 1.5,
+        "unit": "px",
+        "source": "grubość warstwicy co 100 m; do wyczucia (etap 7e)"
+      },
+      "minorStrength": {
+        "value": 0.2,
+        "unit": "0–1",
+        "source": "krycie cienkiej warstwicy (delikatna); do wyczucia (etap 7e)"
+      },
+      "majorStrength": {
+        "value": 0.36,
+        "unit": "0–1",
+        "source": "krycie warstwicy co 100 m; do wyczucia (etap 7e)"
+      },
+      "labelSpacingM": {
+        "value": 650,
+        "unit": "m",
+        "source": "odstęp opisów wzdłuż warstwicy co 100 m; do wyczucia (etap 7e)"
+      },
+      "labelMinLineLengthM": {
+        "value": 300,
+        "unit": "m",
+        "source": "krótszych warstwic nie opisujemy"
+      },
+      "labelFontPx": {
+        "value": 11,
+        "unit": "px",
+        "source": "wielkość opisu na ekranie (stała przy zmianie przybliżenia)"
+      },
+      "labelMaxMpp": {
+        "value": 2.5,
+        "unit": "m/px",
+        "source": "przy większym oddaleniu opisów nie ma (cała mapa – za gęsto); do wyczucia (etap 7e)"
+      }
+    },
+    "forest": {
+      "treeShadeStrength": {
+        "value": 1.0,
+        "unit": "0–2",
+        "source": "jak mocno cieniowanie terenu przyciemnia świerki (stok w cieniu – ciemniejsze drzewa); do wyczucia (etap 7e)"
+      },
+      "iconDensity": {
+        "value": 0.6,
+        "unit": "0–1",
+        "source": "gęstość ikon świerków przy dużym oddaleniu względem pełnej (rzadziej – rzeźba widoczna przez las); do wyczucia (etap 7e)"
+      }
+    },
+    "buildRing": {
+      "radiusPx": {
+        "value": 26,
+        "unit": "px",
+        "source": "promień pierścienia nachylenia pod kursorem przy budowie trasy, wyciągu, drogi"
+      },
+      "arrowPx": {
+        "value": 20,
+        "unit": "px",
+        "source": "długość strzałki kierunku spadku"
       }
     }
   }

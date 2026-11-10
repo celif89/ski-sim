@@ -227,6 +227,15 @@ wtedy sezon od nowa (na przecince więcej słońca i wiatru, brak zatrzymywania 
     Zrzuty: `docs/ui/detal/`. Wygląd postaci i maszyn opisuje jeden plik `data/atlas.json`.
   Pora dnia zmienia światło (poranek chłodny, zmierzch ciepły, noc ciemna z oświetlonymi trasami
   i światłami ratraków); gdy pada, na ekranie widać płatki śniegu lub deszcz.
+- **Rzeźba terenu** (etap 7e): światło pada z kilku stron naraz, zawsze głównie z lewej góry ekranu
+  (także po obrocie mapy); strome stoki ciemniejsze i chłodniejsze niezależnie od kierunku (progi
+  jak klasy tras: 25 % i 40 %), dna dolin przyciemnione; kreski spadku – krótkie kreski w dół stoku,
+  gęstsze i grubsze na stromiznach (od ok. 15–20 %, tylko teren otwarty i trasy); warstwice co 50 m
+  z daleka i co 10 m z bliska, grubsze co 100 m z opisem (góra napisu pod górę stoku). Kreski
+  i warstwice włącza się w widokach danych → „Teren i mapa”. Przy rysowaniu trasy, wyciągu, drogi
+  pod kursorem pierścień w kolorze klasy nachylenia, strzałka w dół stoku i liczba w %. Wygląd
+  stroi się suwakami w menu `Dev` (lewy dolny róg) → „Rzeźba terenu”; „Kopiuj ustawienia” daje
+  wartości do przeniesienia do `data/map-style.json` (sekcja `relief`). Zrzuty: `docs/ui/rzezba/`.
 - **Goście** (etap 5) – patrz niżej „Dzień z gośćmi”. Ślady nart, muldy i przetarcia najlepiej
   widać przy przybliżeniu ok. 0,25–0,5 m/px (pasek stanu na dole pokazuje skalę).
 - **Mapa topograficzna** (dawna mapa bazowa, „Nakładki” → „Mapa topograficzna”): cieniowanie rzeźby (światło z północnego zachodu, jak na mapach

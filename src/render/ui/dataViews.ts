@@ -34,6 +34,8 @@ export interface DataViewHandlers {
   onTopo(on: boolean): void;
   onNetwork(): void;
   onReality(): void;
+  /** Etap 7e: kreski spadku i warstwice na mapie (włącz / wyłącz). */
+  onReliefLayers(layers: { hachures: boolean; contours: boolean }): void;
 }
 
 export class DataViews {
@@ -45,6 +47,8 @@ export class DataViews {
   private kind: OverlayKind = 'none';
   private terrainOpen = false;
   private topo = false;
+  /** Etap 7e: kreski spadku i warstwice (stan zapamiętany w przeglądarce). */
+  private relief = { hachures: true, contours: true };
   /** Zmiana widoczności legendy – powiadomienia przesuwają się w prawo. */
   onLegendVisible: (visible: boolean) => void = () => {};
 
@@ -96,10 +100,30 @@ export class DataViews {
       if (x === 'topo') {
         this.topo = !this.topo;
         h.onTopo(this.topo);
+      } else if (x === 'hach' || x === 'cont') {
+        if (x === 'hach') this.relief.hachures = !this.relief.hachures;
+        else this.relief.contours = !this.relief.contours;
+        try {
+          localStorage.setItem('ski-sim:rzezba', JSON.stringify(this.relief));
+        } catch {
+          /* brak pamięci przeglądarki */
+        }
+        h.onReliefLayers({ ...this.relief });
       } else if (x === 'net') h.onNetwork();
       else if (x === 'real') h.onReality();
       this.render();
     });
+  }
+
+  /** Etap 7e: zapamiętany stan kresek i warstwic (wołane raz przy starcie). */
+  loadReliefLayers(): { hachures: boolean; contours: boolean } {
+    try {
+      const v = JSON.parse(localStorage.getItem('ski-sim:rzezba') ?? 'null') as { hachures?: unknown; contours?: unknown } | null;
+      if (v) this.relief = { hachures: v.hachures !== false, contours: v.contours !== false };
+    } catch {
+      /* brak pamięci przeglądarki */
+    }
+    return { ...this.relief };
   }
 
   /** Aktywna nakładka (wołane z main przy każdej zmianie). */
@@ -146,7 +170,9 @@ export class DataViews {
     this.tabs.classList.toggle('hidden', group.views.length <= 1);
     this.extras.innerHTML =
       this.kind === 'none'
-        ? `<button type="button" data-x="topo" class="${this.topo ? 'active' : ''}" ${tipAttrs('Dawna mapa topograficzna: warstwice co 10 m, barwy wysokości, opisy')}>Mapa topograficzna</button>
+        ? `<button type="button" data-x="hach" class="${this.relief.hachures ? 'active' : ''}" ${tipAttrs('Kreski spadku: krótkie kreski w dół stoku, gęstsze i grubsze na stromiznach (od ok. 15–20 %); tylko teren otwarty i trasy')}>Kreski spadku</button>
+           <button type="button" data-x="cont" class="${this.relief.contours ? 'active' : ''}" ${tipAttrs('Warstwice: co 50 m z daleka, co 10 m z bliska, grubsze co 100 m z opisem wysokości')}>Warstwice</button>
+           <button type="button" data-x="topo" class="${this.topo ? 'active' : ''}" ${tipAttrs('Dawna mapa topograficzna: warstwice co 10 m, barwy wysokości, opisy')}>Mapa topograficzna</button>
            <button type="button" data-x="net" class="${this.netOn ? 'active' : ''}" ${tipAttrs('Strzałki kierunku zjazdu, numery, połączenia', 'N')}>Sieć tras</button>
            <button type="button" data-x="real" class="${this.realOn ? 'active' : ''}" ${tipAttrs('Prawdziwe wyciągi i trasy Pilska z OpenStreetMap', 'R')}>Prawdziwy ośrodek</button>`
         : '';
