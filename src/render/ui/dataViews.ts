@@ -36,6 +36,8 @@ export interface DataViewHandlers {
   onReality(): void;
   /** Etap 7e: kreski spadku i warstwice na mapie (włącz / wyłącz). */
   onReliefLayers(layers: { hachures: boolean; contours: boolean }): void;
+  /** Etap 7g: widok „Działki” (granice, ceny, kupno). */
+  onParcels?(): void;
 }
 
 export class DataViews {
@@ -60,6 +62,7 @@ export class DataViews {
     this.nav.innerHTML =
       VIEW_GROUPS.map((g) => btn(g.id, g.icon, g.label, g.views.map((v) => v.key).join(' / '))).join('') +
       '<div class="u-nav-sep"></div>' +
+      btn('parcels', 'layers', 'Działki: granice, ceny, kupno i dzierżawa – kliknij działkę na mapie', '') +
       btn('profile', 'ruler', 'Profil terenu: kliknij punkt A i punkt B na mapie; Esc – zamknij', 'P') +
       btn('tip', 'info', 'Dymek przy kursorze: wysokość, nachylenie, śnieg, temperatura i obiekt pod kursorem', 'I');
     parent.appendChild(this.nav);
@@ -76,6 +79,7 @@ export class DataViews {
       if (!b) return;
       const g = b.dataset.g!;
       if (g === 'profile') return h.onProfile();
+      if (g === 'parcels') return h.onParcels?.();
       if (g === 'tip') return h.onTip();
       const group = VIEW_GROUPS.find((x) => x.id === g)!;
       if (g === 'terrain') {
@@ -132,6 +136,10 @@ export class DataViews {
     this.kind = kind;
     this.legend.show(kind);
     this.render();
+  }
+
+  setParcelsActive(on: boolean): void {
+    this.nav.querySelector('[data-g="parcels"]')!.classList.toggle('active', on);
   }
 
   setProfileActive(on: boolean): void {

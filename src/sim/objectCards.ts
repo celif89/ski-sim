@@ -22,12 +22,13 @@ import type { SummerStats } from './summerGuests';
 import { SLOTS, SLOT_S } from './summerGuests';
 import { formatIsoDate } from './time';
 import { liftUpgradeCheck } from './upgrades';
+import { lockReason } from './milestones';
 
 export type CardKind = 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road' | 'trail' | 'ditch';
 export type CardStatus = 'budowa' | 'czynny' | 'zamknięty' | 'przegląd' | 'awaria' | 'nieczynny';
 
 export interface CardAction {
-  id: 'toggleOpen' | 'toggleSummer' | 'toggleRacks' | 'demolish' | 'inspection' | 'price' | 'mains' | 'upgrade' | 'move' | 'widen';
+  id: 'toggleOpen' | 'toggleSummer' | 'toggleRacks' | 'demolish' | 'inspection' | 'price' | 'mains' | 'upgrade' | 'move' | 'widen' | 'light';
   label: string;
   /** Pole daty / ceny (gdy akcja z wartością); etap 7f: lista wyboru (typ po ulepszeniu). */
   value?: string | number;
@@ -170,6 +171,14 @@ function withBuildActions(card: ObjectCard, kind: CardKind, id: string, c: CardC
     if (g && guns.find((t) => t.id === g.typeId)?.movable) add.push({ id: 'move', label: 'Przesuń na inny hydrant' });
   } else if (kind === 'piste') {
     add.push({ id: 'widen', label: 'Ulepsz: poszerz trasę' });
+    // Etap 7g: oświetlenie trasy (jazda wieczorna) – odblokowuje kamień milowy.
+    const p = c.layout.pistes.find((x) => x.id === id);
+    const mp = c.ep.milestones;
+    if (p && mp) {
+      const lock = lockReason('lighting', 'lit', c.state, mp);
+      const len = c.analysis.pistes.get(id)?.lengthM ?? 0;
+      add.push({ id: 'light', label: p.lit ? 'Wyłącz oświetlenie trasy' : lock ? `Oświetlenie trasy (${lock})` : `Oświetl trasę – ${pln(len * mp.lighting.costPlnPerM)}` });
+    }
   } else if (kind === 'base') {
     add.push({ id: 'move', label: 'Przesuń (R – obrót)' });
   }

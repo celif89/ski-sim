@@ -26,9 +26,9 @@
     "source": "średnia cena gruntów leśnych w woj. śląskim ok. 69 tys. zł/ha (2023, za Rocznikiem Leśnictwa GUS – blog.ongeo.pl „Ceny działek leśnych 2025”); kraj 43 007 zł/ha; służy tylko do wyliczenia czynszu – lasów Skarbu Państwa się nie kupuje"
   },
   "builtPlnPerHa": {
-    "value": 1700000,
+    "value": 400000,
     "unit": "zł/ha",
-    "source": "grunty przy zabudowie (tereny budowlane): oferty działek budowlanych w Korbielowie 168–249 zł/m² (otodom, adresowo 2026) → ok. 170 zł/m²; liczone dla części działki z zabudową (ESA WorldCover „built-up”); do kalibracji"
+    "source": "grunty przy zabudowie (część działki z zabudową wg ESA WorldCover): ok. 40 zł/m² – oferty działek rolnych przy zabudowie w Korbielowie i gm. Jeleśnia 26–41 zł/m² (otodom, adresowo 2026); działki budowlane w Korbielowie 168–249 zł/m², ale to małe działki z prawem zabudowy (domy nie są na sprzedaż); do kalibracji"
   },
   "forestLeaseOnlyShare": {
     "value": 0.5,
@@ -36,14 +36,14 @@
     "source": "działka, której co najmniej połowa to las – tylko dzierżawa (Lasy Państwowe wydzierżawiają grunty na podstawie art. 39 ustawy o lasach za zgodą dyrektora RDLP, nie sprzedają); do kalibracji"
   },
   "leaseSharePerYear": {
-    "value": 0.05,
+    "value": 0.04,
     "unit": "1/rok",
-    "source": "czynsz dzierżawy łąk i gruntów rolnych pod stok – 5 % wartości gruntu rocznie (ok. 0,28 zł/m²; stawki gminne za grunty rekreacyjne rzędu 0,1–0,25 zł/m² rocznie – zarządzenia gmin Gierałtowice, Ostrołęka; przetarg pod trasy w Świeradowie-Zdroju ok. 13,5 zł/m² – działki w centrum uzdrowiska); do kalibracji"
+    "source": "czynsz dzierżawy łąk i gruntów rolnych pod stok – 4 % wartości gruntu rocznie (ok. 0,22 zł/m²; stawki gminne za grunty rekreacyjne 0,11–0,25 zł/m² rocznie – zarządzenia gmin Gierałtowice, Ostrołęka; przetarg pod trasy w Świeradowie-Zdroju ok. 13,5 zł/m² – działki w centrum uzdrowiska); do kalibracji"
   },
   "forestLeaseSharePerYear": {
-    "value": 0.05,
+    "value": 0.02,
     "unit": "1/rok",
-    "source": "czynsz dzierżawy gruntów Lasów Państwowych – 5 % wartości gruntu leśnego rocznie (ok. 3450 zł/ha); stawki wg wytycznych RDLP Katowice (zarządzenie nr 77 Dyrektora Generalnego LP z 1 XII 2009 o kształtowaniu czynszu), przykład: czynsz wywoławczy 200 zł/rok za małą działkę – Nadleśnictwo Sucha; płatny z góry do 31 III; do kalibracji"
+    "source": "czynsz dzierżawy gruntów Lasów Państwowych – 2 % wartości gruntu leśnego rocznie (ok. 1400 zł/ha; 1 km² lasu ok. 140 tys. zł/rok); stawki wg wytycznych RDLP Katowice (zarządzenie nr 77 Dyrektora Generalnego LP z 1 XII 2009 o kształtowaniu czynszu), przykład: czynsz wywoławczy 200 zł/rok za małą działkę – Nadleśnictwo Sucha; płatny z góry; do kalibracji"
   },
   "leaseDueMonth": {
     "value": 5,

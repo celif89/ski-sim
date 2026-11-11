@@ -22,7 +22,7 @@ import liftsJson from '../data/lifts.json';
 import pistesJson from '../data/pistes.json';
 import constructionJson from '../data/construction.json';
 import economyJson from '../data/economy.json';
-import { isFoodType, parseEconomyParams, withRoads, withSnowmaking, withSummer } from './sim/economyParams';
+import { isFoodType, parseEconomyParams, withLand, withRoads, withSnowmaking, withSummer } from './sim/economyParams';
 import { parkingCapacityPersons } from './sim/economy';
 import snowmakingJson from '../data/snowmaking.json';
 import winterClassesJson from '../data/winter-classes.json';
@@ -99,6 +99,13 @@ import { RELIEF_SLIDERS, getPath, parseReliefParams, setPath } from './render/re
 import { ContourLabels } from './render/contourLabels';
 import { RING_TOOLS, SlopeRing } from './render/slopeRing';
 import { parseSnapParams } from './render/snapping';
+import landJson from '../data/land.json';
+import milestonesJson from '../data/milestones.json';
+import { buildParcels, parcelAt, parcelsAlong, parseLandParams } from './sim/parcels';
+import type { ParcelGrid } from './sim/parcels';
+import { milestoneLabel, parseMilestoneParams, unlockSummary } from './sim/milestones';
+import type { Milestone } from './sim/milestones';
+import { ParcelCard, ParcelLayer } from './render/parcelView';
 import { SnowTutorial } from './render/ui/snowTutorial';
 import { snowChecklist } from './sim/snowChecklist';
 import { SnapOverlay } from './render/snapOverlay';
@@ -210,7 +217,7 @@ async function start(): Promise<void> {
 
     const { grid, hillshade, contours, timingsMs } = await terrainPromise;
     // Pokrycie terenu (las) – do mapy bazowej i modelu śniegu.
-    let landCover: { forest: Float32Array; shrub: Float32Array } | null = null;
+    let landCover: { forest: Float32Array; shrub: Float32Array; built?: Float32Array } | null = null;
     if (def?.landCoverFile) {
       const response = await fetch(binaryUrl(simSettings.mapName, def.landCoverFile));
       if (response.ok) landCover = parseLandCover(await response.arrayBuffer(), grid.cellCount);
@@ -297,6 +304,10 @@ async function start(): Promise<void> {
     const pisteClassesLegend = parsePisteParams(pistesJson).classes.map((c) => ({ name: c.name, color: c.color }));
     const cursorTip = new CursorTip(document.body);
     let topoOn = false;
+    // Etap 7g: widok działek (ustawiane, gdy gotowa siatka działek – po sieci cieków).
+    let dataViewParcels: () => void = () => {};
+    let parcelClick: (x: number, y: number) => boolean = () => false;
+    let parcelFrame: () => void = () => {};
     const dataViews = new DataViews(ui, slopeClasses, style.flatSlopePercent, pisteClassesLegend, {
       onOverlay: (kind) => setOverlay(kind),
       onProfile: () => {
@@ -313,6 +324,7 @@ async function start(): Promise<void> {
       },
       onNetwork: () => build.toggleNetwork(),
       onReality: () => build.toggleReality(),
+      onParcels: () => dataViewParcels(),
       onReliefLayers: (layers) => {
         terrain.setReliefLayers(layers);
         contourLabels.enabled = layers.contours;
@@ -365,6 +377,7 @@ async function start(): Promise<void> {
       onGuests: () => drawer.toggle('guests'),
       onPrices: () => (game?.state ? game.showPrices() : drawer.show('finance')),
       onSnow: () => drawer.toggle('snow'),
+      onMilestones: () => infoWindow.show('Kamienie milowe', milestonesHtml()),
     });
     topBar.setThawThreshold(noticeParams.thawWarnC);
 
@@ -405,7 +418,11 @@ async function start(): Promise<void> {
     const snowmakingParams = parseSnowmakingParams(snowmakingJson);
     const roadParams = parseRoadParams(constructionJson);
     const summerParams = parseSummerParams(summerJson);
-    const economyParams = withSummer(withRoads(withSnowmaking(parseEconomyParams(economyJson), snowmakingParams), roadParams), summerParams);
+    const landParams = parseLandParams(landJson);
+    const milestoneParams = parseMilestoneParams(milestonesJson);
+    const economyParams = withLand(withSummer(withRoads(withSnowmaking(parseEconomyParams(economyJson), snowmakingParams), roadParams), summerParams), landParams, milestoneParams);
+    // Etap 7g: działki (budowane po sieci cieków) – do tego czasu brak ograniczeń.
+    let parcelGrid: ParcelGrid | null = null;
     // Etap 6b: drogi publiczne z OSM (dojazd do parkingów).
     const publicRoads: PointM[][] = (((OSM_CONTEXTS[`../data/maps/${simSettings.mapName}/osm-context.json`] as { roads?: { kind: string; points: [number, number][] }[] } | undefined)?.roads) ?? [])
       .filter((r) => roadParams.publicRoadKinds.includes(r.kind))
@@ -428,6 +445,11 @@ async function start(): Promise<void> {
       lines: lineParams,
       snap: parseSnapParams(uiJson),
       changePreview: (next, a, id) => game?.changePreview(next, a, id) ?? null,
+      missingParcels: (pts) => {
+        const owned = game?.ownedParcels;
+        if (!owned || !parcelGrid) return [];
+        return [...parcelsAlong(parcelGrid, pts)].filter((id) => id !== '?' && !(id in owned)).sort();
+      },
       onMessage: (text) => buildBar?.showToast(text),
       onState: () => buildBar?.setState(build.barState),
       liftParams,
@@ -498,6 +520,7 @@ async function start(): Promise<void> {
           tool: 'lift' as const,
           sub: { kind: 'lift' as const, id: t.id },
           key: 'L',
+          lockKey: `lift:${t.id}`,
           tip: `${t.name}: ${f0n(t.capacityPerHour)} os./h, ${t.speedMs.toLocaleString('pl-PL')} m/s; cena orientacyjna dla 1 km (stacje, lina, podpory)`,
         })),
       },
@@ -524,8 +547,8 @@ async function start(): Promise<void> {
           { id: 'autoSnow', art: 'fan', name: 'Naśnież trasę', param: 'rury, hydranty, armatki', price: 'jednym kliknięciem', tool: 'autoSnow', tip: 'Zaznacz trasę (albo kilka) – gra zaproponuje rurociąg wzdłuż krawędzi, hydranty, armatki i połączenie z pompownią' },
           { id: 'pipe', art: 'pipeline', name: 'Rurociąg', param: `hydrant co ${snowmakingParams.pipe.hydrantSpacingM} m`, price: `${f0n(snowmakingParams.pipe.costPlnPerM)} zł/m`, tool: 'pipeline', key: 'H', tip: 'Od pompowni wzdłuż trasy; wykop tylko latem (V–X)' },
           { id: 'supply', art: 'supply', name: 'Rura zasilająca', param: 'źródło → zbiornik', price: `${f0n(snowmakingParams.pipe.supplyCostPlnPerM)} zł/m`, tool: 'supply', key: 'F', tip: 'Od ujęcia, studni albo wodociągu do zbiornika' },
-          ...snowmakingParams.guns.map((g) => ({ id: `g-${g.id}`, art: g.movable ? 'fan' : 'lance', name: g.name, param: `od ${g.curveWetBulbC[0].toLocaleString('pl-PL')} °C (temp. mokra)`, price: mln(g.costPln), tool: 'gun' as const, sub: { kind: 'gun' as const, id: g.id }, key: 'J', tip: `${g.name}: kliknij hydrant na rurociągu` })),
-          ...snowmakingParams.buildings.filter((b) => b.kind !== 'catchment').map((b) => buildingCard(b.id, b.name, SNOW_ART[b.kind] ?? 'building', `${f0n(b.capacity)} ${SNOW_UNIT[b.kind] ?? ''}${b.summerOnly ? ', budowa V–X' : ''}`, b.costPln)),
+          ...snowmakingParams.guns.map((g) => ({ id: `g-${g.id}`, art: g.movable ? 'fan' : 'lance', name: g.name, param: `od ${g.curveWetBulbC[0].toLocaleString('pl-PL')} °C (temp. mokra)`, price: mln(g.costPln), tool: 'gun' as const, sub: { kind: 'gun' as const, id: g.id }, key: 'J', lockKey: `gun:${g.id}`, tip: `${g.name}: kliknij hydrant na rurociągu` })),
+          ...snowmakingParams.buildings.filter((b) => b.kind !== 'catchment').map((b) => buildingCard(b.id, b.name, SNOW_ART[b.kind] ?? 'building', `${f0n(b.capacity)} ${SNOW_UNIT[b.kind] ?? ''}${b.summerOnly ? ', budowa V–X' : ''}`, b.costPln, `building:${b.id}`)),
           { id: 'ditch', art: 'supply', name: 'Rów zbierający', param: 'spływ do zbiornika', price: `${f0n(snowmakingParams.ditch.costPlnPerM)} zł/m`, tool: 'ditch', tip: 'Rów ze spadkiem do zbiornika – zbiera deszcz i roztopy z obszaru powyżej siebie (niebieskie pole). Wykop tylko latem (V–X)' },
         ],
       },
@@ -544,7 +567,7 @@ async function start(): Promise<void> {
         icon: 'home',
         key: 'B',
         tip: 'Parking, gastronomia, wypożyczalnia, szkółka, transport do schroniska',
-        cards: economyParams.buildings.map((b) => buildingCard(b.id, b.name, b.base ? 'parking' : isFoodType(b.id) ? 'food' : 'building', b.base ? `${f0n(b.cars)} aut` : `${f0n(b.capacityPerDay)} os./dzień`, b.costPln)),
+        cards: economyParams.buildings.map((b) => buildingCard(b.id, b.name, b.base ? 'parking' : isFoodType(b.id) ? 'food' : 'building', b.base ? `${f0n(b.cars)} aut` : `${f0n(b.capacityPerDay)} os./dzień`, b.costPln, `building:${b.id}`)),
       },
       {
         id: 'summer',
@@ -604,7 +627,7 @@ async function start(): Promise<void> {
       onGradeNew: (on) => build.setGradeNew(on),
       onUndo: () => build.undoLast(),
       onRedo: () => build.redoLast(),
-      lockReason: (key) => game?.lockReason(key as 'bike') ?? null,
+      lockReason: (key) => game?.lockReason(key) ?? null,
     }, { compactBelowPx: (uiJson as unknown as { buildBar: { compactBelowPx: { value: number } } }).buildBar.compactBelowPx.value });
     buildBar.setState(build.barState);
 
@@ -617,6 +640,26 @@ async function start(): Promise<void> {
     const refreshMinimapLayout = () => minimap.setLayout(build.current.layout, (id) => build.current.analysis.pistes.get(id)?.classIndex ?? 1);
     refreshMinimapLayout();
     const infoWindow = new UiWindow(ui);
+    // Etap 7g: kamienie milowe – okno z listą (progi, co odblokowują) i okno po osiągnięciu.
+    const unlockNames = {
+      lift: (id: string) => liftParams.types.find((t) => t.id === id)?.name ?? id,
+      gun: (id: string) => snowmakingParams.guns.find((g) => g.id === id)?.name ?? id,
+      building: (id: string) => economyParams.buildings.find((b) => b.id === id)?.name ?? snowmakingParams.buildings.find((b) => b.id === id)?.name ?? summerParams.buildings.find((b) => b.id === id)?.name ?? id,
+    };
+    const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+    function milestonesHtml(): string {
+      const st = game?.state;
+      const cur = st?.mode === 'career' ? (st.progress?.milestone ?? 0) : milestoneParams.milestones.length - 1;
+      const pr = game?.milestoneProgress();
+      const head = st?.mode === 'sandbox' ? '<p class="muted">Piaskownica – wszystko odblokowane.</p>' : pr?.next ? `<p>Do „${esc(pr.next.name)}”: ${pr.parts.map((x) => `${x.label} ${x.text}`).join(' · ')}</p>` : '<p>Najwyższy kamień milowy osiągnięty.</p>';
+      return `${head}<div class="u-ms-list">${milestoneParams.milestones
+        .map((m: Milestone, i: number) => `<div class="u-ms-item ${i < cur ? 'done' : i === cur ? 'cur' : ''}"><h3>${i <= cur ? '✓ ' : ''}${esc(m.name)}</h3><div class="muted small">${i === 0 ? 'start kariery' : esc(milestoneLabel(m).replace(`${m.name} – `, 'progi: '))}</div><ul>${unlockSummary(m, unlockNames).map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div>`)
+        .join('')}</div>`;
+    }
+    function showMilestoneReached(ms: Milestone[]): void {
+      const m = ms[ms.length - 1];
+      infoWindow.show(`Kamień milowy: ${m.name}`, `<p>Gratulacje! Twój ośrodek to teraz <b>${esc(m.name)}</b>. Odblokowane:</p><ul>${ms.flatMap((x) => unlockSummary(x, unlockNames)).map((t) => `<li>${esc(t)}</li>`).join('')}</ul><p class="muted">Nowe karty są już dostępne w dolnym menu budowy; kolejne działki kupisz w widoku „Działki”.</p>`);
+    }
     const loadInput = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json' });
     loadInput.addEventListener('change', () => {
       if (loadInput.files?.[0]) void game?.loadFile(loadInput.files[0]);
@@ -652,6 +695,7 @@ async function start(): Promise<void> {
         { id: 'guests', icon: 'people', label: 'Goście i wyciągi' },
         { id: 'snow', icon: 'snow', label: 'Naśnieżanie i ratraki' },
         { id: 'tutorial', icon: 'info', label: 'Samouczek naśnieżania' },
+        { id: 'milestones', icon: 'star', label: 'Kamienie milowe' },
         { id: 'objects', icon: 'layers', label: 'Obiekty ośrodka i plik układu' },
         { id: 'history', icon: 'bell', label: 'Historia powiadomień', sep: true },
         { id: 'save', icon: 'save', label: 'Zapisz grę do pliku', sep: true },
@@ -679,6 +723,7 @@ async function start(): Promise<void> {
         else if (arg === 'prices') (game?.state ? game.showPrices() : drawer.show('finance'));
         else if (arg === 'history') infoWindow.show('Historia powiadomień', notices.historyHtml());
         else if (arg === 'tutorial') snowTutorial.start();
+        else if (arg === 'milestones') infoWindow.show('Kamienie milowe', milestonesHtml());
         else if (arg === 'compact') {
           buildBar.setCompact(!buildBar.compact);
           buildBar.showToast(buildBar.compact ? 'Menu budowy: tryb kompaktowy.' : 'Menu budowy: pełne karty.');
@@ -1222,6 +1267,63 @@ async function start(): Promise<void> {
       .filter((pts) => pts.length > 0)
       .map((pts) => ({ xM: pts.reduce((a, q) => a + q.xM, 0) / pts.length, yM: pts.reduce((a, q) => a + q.yM, 0) / pts.length }));
     const waterCtx: WaterContext = { net: streamNet, wp: waterParams, villageBuildings, elevationM: grid.elevationM };
+    // Etap 7g: działki (kwadraty ok. 1 km) z cechami terenu i ceną; warstwa i karta działki.
+    parcelGrid = buildParcels(grid, landCover?.forest ?? null, landCover?.built ?? null, publicRoads, streamNet.lines.map((l) => l.points), landParams);
+    const parcelLayer = new ParcelLayer(parcelGrid);
+    app.stage.addChild(parcelLayer.root);
+    let parcelsActive = false;
+    const startBanner = Object.assign(document.createElement('div'), { className: 'u-panel u-start-banner hidden', textContent: 'Wybierz działkę startową: pomarańczowe działki leżą przy drodze publicznej – kliknij, żeby zobaczyć szczegóły i cenę.' });
+    ui.appendChild(startBanner);
+    const parcelCard = new ParcelCard(ui, {
+      onBuy: (id) => {
+        game?.buyParcel(id, 'buy');
+        showParcel(id);
+      },
+      onLease: (id) => {
+        game?.buyParcel(id, 'lease');
+        showParcel(id);
+      },
+      onStart: (id) => {
+        game?.chooseStartParcel(id);
+        showParcel(id);
+      },
+      onClose: () => {},
+    });
+    function showParcel(id: string): void {
+      const p = parcelGrid?.parcels.find((x) => x.id === id);
+      const st = game?.state;
+      if (!p) return;
+      const owned = game?.ownedParcels ?? null;
+      parcelCard.show(p, {
+        owned: owned === null ? 'all' : (owned[id] ?? null),
+        choosing: !!game?.needsStartParcel,
+        count: owned ? Object.keys(owned).length : 0,
+        limit: game?.parcelLimitNow ?? Infinity,
+        balancePln: st?.balancePln ?? Infinity,
+      });
+    }
+    function setParcelsActive(on: boolean): void {
+      parcelsActive = on;
+      dataViews.setParcelsActive(on);
+      if (!on) parcelCard.hide();
+    }
+    dataViewParcels = () => setParcelsActive(!parcelsActive);
+    parcelClick = (x, y) => {
+      if (!parcelGrid || !(parcelsActive || game?.needsStartParcel) || build.currentTool !== 'select') return false;
+      const w = camera.screenToWorld(x, y);
+      const p = parcelAt(parcelGrid, w.xM, w.yM);
+      if (!p) {
+        parcelCard.hide();
+        return true;
+      }
+      showParcel(p.id);
+      return true;
+    };
+    parcelFrame = () => {
+      const choosing = !!game?.needsStartParcel;
+      startBanner.classList.toggle('hidden', !choosing);
+      parcelLayer.update(camera, { active: parcelsActive, choosing, owned: game?.ownedParcels ?? null, missing: build.draftMissing, selected: parcelCard.currentId });
+    };
     build.setStreams(streamNet.lines);
     build.setWater(waterCtx, (zz) => annualPrecipitationMm(climateProfile, zz));
     streamAt = (xM, yM) => {
@@ -1254,6 +1356,11 @@ async function start(): Promise<void> {
     const ctxData = OSM_CONTEXTS[`../data/maps/${simSettings.mapName}/osm-context.json`] as MapContextData | undefined;
     const destinations = ctxData && grid.georef ? osmDestinations(ctxData.places, ctxData.buildings, (e, n) => grid.puwg92ToLocal(e, n), (q) => !Number.isNaN(grid.sampleElevationM(q.xM, q.yM)), summerParams) : [];
     game = new GameController({
+      parcels: parcelGrid,
+      onStartParcel: (needed) => {
+        if (needed) buildBar.close();
+      },
+      onMilestones: (ms) => showMilestoneReached(ms),
       summer: { summerJson, walkLines: osmTrails.map((t) => t.points), destinations },
       water: waterCtx,
       ep: economyParams,
@@ -1624,6 +1731,11 @@ async function start(): Promise<void> {
         reputation: rep,
         priceLabel: summer ? 'Kolej góra–dół' : 'Karnet dzienny',
         pricePln: summer ? (st.summer?.prices.liftRoundTripPln ?? summerParams.prices.liftRoundTripPln) : st.prices.dayPln,
+        milestone: (() => {
+          const pr = st.mode === 'career' ? game?.milestoneProgress() : null;
+          if (!pr) return null;
+          return { name: pr.current.name, next: pr.next?.name ?? null, share: pr.share, tip: pr.next ? `Do „${pr.next.name}”: ${pr.parts.map((x) => `${x.label} ${x.text}`).join(', ')}. Kliknij – lista kamieni milowych` : 'Najwyższy kamień milowy osiągnięty' };
+        })(),
       });
     }
 
@@ -1649,6 +1761,8 @@ async function start(): Promise<void> {
     // ---------------------------------------------------------------- sterowanie
     input.onClick = (x, y) => {
       if (profile.handleClick(x, y)) return;
+      // Etap 7g: widok działek albo wybór działki startowej – kliknięcie otwiera kartę działki.
+      if (parcelClick(x, y)) return;
       // Kliknięcie postaci (gdy nie budujemy) – karta gościa.
       if (build.currentTool === 'select' && !build.hasHandleAt(x, y) && guestCtl.handleClick(x, y, timePanel.hour * 3600)) return;
       build.handleClick(x, y);
@@ -1722,7 +1836,7 @@ async function start(): Promise<void> {
       onAction: (a, value) => {
         if (!cardSel) return;
         const sel = cardSel;
-        if (a.id === 'toggleOpen' || a.id === 'toggleSummer' || a.id === 'toggleRacks' || a.id === 'demolish' || a.id === 'upgrade' || a.id === 'widen' || a.id === 'move') {
+        if (a.id === 'toggleOpen' || a.id === 'toggleSummer' || a.id === 'toggleRacks' || a.id === 'demolish' || a.id === 'upgrade' || a.id === 'widen' || a.id === 'move' || a.id === 'light') {
           build.cardAction(sel.kind as Parameters<typeof build.cardAction>[0], sel.id, a.id, value);
           if (a.id === 'move') {
             cardSel = null;
@@ -1933,6 +2047,7 @@ async function start(): Promise<void> {
       slopeRing.update(camera, input.cursor, RING_TOOLS.has(build.currentTool));
       build.update(input.cursor, guestCtl.gameTimeS ?? nowS);
       snapOverlay.update(camera, input.cursor, build.snapView);
+      parcelFrame();
       if (performance.now() - tutorialMs > 500) {
         tutorialMs = performance.now();
         if (buildBar.openCategory === 'snow') snowTutorial.offerOnce();

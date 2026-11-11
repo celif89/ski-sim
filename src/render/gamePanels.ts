@@ -199,7 +199,7 @@ export class PricesDialog extends Modal {
     super(parent, 'prices-dialog');
   }
 
-  show(prices: PassPrices, hours: OpeningHours, ep: EconomyParams, marketPln: number): void {
+  show(prices: PassPrices, hours: OpeningHours, ep: EconomyParams, marketPln: number, maxCloseH = ep.hours.maxCloseH): void {
     const comp = ep.competitors.list.map((c) => `${c.name} ${c.dayPln} zł`).join(', ');
     this.body.innerHTML = `
       <div class="gc-title">Cennik i godziny otwarcia</div>
@@ -210,8 +210,9 @@ export class PricesDialog extends Modal {
         <label>Karnet 2 h <input type="number" name="twoHourPln" min="${ep.passes.minPricePln}" max="${ep.passes.maxPricePln}" value="${prices.twoHourPln}"> zł</label>
         <label>Punkt (karnet punktowy) <input type="number" name="pointPln" step="0.5" min="0" value="${prices.pointPln}"> zł</label>
         <label>Otwarcie wyciągów <input type="time" name="open" value="${hhmm(hours.openH)}" min="${hhmm(ep.hours.minOpenH)}" max="${hhmm(ep.hours.maxCloseH)}"></label>
-        <label>Zamknięcie <input type="time" name="close" value="${hhmm(hours.closeH)}" min="${hhmm(ep.hours.minOpenH)}" max="${hhmm(ep.hours.maxCloseH)}"></label>
+        <label>Zamknięcie <input type="time" name="close" value="${hhmm(hours.closeH)}" min="${hhmm(ep.hours.minOpenH)}" max="${hhmm(maxCloseH)}"></label>
       </div>
+      <div class="muted small">${maxCloseH > ep.hours.maxCloseH ? `Jazda wieczorna do ${hhmm(maxCloseH)} – masz oświetloną trasę (po zmroku prąd za oświetlenie).` : `Zamknięcie najpóźniej ${hhmm(maxCloseH)}; jazda wieczorna wymaga oświetlenia trasy (karta trasy, kamień milowy „Lokalny stok”).`}</div>
       <div class="muted small">Przejazd za punkty: orczyk/talerzyk ${ep.passes.pointsSurfaceRide} pkt, kanapa ${ep.passes.pointsChairRide} pkt, gondola ${ep.passes.pointsGondolaRide} pkt. Dzieci i seniorzy płacą ${Math.round(ep.passes.reducedFactor * 100)} % ceny. Dłużej otwarte – więcej przejazdów, ale i wyższe koszty obsługi i energii.</div>
       <div class="build-row build-buttons"><button type="button" class="gm-apply">Zapisz cennik</button></div>`;
     this.body.querySelector('.gm-apply')!.addEventListener('click', () => {

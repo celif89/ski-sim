@@ -96,6 +96,8 @@ export interface BuildControllerOptions {
   onState?: () => void;
   /** Etap 7f: przyciąganie i linie pomocnicze (data/ui.json). */
   snap: SnapParams;
+  /** Etap 7g: działki, których brakuje pod łamaną (kariera; pusto – wszystkie są gracza). */
+  missingParcels?(pts: PointM[]): string[];
   /** Etap 7f: opad roczny na wysokości z – szacowany dopływ z rowów. */
   annualPrecipMm?(zM: number): number;
   /** Etap 7f: podgląd kosztu zmiany (dopłata, czas przebudowy obiektu `id`) – kariera; null bez gry. */
@@ -179,6 +181,8 @@ export class BuildController {
   private snapCache: { key: string; ctx: Omit<SnapContext, 'anchor' | 'prevDir' | 'metersPerPixel' | 'shift'> } | null = null;
   private cursorWorld: PointM | null = null;
   private infoLines: string[] = [];
+  /** Etap 7g: brakujące działki pod rysowanym obiektem (podświetlane w widoku działek). */
+  draftMissing: string[] = [];
   private warnLines: string[] = [];
   /** Etap 7f: rów w trakcie rysowania i jego analiza (zlewnia). */
   private ditchPoints: PointM[] = [];
@@ -1877,7 +1881,18 @@ export class BuildController {
   }
 
   /** Etap 7b – akcje z karty obiektu: otwórz/zamknij, kolej latem, wieszaki, rozbiórka. */
-  cardAction(kind: SelKind, id: string, action: 'toggleOpen' | 'toggleSummer' | 'toggleRacks' | 'demolish' | 'upgrade' | 'widen' | 'move', value: string | null = null): void {
+  cardAction(kind: SelKind, id: string, action: 'toggleOpen' | 'toggleSummer' | 'toggleRacks' | 'demolish' | 'upgrade' | 'widen' | 'move' | 'light', value: string | null = null): void {
+    if (action === 'light') {
+      const next = this.clone();
+      const p = next.pistes.find((x) => x.id === id);
+      if (!p) return;
+      if (p.lit) delete p.lit;
+      else p.lit = true;
+      const prev = this.o.changePreview?.(next, this.analyzeLayout(next), id) ?? null;
+      if (p.lit && prev && !confirm(`Oświetlenie trasy ${p.name}: do zapłaty ${Math.round(Math.max(0, prev.chargePln)).toLocaleString('pl-PL')} zł${prev.days ? `, budowa ok. ${prev.days} dni` : ''}. Potem prąd po zmroku i jazda wieczorna (cennik i godziny). Wykonać?`)) return;
+      this.commit(next, p.lit ? `Trasa ${p.name}: oświetlona – zamknięcie wyciągów możesz przesunąć na wieczór (Cennik i godziny).` : `Trasa ${p.name}: bez oświetlenia.`);
+      return;
+    }
     if (action === 'upgrade' || action === 'widen') return this.upgradeObject(kind, id, value);
     if (action === 'move') return this.startMove(kind, id);
     if (action === 'demolish') {
@@ -2112,9 +2127,16 @@ export class BuildController {
     const t = this.tool;
     this.infoLines = info;
     this.warnLines = warn;
+    this.draftMissing = [];
+    const parcelWarn = (pts: PointM[]) => {
+      const miss = this.o.missingParcels?.(pts) ?? [];
+      this.draftMissing = miss;
+      if (miss.length) warn.push(`poza Twoimi działkami – dokup: ${miss.join(', ')}`);
+    };
     if (t === 'lift') {
       const d = this.draftLift;
       if (!d) return;
+      parcelWarn(liftPath(d.design));
       const a = d.analysis;
       info.push(`${f0(a.slopeLengthM)} m, przewyższenie ${f0(a.riseM)} m · ${money(a.cost.totalPln)}`);
       for (const i of a.issues) (i.severity === 'error' ? warn : info).push(i.message);
@@ -2167,6 +2189,7 @@ export class BuildController {
       }
       if (t === 'catwalk' && Math.abs(slope) > this.o.pisteParams.catwalkMaxSlopePercent) warn.push(`za stromo na nartostradę (do ${this.o.pisteParams.catwalkMaxSlopePercent} %)`);
     }
+    parcelWarn(pts);
     info.unshift(`${f0(L)} m${cost !== null ? ` · ${money(cost)}` : ''}${extra}`, `odcinek: ${slope >= 0 ? '+' : '−'}${f0(Math.abs(slope))} %`);
   }
 
@@ -2610,6 +2633,8 @@ export class BuildController {
       if (p && (this.tool === 'pisteAxis' || this.tool === 'catwalk') && this.axisPoints.length && !this.handStroke) this.updateDraftPiste(this.axisPoints, p);
       if (p && this.tool === 'ditch' && this.ditchPoints.length && !this.handStroke) this.updateDitchDraft(p);
       if (p && this.tool === 'move') this.previewMove(p);
+      if (this.tool === 'base' || this.tool === 'move') this.draftMissing = p ? (this.o.missingParcels?.([p]) ?? []) : [];
+      else if (!SNAP_TOOLS.includes(this.tool)) this.draftMissing = [];
       if (p && SNAP_TOOLS.includes(this.tool)) {
         this.computeInfo(p);
         this.drawVersion++;

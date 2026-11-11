@@ -707,6 +707,49 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
     rozbiórka ze zwrotem, poszerzenie, zamiana armatki, przesunięcie z obrotem; ratrak bez garażu pracuje,
     awarie pod chmurką > 1,5× w garażu (3000 nocy, te same losowania), rynek używanych; rów – zlewnia
     powyżej rowu, rów pod górę odrzucony, rów z dawnego „budynku”; lista „czego brakuje”.
+- **Etap 7g – zrobiony** (listopad 2026): działki do dokupienia i kamienie milowe (wzór: Cities: Skylines).
+  - działki (`src/sim/parcels.ts`, `data/land.json`): kwadraty 1 × 1 km (Pilsko: 4 × 5, 19 działek – skrawki
+    < 5 ha przy granicy pominięte), nazwy „B1” (litera – kolumna od zachodu, numer – wiersz od północy),
+    cechy: powierzchnia części polskiej, wysokości od–do, nachylenie średnie i 90 %, las, zabudowa (ESA
+    WorldCover), potoki [km], droga publiczna (OSM, w działce albo ≤ 30 m od granicy); cena = łąka
+    55 tys. zł/ha (GUS: śląskie 53 414 zł/ha, IV kw. 2024) + grunt przy zabudowie 400 tys. zł/ha (oferty
+    gm. Jeleśnia 26–41 zł/m²) + las 69 tys. zł/ha (GUS 2023, śląskie); las ≥ 50 % – tylko dzierżawa
+    (Lasy Państwowe, art. 39 ustawy o lasach); czynsz: łąki 4 %, las 2 % wartości rocznie (do kalibracji),
+    płatny przy podpisaniu i co roku 1 maja (`annualLeasePln`, koszt `landLease`, zakup – `land`);
+    na Pilsku wszystkie działki są w ponad połowie leśne – w praktyce dzierżawa ok. 130–270 tys. zł/rok;
+  - kamienie milowe (`src/sim/milestones.ts`, `data/milestones.json`): Górka za wsią (start) → Lokalny stok
+    (5 tys. wizyt, reputacja 3,3, 1 sezon) → Ośrodek regionalny (20 tys., 3,8, 2) → Ośrodek górski (60 tys.,
+    4,1, 3) → Kurort (150 tys., 4,4, 5); wizyty = goście dni zimowych i letnich (`state.progress.visits`),
+    reputacja – lepsza z zimowej i letniej, sezony – zakończone lata gry; sprawdzane po kolei po każdym
+    dniu (`checkMilestones`, nie da się przeskoczyć); odblokowania: wyciągi (start: taśma, talerzyk,
+    orczyk; kanapa 2 → 4 → wyprzęgane → gondola), armatki (lanca → śmigłowa), budynki (bar przy stoku →
+    restauracja, większe zbiorniki, pompownie, przyłącza, plac zabaw, punkt widokowy, transport do
+    schroniska), lato (ścieżki → bike park → tor), oświetlenie tras, działki (1 + 1, +2, +3, +4, bez
+    limitu), limit kredytu (3 / 8 / 20 / 50 / 150 mln zł, razem z 70 % majątku – `loanLimit`); blokady
+    atrakcji letnich z 7b przez kamienie (`attractionUnlocked` zostaje tylko bez kamieni); piaskownica –
+    wszystko odblokowane;
+  - zasady budowy (`src/sim/buildRules.ts`): tylko obiekty nowe albo zmienione (`changedObjectIds`) –
+    kamień milowy typu (`milestoneRefusal`) i działki (`parcelRefusal`: wyciąg – przebieg, trasa – obrys
+    z analizy, drogi / rurociągi / rowy / trasy letnie – przebieg, budynek i ujęcie – punkt); start kariery
+    tylko na działce przy drodze (`chooseStartParcel`; kupiona albo dzierżawiona z kapitału); starsze
+    zapisy (`migrateLegacyCareer`): działki pod zbudowanymi obiektami przyznane (bez opłaty; leśne jako
+    dzierżawa), wizyty z historii, kamień z dotychczasowych wyników;
+  - oświetlenie tras (`PisteDesign.lit`, karta trasy „Oświetl trasę”, 650 zł/m, 30 W/m po zmroku do
+    zamknięcia – koniec zmierzchu cywilnego wg miesiąca w `milestones.json`; zamknięcie do 21:00 tylko
+    z oświetloną trasą – `maxCloseH`); bar przy stoku (`economy.json`, 600 tys. zł, 200 gości/dzień) –
+    gastronomia jak restauracja (`isFoodType`);
+  - widok: `render/parcelView.ts` – warstwa działek (widok danych „Działki” w lewym pasku: granice, nazwy,
+    cena / czynsz, twoje – zielone, dzierżawa – niebieskie, wybór startu – pomarańczowe, brakujące pod
+    rysowanym obiektem – czerwone) i karta działki (cechy, Kup / Dzierżaw / Zacznij tutaj, limit);
+    wybór działki startowej po „Nowa kariera” (pasek z informacją, budowa zablokowana do wyboru);
+    okienko przy kursorze: „poza Twoimi działkami – dokup: …”; paleta – zablokowane karty z powodem
+    („wymaga: Ośrodek regionalny – 20 tys. wizyt, reputacja 3,8, 2 sezony”, klucze `lift:`, `gun:`,
+    `building:`, `trail`); górny pasek – bieżący kamień i postęp do następnego (najmniejszy udział progów),
+    okno „Kamienie milowe” (menu ☰ i klik w pasku), okno i powiadomienie po osiągnięciu;
+  - testy `tests/land7g.test.ts` (7): siatka i ceny, start tylko przy drodze i zakup z salda, limit
+    działek, budowa poza działkami odrzucona z listą brakujących (także ujęcie), dzierżawa przy podpisaniu
+    i 1 maja, progi kamienia „dokładnie” (każdy z trzech osobno), blokady typów i oświetlenia,
+    piaskownica, starszy zapis.
 - **Następny: etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja.**
 
 Uwagi techniczne:
@@ -818,6 +861,12 @@ Uwagi techniczne:
   garbów w układzie mapy (zaburzone szumem), nie wzdłuż linii spadku; sztruks nocą ledwie widoczny (światło
   reflektorów nie oświetla faktury); pył spod nart tylko w stanie „puch”; atlas rysowany wektorowo
   (styl prosty) – do wymiany na rysunki w stylu docelowym bez zmian w kodzie (`data/atlas.json`).
+- Działki i kamienie (7g): ceny gruntów i czynsze do kalibracji (brak opublikowanych stawek dzierżawy pod
+  stoki – przetargi gmin i LP); działka kupowana w całości (bez podziału na mniejsze części); las ≥ 50 %
+  tylko w dzierżawie także, gdy część jest łąką; jazda wieczorna – goście w modelu jeżdżą po zmroku po
+  wszystkich trasach (oświetlenie decyduje tylko o godzinie zamknięcia i koszcie prądu); progi kamieni
+  milowych do kalibracji na rozegranych karierach; przeniesienie istniejącego obiektu na cudzą działkę
+  jest odrzucane, ale obiekt już stojący na niej zostaje.
 - Budowanie (7f): przyciąganie tylko do końców i odcinków (bez przecięć dwóch linii pomocniczych naraz);
   kąt liczony względem najbliższego odcinka w promieniu 60 m od początku rysowanego odcinka; łuk – jeden
   punkt sterujący na odcinek (bez edycji punktu sterującego po postawieniu – potem jak zwykła linia);

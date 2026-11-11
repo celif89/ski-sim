@@ -399,7 +399,7 @@
     }
   },
   "unlocks": {
-    "_opis": "W karierze atrakcja odblokowuje się, gdy reputacja (lepsza z zimowej i letniej) i saldo osiągną progi.",
+    "_opis": "Od etapu 7g atrakcje letnie odblokowują kamienie milowe (data/milestones.json); te progi działają tylko bez kamieni milowych (narzędzia, testy etapu 7b).",
     "bike": {
       "reputation": {
         "value": 3.2,

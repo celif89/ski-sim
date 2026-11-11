@@ -2951,3 +2951,75 @@ tr.g-closed td {
   font-size: 19px;
   white-space: nowrap;
 }
+
+/* Etap 7g: kamień milowy w górnym pasku, widok i karta działki, okno kamieni milowych. */
+.u-ms .u-num {
+  font-size: 17px;
+  white-space: nowrap;
+}
+.u-ms-bar {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.u-ms-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.u-parcel-card {
+  position: absolute;
+  right: 16px;
+  top: 96px;
+  width: 360px;
+  max-width: calc(100% - 32px);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 30;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.u-parcel-card.hidden,
+.u-start-banner.hidden {
+  display: none;
+}
+.u-start-banner {
+  position: absolute;
+  left: 50%;
+  top: 92px;
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  z-index: 29;
+  font-weight: 600;
+  border: 1px solid var(--accent);
+}
+.u-ms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.u-ms-item {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+}
+.u-ms-item.done {
+  border-color: rgba(95, 211, 154, 0.5);
+}
+.u-ms-item.cur {
+  border-color: var(--accent);
+}
+.u-ms-item h3 {
+  margin: 0 0 4px;
+  font-family: var(--cond);
+  font-size: 19px;
+}
+.u-ms-item ul {
+  margin: 4px 0 0 18px;
+  padding: 0;
+}

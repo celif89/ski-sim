@@ -17,6 +17,7 @@ import {
   fmtPln,
   loanLimit,
   markAllBuilt,
+  maxCloseH,
   newGameState,
   objectCosts,
   operationalLayout,
@@ -40,6 +41,12 @@ import type { DayOpsResult, Infra, OpsSnow } from '../sim/operations';
 import type { WaterContext } from '../sim/operations';
 import { acquireGroomer, acquireUsedGroomer, blockedPistes, infraFacts, previewDayOperations, runDayOperations, usedGroomerOffers } from '../sim/operations';
 import type { UsedGroomerOffer } from '../sim/operations';
+import type { Parcel, ParcelGrid } from '../sim/parcels';
+import { acquireParcel, parcelById } from '../sim/parcels';
+import type { Milestone } from '../sim/milestones';
+import { lockReason as milestoneLock, milestoneProgress } from '../sim/milestones';
+import type { LockKind, MilestoneProgress } from '../sim/milestones';
+import { buildRefusal, chooseStartParcel, migrateLegacyCareer, parcelLimit, parcelRefusal } from '../sim/buildRules';
 import type { SnowOps } from '../sim/snowOps';
 import { encodeOps } from '../sim/gameSave';
 import { parseIsoDate } from '../sim/time';
@@ -117,6 +124,10 @@ export interface GameControllerOptions {
   onCaughtUp?(): void;
   /** Etap 6b: model wody (potoki, wodociąg, studnie, zlewnia zbiornika). */
   water?: WaterContext | null;
+  /** Etap 7g: działki mapy (null – bez działek) i powiadomienia o kamieniach milowych / wyborze działki startowej. */
+  parcels?: ParcelGrid | null;
+  onMilestones?(ms: Milestone[]): void;
+  onStartParcel?(needed: boolean): void;
   /** Etap 7b: sezon letni – surowe dane (dla wątku gości), szlaki OSM i cele wycieczek. */
   summer?: { summerJson: unknown; walkLines: PointM[][]; destinations: { kind: 'hut' | 'peak'; name: string; xM: number; yM: number }[] } | null;
 }
@@ -191,7 +202,7 @@ export class GameController {
   constructor(private readonly o: GameControllerOptions) {
     this.book = o.book;
     this.finance = new FinancePanel(o.panelParent, {
-      onPrices: () => this.state && this.prices.show(this.state.prices, this.state.hours, o.ep, this.marketPrice()),
+      onPrices: () => this.state && this.prices.show(this.state.prices, this.state.hours, o.ep, this.marketPrice(), maxCloseH(o.ep, this.anyLit())),
       onReport: () => this.showReport(),
       onSave: () => this.saveFile(),
       onLoad: (f) => void this.loadFile(f),
@@ -205,7 +216,7 @@ export class GameController {
     this.prices = new PricesDialog(o.modalParent, (p, h) => {
       if (!this.state) return;
       setPrices(this.state, p, o.ep);
-      setHours(this.state, h, o.ep);
+      setHours(this.state, h, o.ep, this.anyLit());
       o.toast('Cennik zapisany – obowiązuje od jutra.');
       this.refreshPanel(true);
     });
@@ -267,7 +278,11 @@ export class GameController {
     if (mode === 'career') {
       state.hour = 8;
       this.state = state;
-      o.build.replaceLayout(emptyLayout(), 'Kariera: pusta góra. Zacznij od wyciągu, trasy i parkingu (pasek na dole).');
+      if (o.parcels && o.ep.land) {
+        state.needsStartParcel = true;
+        state.land = { owned: {} };
+      }
+      o.build.replaceLayout(emptyLayout(), o.parcels ? 'Kariera: wybierz działkę startową przy drodze publicznej (podświetlone na mapie).' : 'Kariera: pusta góra. Zacznij od wyciągu, trasy i parkingu (pasek na dole).');
     } else {
       state.hour = 10;
       state.seasonOpen = true;
@@ -283,6 +298,13 @@ export class GameController {
   private afterStateLoaded(): void {
     const s = this.state!;
     if (this.o.ep.summer) ensureSummer(s, this.o.ep.summer); // starsze zapisy – bez stanu lata
+    // Etap 7g: starszy zapis kariery – działki pod obiektami i kamień milowy z dotychczasowych wyników.
+    if (s.mode === 'career' && (!s.land || !s.progress)) {
+      const cur = this.o.build.current;
+      const n = migrateLegacyCareer(s, cur.layout, cur.analysis, this.o.ep, this.o.parcels ?? null, this.o.grid.cellSizeM, this.o.grid.widthCells);
+      if (n) this.o.toast(`Starszy zapis: przyznano ${n} ${n === 1 ? 'działkę' : n < 5 ? 'działki' : 'działek'} pod zbudowanymi obiektami.`);
+    }
+    this.o.onStartParcel?.(s.mode === 'career' && !!s.needsStartParcel);
     this.finance.setVisible(true);
     this.o.guests.setManualGuests(s.mode === 'sandbox');
     this.o.guests.setResortOpen(s.seasonOpen);
@@ -368,8 +390,11 @@ export class GameController {
     const s = this.state;
     if (!s || s.mode !== 'career') return null;
     if (s.bankrupt) return 'Ośrodek zbankrutował – nie można budować.';
-    // Etap 7b: atrakcje letnie odblokowują się z reputacją i kapitałem.
-    const sp = this.o.ep.summer;
+    // Etap 7g: działka startowa, kamienie milowe (typy, atrakcje letnie, oświetlenie), działki pod obiektami.
+    const refusal = buildRefusal(this.layout, next, analysis, s, this.o.ep, this.o.parcels ?? null, this.o.grid.cellSizeM, this.o.grid.widthCells);
+    if (refusal) return refusal;
+    // Etap 7b: atrakcje letnie odblokowują się z reputacją i kapitałem (bez kamieni milowych).
+    const sp = this.o.ep.milestones ? null : this.o.ep.summer;
     if (sp) {
       const had = new Set([...(this.layout.trails ?? []).map((t) => t.id), ...(this.layout.buildings ?? []).map((b) => b.id)]);
       const rep = reputationOf(s, this.o.ep);
@@ -473,7 +498,7 @@ export class GameController {
 
   /** Etap 7c: cennik i godziny (górny pasek, menu). */
   showPrices(): void {
-    if (this.state) this.prices.show(this.state.prices, this.state.hours, this.o.ep, this.marketPrice());
+    if (this.state) this.prices.show(this.state.prices, this.state.hours, this.o.ep, this.marketPrice(), maxCloseH(this.o.ep, this.anyLit()));
   }
 
   /** Etap 7c: fakty o ośrodku (raport, doradca, pasek górny). */
@@ -481,13 +506,89 @@ export class GameController {
     return this.facts;
   }
 
-  /** Etap 7c: powód blokady atrakcji letniej (paleta budowy) – null, gdy dostępna. */
-  lockReason(kind: 'bike' | 'walk' | 'toboggan' | 'playground' | 'viewpoint'): string | null {
+  /**
+   * Powód blokady karty palety – null, gdy dostępna. Etap 7g: klucze „lift:typ”, „gun:typ”, „building:typ”,
+   * „trail:rodzaj”, „lighting” (kamienie milowe); starsze klucze atrakcji letnich (bike, walk, toboggan,
+   * playground, viewpoint) też przez kamienie milowe.
+   */
+  lockReason(key: string): string | null {
     const s = this.state;
+    if (!s) return null;
+    const mp = this.o.ep.milestones;
+    const legacy: Record<string, [LockKind, string]> = { bike: ['trail', 'bike'], walk: ['trail', 'walk'], toboggan: ['trail', 'toboggan'], playground: ['building', 'playground'], viewpoint: ['building', 'viewpoint'] };
+    const [kind, id] = key.includes(':') ? (key.split(':') as [LockKind, string]) : key === 'lighting' ? (['lighting', 'lit'] as [LockKind, string]) : (legacy[key] ?? [null, null]);
+    if (mp && kind) return milestoneLock(kind, id, s, mp);
     const sp = this.o.ep.summer;
-    if (!s || !sp) return null;
-    const u = attractionUnlocked(kind, s, reputationOf(s, this.o.ep), sp);
+    if (!sp || !(key in legacy)) return null;
+    const u = attractionUnlocked(key as 'bike', s, reputationOf(s, this.o.ep), sp);
     return u.ok ? null : u.why.replace(/^potrzebna /, '').replace(/^potrzebne /, '');
+  }
+
+  // ------------------------------------------------------------ etap 7g: działki i kamienie milowe
+
+  get parcels(): ParcelGrid | null {
+    return this.o.parcels ?? null;
+  }
+
+  /** Działki gracza: id → kupiona / dzierżawiona (piaskownica – null: wszystkie). */
+  get ownedParcels(): Record<string, 'buy' | 'lease'> | null {
+    const s = this.state;
+    if (!s || s.mode !== 'career') return null;
+    return Object.fromEntries(Object.entries(s.land?.owned ?? {}).map(([k, v]) => [k, v.mode]));
+  }
+
+  get needsStartParcel(): boolean {
+    return !!this.state?.needsStartParcel;
+  }
+
+  get parcelLimitNow(): number {
+    return this.state ? parcelLimit(this.state, this.o.ep) : Infinity;
+  }
+
+  chooseStartParcel(id: string): void {
+    const s = this.state;
+    const p = this.o.parcels ? parcelById(this.o.parcels, id) : null;
+    if (!s || !p) return;
+    const err = chooseStartParcel(s, p);
+    if (err) return this.o.toast(err);
+    this.o.toast(`Działka startowa ${p.id}: ${p.pricePln === null ? `dzierżawa ${fmtPln(p.leasePlnPerYear)} rocznie` : `kupiona za ${fmtPln(p.pricePln)}`}. Buduj wyciąg, trasę i parking (pasek na dole).`);
+    this.o.onStartParcel?.(false);
+    this.refreshPanel(true);
+  }
+
+  buyParcel(id: string, mode: 'buy' | 'lease'): void {
+    const s = this.state;
+    const p = this.o.parcels ? parcelById(this.o.parcels, id) : null;
+    if (!s || !p) return;
+    if (s.needsStartParcel) return this.chooseStartParcel(id);
+    const err = acquireParcel(s, p, mode, parcelLimit(s, this.o.ep));
+    this.o.toast(err ?? `Działka ${p.id}: ${mode === 'buy' ? `kupiona za ${fmtPln(p.pricePln ?? 0)}` : `dzierżawa ${fmtPln(p.leasePlnPerYear)} rocznie (płatne co roku 1 maja)`}.`);
+    this.refreshPanel(true);
+  }
+
+  /** Brakujące działki dla układu (podgląd przy rysowaniu). */
+  missingParcelsFor(next: ResortLayout, analysis: ResortAnalysis | null): string[] {
+    const s = this.state;
+    if (!s) return [];
+    return parcelRefusal(this.layout, next, analysis, s, this.o.parcels ?? null, this.o.grid.cellSizeM, this.o.grid.widthCells).missing;
+  }
+
+  milestoneProgress(): MilestoneProgress | null {
+    const s = this.state;
+    const mp = this.o.ep.milestones;
+    if (!s || !mp) return null;
+    const rep = Math.max(reputationOf(s, this.o.ep), this.o.ep.summer ? summerReputationOf(s, this.o.ep.summer) : 0);
+    return milestoneProgress(s, rep, mp);
+  }
+
+  parcelInfo(id: string): Parcel | null {
+    return this.o.parcels ? parcelById(this.o.parcels, id) : null;
+  }
+
+  /** Czy w ośrodku jest zbudowana oświetlona trasa (jazda wieczorna). */
+  anyLit(): boolean {
+    const s = this.state;
+    return this.layout.pistes.some((p) => p.lit && !(s?.construction[p.id]));
   }
 
   showReport(): void {
@@ -675,6 +776,7 @@ export class GameController {
       this.report.show(r.seasonReport, this.o.ep, true, { kmOpen: this.facts?.kmOpen ?? 0, dayPln: s.prices.dayPln });
     }
     if (s.bankrupt) this.o.toast('Bankructwo – koniec kariery.');
+    if (r.milestones?.length) this.o.onMilestones?.(r.milestones);
   }
 
   private opsSnow(snow: GameSnow | null): OpsSnow | null {

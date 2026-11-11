@@ -49,6 +49,8 @@ export interface TopBarHandlers {
   onGuests(): void;
   onPrices(): void;
   onSnow(): void;
+  /** Etap 7g: okno kamieni milowych. */
+  onMilestones?(): void;
 }
 
 /** Grubość śniegu przy dolnej i górnej stacji pomiaru pogody [cm] (null – jeszcze nie policzona). */
@@ -71,6 +73,8 @@ export interface TopBarGame {
   reputation: number;
   priceLabel: string;
   pricePln: number;
+  /** Etap 7g: bieżący kamień milowy i postęp do następnego (0–1). */
+  milestone?: { name: string; next: string | null; share: number; tip: string } | null;
 }
 
 export class TopBar {
@@ -93,6 +97,7 @@ export class TopBar {
         <button type="button" class="u-stat" data-act="finance" ${tipAttrs('Saldo konta; obok wynik ostatniego zamkniętego dnia. Kliknij – finanse, kredyt, zapis gry')}><span class="u-label">Saldo</span><span class="u-num u-balance">–</span></button>
         <button type="button" class="u-stat" data-act="guests" ${tipAttrs('Goście dziś i teraz na stoku. Kliknij – panel gości (wyciągi, kolejki, ostrzeżenia)')}><span class="u-label">Goście dziś</span><span class="u-num u-guests">–</span></button>
         <div class="u-stat" ${tipAttrs('Reputacja ośrodka (średnia ocen gości z zanikiem) – od niej zależy popyt')} tabindex="0"><span class="u-label">Reputacja</span><span class="u-num u-rep">–</span></div>
+ <button type="button" class="u-stat u-ms hidden" data-act="milestones" ${tipAttrs('Kamień milowy i postęp do następnego (wizyty, reputacja, sezony). Kliknij – co odblokowują kolejne')}><span class="u-label u-ms-name">Kamień milowy</span><span class="u-num u-ms-val">–</span><span class="u-ms-bar"><span></span></span></button>
         <button type="button" class="u-stat" data-act="prices" ${tipAttrs('Cena karnetu dziennego. Kliknij – cennik i godziny otwarcia')}><span class="u-label u-price-label">Karnet dzienny</span><span class="u-num u-price">–</span></button>
       </div>
       <div class="u-time">
@@ -155,6 +160,7 @@ export class TopBar {
       else if (act === 'guests') h.onGuests();
       else if (act === 'prices') h.onPrices();
       else if (act === 'snow') h.onSnow();
+      else if (act === 'milestones') h.onMilestones?.();
     });
   }
 
@@ -208,6 +214,14 @@ export class TopBar {
     q('.u-balance').innerHTML = `${money(g.balancePln)}${delta}`;
     q('.u-guests').innerHTML = `${f0(g.guestsToday)} <span class="u-dim">${g.onSlopeLabel} ${f0(g.onSlope)}</span>`;
     q('.u-rep').innerHTML = `${g.reputation.toLocaleString('pl-PL', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${starsSvg(g.reputation)}`;
+    const ms = q('.u-ms');
+    ms.classList.toggle('hidden', !g.milestone);
+    if (g.milestone) {
+      q('.u-ms-val').textContent = g.milestone.name;
+      q('.u-ms-name').textContent = g.milestone.next ? `do: ${g.milestone.next} ${Math.round(g.milestone.share * 100)} %` : 'najwyższy kamień';
+      q('.u-ms-bar span').style.width = `${Math.round(g.milestone.share * 100)}%`;
+      ms.dataset.tip = g.milestone.tip;
+    }
     q('.u-price-label').textContent = g.priceLabel;
     q('.u-price').textContent = `${f0(g.pricePln)} zł`;
   }

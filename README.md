@@ -79,6 +79,28 @@ Przewijanie: kalendarz albo „Przewiń sezon” – dni pominięte liczą się 
 przejazdy ograniczone przepustowością, kolejki, ocena – skalibrowany na pełnej symulacji gości); dni
 oglądane zegarem (×1, ×5, ×20) – **pełną symulacją gości**. W karierze nie można cofać czasu.
 
+### Działki i kamienie milowe (etap 7g)
+
+**Działki.** Mapa jest podzielona na kwadraty ok. 1 × 1 km (nazwy jak w szachach: litera – kolumna, numer –
+wiersz). W karierze zaczynasz od jednej działki **przy drodze publicznej**: po „Nowa kariera” działki do
+wyboru są pomarańczowe – kliknij, żeby zobaczyć wysokości, przewyższenie, nachylenia, las, potoki i cenę,
+potem „Zacznij tutaj”. Budować można tylko na swoich działkach – wyciąg, trasa, droga, rurociąg, rów
+i budynek (także ujęcie wody) muszą leżeć w całości na nich; przy rysowaniu brakujące działki świecą na
+czerwono, a okienko przy kursorze mówi, które dokupić. Kolejne działki: lewy pasek → „Działki”, klik
+w działkę → „Kup” albo „Dzierżaw”. Las (Lasy Państwowe) – tylko dzierżawa. Czynsz płaci się przy podpisaniu
+umowy i co roku 1 maja. Ile działek wolno mieć – zależy od kamienia milowego. W piaskownicy wszystkie
+działki są Twoje.
+
+**Kamienie milowe** (górny pasek: bieżący kamień i postęp; klik – lista): Górka za wsią (start) → Lokalny
+stok (5 tys. wizyt, reputacja 3,3, 1 sezon) → Ośrodek regionalny (20 tys., 3,8, 2) → Ośrodek górski (60 tys.,
+4,1, 3) → Kurort (150 tys., 4,4, 5). Każdy odblokowuje typy wyciągów, armatek i budynków, atrakcje letnie,
+oświetlenie tras, kolejne działki i wyższy limit kredytu (`data/milestones.json`). Zablokowane karty
+w dolnym menu są szare z powodem („wymaga: …”). Starsze zapisy kariery dostają działki pod tym, co już
+zbudowano, i kamień milowy z dotychczasowych wyników.
+
+**Oświetlenie tras:** karta trasy → „Oświetl trasę” (od „Lokalnego stoku”) – potem w „Cenniku i godzinach”
+można zamykać wyciągi nawet o 21:00; po zmroku płacisz za prąd.
+
 ### Naśnieżanie i ratraki (etap 7)
 
 **Najprościej (etap 7f): „Naśnież trasę”** – dolne menu „Naśnieżanie” → pierwsza karta, kliknij trasę
@@ -480,6 +502,10 @@ Co sprawdzają testy (katalog `tests/`):
   Hala Miziowa jako wypłaszczenie, zgodność z Geoportalem w punktach kontrolnych (±3 m),
 - **współrzędne:** PUWG 1992 ↔ stopnie zgodne z biblioteką PROJ (±1 cm),
 - z etapu 0: generator losowy, generator proceduralny terenu, kamera, zoom, podziałka,
+- **działki i kamienie milowe (etap 7g):** nie da się zbudować poza swoimi działkami (lista brakujących),
+  kamień milowy odblokowuje się dokładnie po przekroczeniu wszystkich progów, zablokowanego typu nie da
+  się postawić, start kariery tylko przy drodze publicznej, zakup obciąża saldo, dzierżawa co roku 1 maja,
+  starszy zapis wczytuje się z poprawnymi działkami,
 - **wygoda budowania (etap 7f):** koniec rurociągu w progu łączy się z hydrantem i pompownią, Shift
   wyłącza przyciąganie, linia pomocnicza daje dokładnie 90° (i 45° co 15°), przedłużenie i równoległa;
   „Naśnież trasę” – hydranty dokładnie co 60 m, wszystkie armatki podłączone do pompowni, koszt = suma
