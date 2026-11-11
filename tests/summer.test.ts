@@ -197,5 +197,5 @@ describe('Pełny rok: zima + lato', () => {
     expect(sf.summer.liftTickets).toBeGreaterThan(0);
     expect(sumCosts(sf.common)).toBeGreaterThan(0);
     expect(rep.days.filter((d) => d.season === 'summer').length).toBe(rep.summerOpenDays);
-  });
+  }, 60_000); // pełny rok gry – na wolniejszej maszynie CI ponad 5 s
 });
