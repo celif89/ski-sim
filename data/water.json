@@ -167,5 +167,38 @@
       "unit": "m",
       "source": "zlewnia zbiornika: największa zlewnia z modelu terenu w tym promieniu od zbiornika"
     }
+  },
+  "ditches": {
+    "_opis": "Etap 7f: rowy zbierające wodę rysowane jako linie – muszą opadać do zbiornika; zbierają spływ z obszaru powyżej siebie (komórki, których spływ przecina rów).",
+    "minSlopePercent": {
+      "value": 0.5,
+      "unit": "%",
+      "source": "najmniejszy średni spadek rowu do zbiornika (rów odwadniający 0,2–1 %, PN-S-02204); do kalibracji"
+    },
+    "maxLocalRisePercent": {
+      "value": 1,
+      "unit": "%",
+      "source": "największe wzniesienie terenu na odcinku kontrolnym, które da się pogłębić wykopem; większe – rów idzie pod górę"
+    },
+    "checkStepM": {
+      "value": 20,
+      "unit": "m",
+      "source": "długość odcinka kontrolnego spadku"
+    },
+    "reservoirRadiusM": {
+      "value": 40,
+      "unit": "m",
+      "source": "koniec rowu musi być najwyżej tyle od zbiornika"
+    },
+    "maxCatchmentM2": {
+      "value": 300000,
+      "unit": "m²",
+      "source": "przepustowość rowu: największa zlewnia, z której rów odprowadzi wodę bez przelania (jak dotychczasowe rowy – 30 ha); do kalibracji"
+    },
+    "legacyLengthM": {
+      "value": 300,
+      "unit": "m",
+      "source": "zamiana starych zapisów: długość rowu wzdłuż dna doliny powyżej zbiornika"
+    }
   }
 }

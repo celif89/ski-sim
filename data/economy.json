@@ -625,6 +625,11 @@
       "value": 0.7,
       "unit": "-",
       "source": "usunięcie obiektu w budowie: zwrot 70 % (100 % tego samego dnia); do kalibracji"
+    },
+    "demolishRefundShare": {
+      "value": 0.15,
+      "unit": "-",
+      "source": "rozbiórka gotowego obiektu: zwrot 15 % kosztu (odzysk urządzeń i materiałów minus koszt rozbiórki); do kalibracji"
     }
   },
   "reputation": {

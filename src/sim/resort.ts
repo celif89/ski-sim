@@ -31,6 +31,20 @@ export interface BuildingDesign {
   name: string;
   xM: number;
   yM: number;
+  /** Etap 7f (tylko widok): obrót budynku co 90° [°]. */
+  rotDeg?: number;
+}
+
+/** Etap 7f: rów zbierający wodę do zbiornika (linia; musi opadać do zbiornika). */
+export interface DitchDesign {
+  id: string;
+  name: string;
+  points: PointM[];
+  ctrl?: PointM[];
+  smooth?: number;
+  /** Zamieniony ze starego „budynku” rowów: jego podpis kosztowy i przebieg (bez opłaty za przebudowę). */
+  legacySig?: string;
+  legacyKey?: string;
 }
 
 export interface ResortLayout {
@@ -47,6 +61,8 @@ export interface ResortLayout {
   roads?: RoadDesign[];
   /** Etap 7b: trasy letnie – rowerowe, ścieżki spacerowe, tor saneczkowy. */
   trails?: TrailDesign[];
+  /** Etap 7f: rowy zbierające wodę do zbiorników. */
+  ditches?: DitchDesign[];
   /** Kolejne numery nowych obiektów. */
   nextId: number;
   /** Ośrodek otwarty (sezon trwa) – decyduje gracz; zamknięty – nie ma gości. Brak pola = otwarty. */
@@ -244,7 +260,7 @@ export function parseLayout(raw: unknown): ResortLayout {
   const buildings = Array.isArray(r.buildings) ? (r.buildings as Record<string, unknown>[]) : [];
   for (const b of buildings) {
     if (typeof b.id === 'string' && typeof b.typeId === 'string' && isNum(b.xM) && isNum(b.yM)) {
-      (out.buildings ??= []).push({ id: b.id, typeId: b.typeId, name: typeof b.name === 'string' ? b.name : b.typeId, xM: b.xM, yM: b.yM });
+      (out.buildings ??= []).push({ id: b.id, typeId: b.typeId, name: typeof b.name === 'string' ? b.name : b.typeId, xM: b.xM, yM: b.yM, ...(isNum(b.rotDeg) && b.rotDeg % 360 !== 0 ? { rotDeg: ((b.rotDeg % 360) + 360) % 360 } : {}) });
     }
   }
   if (r.resortOpen === false) out.resortOpen = false;
@@ -270,7 +286,20 @@ export function parseLayout(raw: unknown): ResortLayout {
     const points = (tr.points as unknown[]).filter(isPoint).map((q) => ({ xM: q.xM, yM: q.yM }));
     if (points.length >= 2) (out.trails ??= []).push({ id: tr.id, name: typeof tr.name === 'string' ? tr.name : tr.id, kind: tr.kind, points, ...(tr.closed === true ? { closed: true } : {}), ...ctrlFields(tr, false) });
   }
-  const maxId = [...out.lifts, ...out.pistes, ...out.bases, ...(out.buildings ?? []), ...(out.pipelines ?? []), ...(out.snowGuns ?? []), ...(out.roads ?? []), ...(out.trails ?? [])].reduce((m, o) => Math.max(m, Number(/\d+$/.exec(o.id)?.[0] ?? 0)), 0);
+  const ditchesRaw = Array.isArray(r.ditches) ? (r.ditches as Record<string, unknown>[]) : [];
+  for (const dd of ditchesRaw) {
+    if (typeof dd.id !== 'string' || !Array.isArray(dd.points)) continue;
+    const points = (dd.points as unknown[]).filter(isPoint).map((q) => ({ xM: q.xM, yM: q.yM }));
+    if (points.length >= 2)
+      (out.ditches ??= []).push({
+        id: dd.id,
+        name: typeof dd.name === 'string' ? dd.name : dd.id,
+        points,
+        ...ctrlFields(dd, false),
+        ...(typeof dd.legacySig === 'string' && typeof dd.legacyKey === 'string' ? { legacySig: dd.legacySig, legacyKey: dd.legacyKey } : {}),
+      });
+  }
+  const maxId = [...out.lifts, ...out.pistes, ...out.bases, ...(out.buildings ?? []), ...(out.pipelines ?? []), ...(out.snowGuns ?? []), ...(out.roads ?? []), ...(out.trails ?? []), ...(out.ditches ?? [])].reduce((m, o) => Math.max(m, Number(/\d+$/.exec(o.id)?.[0] ?? 0)), 0);
   out.nextId = Math.max(out.nextId, maxId + 1);
   return out;
 }

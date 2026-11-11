@@ -6,7 +6,7 @@
  * śniegu dla modelu śniegu i podsumowanie dla paneli. Bez DOM – ta sama logika w grze i bez grafiki.
  */
 import type { DayExtra, Flows, GameState, OpsState, OpsSummary, ResortFacts, WaterSourceDay } from './economy';
-import { ensureOps } from './economy';
+import { costSignature, ditchKey, ensureOps } from './economy';
 import type { EconomyParams } from './economyParams';
 import type { GroomPiste, GroomerUnit } from './grooming';
 import { anchorsReach, breakdownTonight, planNight } from './grooming';
@@ -26,7 +26,7 @@ import type { CalendarDate } from './weather';
 import { dailyAtElevation } from './weather';
 import type { WeatherBook } from './weatherBook';
 import type { Catchment, StreamNet, SupplyLink, WaterParams } from './water';
-import { allocateIntakes, catchmentInflowM3, connectSources, flowFactor, normalPrecipMm, reservoirCatchment, streamAt, villageCoverage, wellYieldM3h } from './water';
+import { allocateIntakes, analyzeDitch, catchmentInflowM3, connectSources, flowFactor, legacyDitchPoints, normalPrecipMm, reservoirCatchment, streamAt, villageCoverage, wellYieldM3h } from './water';
 
 export interface OpsGrid {
   widthCells: number;
@@ -159,7 +159,27 @@ export function waterSources(layout: ResortLayout, state: GameState, sp: Snowmak
   }
   const pipes = (builtPipes ?? (layout.pipelines ?? []).filter((p) => built(state, p.id))).filter((p) => p.supply);
   const links = connectSources(raw, reservoirs, pipes, wp);
-  return raw.map((r) => {
+  // Etap 7f: rowy rysowane jako linie – zbierają spływ z obszaru powyżej siebie do zbiornika przy końcu.
+  const ditchFacts: WaterSourceFact[] = [];
+  for (const d of layout.ditches ?? []) {
+    if (!built(state, d.id)) continue;
+    const a = analyzeDitch(d.points, water.net, water.elevationM, reservoirs, wp);
+    const end = a.oriented[a.oriented.length - 1];
+    ditchFacts.push({
+      id: d.id,
+      kind: 'catchment',
+      name: d.name,
+      xM: end.xM,
+      yM: end.yM,
+      capacity: a.effectiveAreaM2,
+      zM: grid.sampleElevationM(end.xM, end.yM),
+      link: a.reservoirId ? { reservoirId: a.reservoirId, lengthM: 0 } : null,
+      problem: a.ok ? null : a.issues[0],
+      headM: 0,
+      catchment: { cells: a.catchment.cells, areaM2: a.effectiveAreaM2, meanZM: a.catchment.meanZM },
+    });
+  }
+  return [...raw.map((r) => {
     const z = grid.sampleElevationM(r.xM, r.yM);
     const link = links.get(r.id) ?? null;
     const res = link ? reservoirs.find((x) => x.id === link.reservoirId)! : null;
@@ -189,7 +209,38 @@ export function waterSources(layout: ResortLayout, state: GameState, sp: Snowmak
     }
     if (r.kind !== 'catchment' && r.kind !== 'mains') f.headM = lift > 0 ? lift + (sp.pumping.pipeLossMPerKm * (link?.lengthM ?? 0)) / 1000 : 0;
     return f;
-  });
+  }), ...ditchFacts];
+}
+
+/**
+ * Etap 7f: zamiana starego „budynku” rowów (zlewnia wokół zbiornika) na rów wzdłuż dna doliny
+ * powyżej zbiornika – ten sam identyfikator i podpis kosztowy (bez opłaty i bez przebudowy).
+ * Zwraca null, gdy nie ma czego zamieniać.
+ */
+export function convertLegacyCatchments(layout: ResortLayout, sp: SnowmakingParams, water: WaterContext): ResortLayout | null {
+  const kindOf = (typeId: string) => sp.buildings.find((x) => x.id === typeId)?.kind;
+  const old = (layout.buildings ?? []).filter((b) => kindOf(b.typeId) === 'catchment');
+  if (!old.length) return null;
+  const next = JSON.parse(JSON.stringify(layout)) as ResortLayout;
+  const reservoirs = (next.buildings ?? []).filter((b) => kindOf(b.typeId) === 'reservoir');
+  for (const b of old) {
+    next.buildings = (next.buildings ?? []).filter((x) => x.id !== b.id);
+    let near: (typeof reservoirs)[number] | null = null;
+    let nd = Infinity;
+    for (const r of reservoirs) {
+      const d = Math.hypot(r.xM - b.xM, r.yM - b.yM);
+      if (d < nd) {
+        nd = d;
+        near = r;
+      }
+    }
+    if (!near) continue;
+    const pts = legacyDitchPoints(water.net, water.elevationM, near.xM, near.yM, water.wp);
+    if (pts.length < 2) continue;
+    const points = pts.map((q) => ({ xM: Math.round(q.xM * 10) / 10, yM: Math.round(q.yM * 10) / 10 }));
+    (next.ditches ??= []).push({ id: b.id, name: 'Rów zbierający (dawne rowy przy zbiorniku)', points, legacySig: costSignature({ ...b, rotDeg: undefined }), legacyKey: ditchKey(points) });
+  }
+  return next;
 }
 
 /** Najbliższy punkt osi trasy (cel armatki). */
@@ -567,21 +618,26 @@ export function runDayOperations(i: DayOpsInput): DayOpsResult {
     offShare = dep.offPisteKg / Math.max(1, dep.onPisteKg + dep.offPisteKg);
   }
 
-  // ---- ratraki: awarie, plan nocy
+  // ---- ratraki: awarie, plan nocy (etap 7f: ratraki ponad miejsca w garażach stoją pod chmurką)
   const rngBase = new Rng(state.seed).fork('ratraki').fork(iso);
   const broken: string[] = [];
   const units: GroomerUnit[] = [];
+  const sheltered = shelteredGroomers(ops, infra.garageSlots);
+  const nightMinC = nightMinTempC(i, date);
+  const og = sp.groomers.outdoor;
   for (const g of ops.groomers) {
     const type = groomerTypeById(sp, g.typeId);
-    const age = g.ageAtPurchase + Math.max(0, daysBetween(parseIsoDate(g.boughtOn), date)) / 365;
+    const inGarage = sheltered.has(g.id);
+    const age = groomerAgeYears(g, date, sp);
     let available = g.brokenNights <= 0;
-    if (available && i.snow && breakdownTonight(age, rngBase.fork(g.id), sp)) {
+    if (available && i.snow && breakdownTonight(age, rngBase.fork(g.id), sp, { sheltered: inGarage, nightMinC, condition: g.condition ?? 1 })) {
       available = false;
       g.brokenNights = sp.groomers.repairNights;
       broken.push(g.id);
       add('repairs', sp.groomers.repairCostPln);
     }
-    units.push({ id: g.id, type, available });
+    if (!inGarage) g.outdoorDays = (g.outdoorDays ?? 0) + 1;
+    units.push({ id: g.id, type, available, warmupH: inGarage ? 0 : og.warmupMin / 60 });
   }
   const gpistes: GroomPiste[] = [];
   let group = 0;
@@ -644,7 +700,9 @@ export function runDayOperations(i: DayOpsInput): DayOpsResult {
   for (const h of night.engineHours.values()) engineH += h;
   add('groomFuel', night.fuelL * sp.groomers.fuelPlnPerL);
   add('groomStaff', engineH * wage);
-  add('groomService', engineH * sp.groomers.servicePlnPerHour);
+  let serviceH = 0;
+  for (const [id, h] of night.engineHours) serviceH += h * (sheltered.has(id) ? 1 : og.serviceFactor);
+  add('groomService', serviceH * sp.groomers.servicePlnPerHour);
   if (date.day === 1) for (const g of ops.groomers) if (g.leased) add('leasing', groomerTypeById(sp, g.typeId).pricePln * sp.groomers.leaseMonthlyShare);
   for (const g of ops.groomers) if (g.brokenNights > 0 && !broken.includes(g.id)) g.brokenNights--;
 
@@ -687,9 +745,9 @@ export function runDayOperations(i: DayOpsInput): DayOpsResult {
 }
 
 /** Zakup lub leasing ratraka (potrzebne wolne miejsce w garażu). Zwraca komunikat błędu albo null. */
-export function acquireGroomer(state: GameState, typeId: string, leased: boolean, garageSlots: number, sp: SnowmakingParams): string | null {
+export function acquireGroomer(state: GameState, typeId: string, leased: boolean, _garageSlots: number, sp: SnowmakingParams): string | null {
+  // Etap 7f: garaż nie jest wymagany – ratrak bez miejsca stoi pod chmurką (droższy w utrzymaniu).
   const ops: OpsState = ensureOps(state);
-  if (ops.groomers.length >= garageSlots) return garageSlots === 0 ? 'Najpierw zbuduj garaż ratraków.' : 'Garaż pełny – zbuduj kolejny.';
   const t = groomerTypeById(sp, typeId);
   if (!leased && state.mode === 'career' && state.balancePln < t.pricePln) return `Brak pieniędzy: ratrak kosztuje ${Math.round(t.pricePln / 1000)} tys. zł.`;
   const id = `R${ops.nextGroomerId++}`;
@@ -699,6 +757,72 @@ export function acquireGroomer(state: GameState, typeId: string, leased: boolean
     state.pending.equipment += t.pricePln;
   }
   state.log.push({ date: formatIsoDate(state.date), text: `${leased ? 'Leasing' : 'Zakup'}: ${t.name} (${id})` });
+  return null;
+}
+
+/** Etap 7f: ratraki w garażu – pierwsze według kolejności we flocie, tyle, ile miejsc. */
+export function shelteredGroomers(ops: OpsState, garageSlots: number): Set<string> {
+  return new Set(ops.groomers.slice(0, Math.max(0, garageSlots)).map((g) => g.id));
+}
+
+/** Wiek ratraka [lata]: wiek przy zakupie + czas we flocie; dni pod chmurką liczą się × agingFactor. */
+export function groomerAgeYears(g: { ageAtPurchase: number; boughtOn: string; outdoorDays?: number }, date: CalendarDate, sp: SnowmakingParams): number {
+  const days = Math.max(0, daysBetween(parseIsoDate(g.boughtOn), date));
+  return g.ageAtPurchase + (days + (g.outdoorDays ?? 0) * (sp.groomers.outdoor.agingFactor - 1)) / 365;
+}
+
+/** Najniższa temperatura nocy przy najniżej położonej trasie (tam stoją ratraki). */
+function nightMinTempC(i: DayOpsInput, date: CalendarDate): number {
+  let z = Infinity;
+  for (const a of i.analysis.pistes.values()) if (Number.isFinite(a.bottomElevationM)) z = Math.min(z, a.bottomElevationM);
+  if (!Number.isFinite(z)) return 0;
+  let m = Infinity;
+  for (let h = 18; h <= 30; h += 2) m = Math.min(m, i.book.hourAt(date, h, z).temperatureC);
+  return m;
+}
+
+// ------------------------------------------------------------------ etap 7f: ratraki używane
+
+export interface UsedGroomerOffer {
+  id: string;
+  typeId: string;
+  ageYears: number;
+  /** Stan 0–1 (1 – jak nowy). */
+  condition: number;
+  pricePln: number;
+}
+
+/** Oferty ratraków używanych w sezonie (ziarno gry + rok sezonu – te same dla tego samego sezonu). */
+export function usedGroomerOffers(seed: number, seasonYear: number, sp: SnowmakingParams): UsedGroomerOffer[] {
+  const u = sp.groomers.used;
+  const rng = new Rng(seed).fork('ratraki-uzywane').fork(String(seasonYear));
+  const out: UsedGroomerOffer[] = [];
+  for (let k = 0; k < Math.round(u.offersPerSeason); k++) {
+    const t = sp.groomers.types[rng.int(0, sp.groomers.types.length)];
+    const age = Math.round(rng.range(u.ageMinYears, u.ageMaxYears));
+    // Stan: im starszy, tym słabszy, z rozrzutem.
+    const ageShare = (age - u.ageMinYears) / Math.max(1, u.ageMaxYears - u.ageMinYears);
+    const condition = Math.round(Math.max(0.15, Math.min(1, 0.9 - 0.5 * ageShare + rng.range(-0.15, 0.15))) * 100) / 100;
+    const price = t.pricePln * u.priceShareOfNew * (1 - u.priceConditionSpread / 2 + u.priceConditionSpread * condition);
+    out.push({ id: `U${seasonYear}-${k + 1}`, typeId: t.id, ageYears: age, condition, pricePln: Math.round(price / 1000) * 1000 });
+  }
+  return out;
+}
+
+/** Zakup ratraka używanego z oferty sezonu. */
+export function acquireUsedGroomer(state: GameState, offer: UsedGroomerOffer, sp: SnowmakingParams): string | null {
+  const ops: OpsState = ensureOps(state);
+  if ((ops.usedTaken ?? []).includes(offer.id)) return 'Ta oferta jest już sprzedana.';
+  if (state.mode === 'career' && state.balancePln < offer.pricePln) return `Brak pieniędzy: używany ratrak kosztuje ${Math.round(offer.pricePln / 1000)} tys. zł.`;
+  const t = groomerTypeById(sp, offer.typeId);
+  const id = `R${ops.nextGroomerId++}`;
+  ops.groomers.push({ id, typeId: offer.typeId, leased: false, boughtOn: formatIsoDate(state.date), ageAtPurchase: offer.ageYears, brokenNights: 0, condition: offer.condition });
+  (ops.usedTaken ??= []).push(offer.id);
+  if (state.mode === 'career') {
+    state.balancePln -= offer.pricePln;
+    state.pending.equipment += offer.pricePln;
+  }
+  state.log.push({ date: formatIsoDate(state.date), text: `Zakup używanego: ${t.name}, ${offer.ageYears} lat (${id})` });
   return null;
 }
 

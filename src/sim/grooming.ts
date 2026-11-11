@@ -38,6 +38,8 @@ export interface GroomerUnit {
   id: string;
   type: GroomerType;
   available: boolean;
+  /** Etap 7f: rozgrzewanie przed pierwszą pracą [h] (ratrak pod chmurką – dłużej). */
+  warmupH?: number;
 }
 
 export interface GroomJob {
@@ -100,7 +102,8 @@ export function planNight(pistes: GroomPiste[], groomers: GroomerUnit[], anchors
   const g = p.groomers;
   const shiftH = Math.min(g.maxShiftH, (g.windowEndH + 24 - g.windowStartH) % 24 || 24);
   const free = new Map<string, number>();
-  for (const u of groomers) if (u.available) free.set(u.id, 0);
+  const worked = new Set<string>();
+  for (const u of groomers) if (u.available) free.set(u.id, u.warmupH ?? 0);
   const jobs: GroomJob[] = [];
   const unfinished: string[] = [];
   const steepSkipped: string[] = [];
@@ -127,13 +130,14 @@ export function planNight(pistes: GroomPiste[], groomers: GroomerUnit[], anchors
     const steepDone = hasSteep && unit.type.winch && anchored;
     if (hasSteep && !steepDone) steepSkipped.push(pi.id);
     const need = groomingHours(pi, unit.type, steepDone, p);
-    const start = free.get(unit.id)! + (free.get(unit.id)! > 0 ? g.transferMin / 60 : 0);
+    const start = free.get(unit.id)! + (worked.has(unit.id) ? g.transferMin / 60 : 0);
     const left = Math.max(0, shiftH - start);
     const work = Math.min(need, left);
     const complete = work >= need - 1e-9;
     if (!complete) unfinished.push(pi.id);
     if (work <= 0) continue;
     free.set(unit.id, start + work);
+    worked.add(unit.id);
     hours.set(unit.id, (hours.get(unit.id) ?? 0) + work);
     fuel += work * unit.type.fuelLph;
     // Komórki: od góry; stromych bez wyciągarki nie ruszamy; przy braku czasu – część od góry.
@@ -151,8 +155,26 @@ export function planNight(pistes: GroomPiste[], groomers: GroomerUnit[], anchors
   return { jobs, unfinished, steepSkipped, engineHours: hours, fuelL: fuel, finishH: finish };
 }
 
-/** Awaria ratraka tej nocy (prawdopodobieństwo rośnie z wiekiem). */
-export function breakdownTonight(ageYears: number, rng: Rng, p: SnowmakingParams): boolean {
+/** Warunki nocy dla awarii (etap 7f): ratrak w garażu czy pod chmurką, najniższa temperatura, stan. */
+export interface BreakdownContext {
+  sheltered: boolean;
+  nightMinC: number;
+  /** Stan egzemplarza 0–1 (1 – jak nowy; używane – mniej). */
+  condition: number;
+}
+
+/** Prawdopodobieństwo awarii tej nocy: rośnie z wiekiem; pod chmurką w mrozie – częściej. */
+export function breakdownChance(ageYears: number, p: SnowmakingParams, ctx?: BreakdownContext): number {
   const g = p.groomers;
-  return rng.next() < g.breakdownBasePerNight * (1 + g.breakdownAgeFactor * ageYears);
+  let q = g.breakdownBasePerNight * (1 + g.breakdownAgeFactor * ageYears);
+  if (ctx) {
+    if (!ctx.sheltered && ctx.nightMinC <= g.outdoor.frostThresholdC) q *= g.outdoor.frostBreakdownFactor;
+    q *= 1 + g.used.conditionBreakdownFactor * (1 - Math.max(0, Math.min(1, ctx.condition)));
+  }
+  return Math.min(1, q);
+}
+
+/** Awaria ratraka tej nocy (prawdopodobieństwo – breakdownChance). */
+export function breakdownTonight(ageYears: number, rng: Rng, p: SnowmakingParams, ctx?: BreakdownContext): boolean {
+  return rng.next() < breakdownChance(ageYears, p, ctx);
 }

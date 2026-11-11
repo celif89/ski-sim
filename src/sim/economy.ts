@@ -148,10 +148,14 @@ export interface Groomer {
   typeId: string;
   leased: boolean;
   boughtOn: string;
-  /** Wiek przy zakupie [lata] (używany sprzęt – później). */
+  /** Wiek przy zakupie [lata] (etap 7f: używany – z oferty). */
   ageAtPurchase: number;
   /** Ile jeszcze nocy w naprawie. */
   brokenNights: number;
+  /** Etap 7f: stan egzemplarza 0–1 (używany; brak – nowy, 1). */
+  condition?: number;
+  /** Etap 7f: dni spędzone pod chmurką (bez miejsca w garażu) – szybsze zużycie. */
+  outdoorDays?: number;
 }
 
 /** Stan naśnieżania i ratraków w grze (etap 7). */
@@ -171,6 +175,8 @@ export interface OpsState {
   last: OpsSummary | null;
   /** Etap 6b: gracz kupuje wodę z wodociągu (przełącznik w panelu). */
   mainsOn?: boolean;
+  /** Etap 7f: kupione oferty ratraków używanych (id ofert). */
+  usedTaken?: string[];
   /** Etap 6b: średni zapas wody w śniegu na zlewni rowów wczoraj [mm] (id rowów → mm). */
   catchSweMm?: Record<string, number>;
   /** Etap 6b: woda ze źródeł od początku roku gry (1 V): rodzaj → ilość i koszt. */
@@ -358,12 +364,23 @@ function log(state: GameState, text: string): void {
 
 export interface ObjectCost {
   id: string;
-  kind: 'lift' | 'piste' | 'building' | 'pipeline' | 'gun' | 'road' | 'trail';
+  kind: 'lift' | 'piste' | 'building' | 'pipeline' | 'gun' | 'road' | 'trail' | 'ditch';
   summerOnly?: boolean;
   name: string;
   costPln: number;
   buildDays: number;
   signature: string;
+}
+
+/** Etap 7f: klucz przebiegu rowu (do rozpoznania niezmienionego rowu ze starego zapisu). */
+export function ditchKey(points: { xM: number; yM: number }[]): string {
+  return points.map((q) => `${Math.round(q.xM)},${Math.round(q.yM)}`).join(';');
+}
+
+/** Podpis kosztowy obiektu (bez nazwy i zamknięcia) – zmiana podpisu = przebudowa. */
+export function costSignature(o: object): string {
+  const { closed: _c, name: _n, ...rest } = o as Record<string, unknown>;
+  return JSON.stringify(rest);
 }
 
 /** Koszt i czas budowy każdego obiektu układu (wyciągi i trasy z analizy, budynki z danych). */
@@ -385,7 +402,8 @@ export function objectCosts(layout: ResortLayout, analysis: ResortAnalysis, ep: 
     const t = buildingTypeById(ep, b.typeId);
     const infra = ep.snowmaking?.buildings.find((x) => x.id === b.typeId) ?? null;
     const sb = ep.summer?.buildings.find((x) => x.id === b.typeId) ?? null;
-    out.push({ id: b.id, kind: 'building', name: b.name, costPln: t?.costPln ?? infra?.costPln ?? sb?.costPln ?? 0, buildDays: Math.max(1, Math.round(t?.buildDays ?? infra?.buildDays ?? sb?.buildDays ?? 1)), signature: sig(b), ...(infra?.summerOnly ? { summerOnly: true } : {}) });
+    // Etap 7f: obrót budynku (tylko widok) nie zmienia podpisu – nie ma przebudowy.
+    out.push({ id: b.id, kind: 'building', name: b.name, costPln: t?.costPln ?? infra?.costPln ?? sb?.costPln ?? 0, buildDays: Math.max(1, Math.round(t?.buildDays ?? infra?.buildDays ?? sb?.buildDays ?? 1)), signature: sig({ ...b, rotDeg: undefined }), ...(infra?.summerOnly ? { summerOnly: true } : {}) });
   }
   for (const r of layout.roads ?? []) {
     const a = analysis.roads?.get(r.id);
@@ -405,6 +423,13 @@ export function objectCosts(layout: ResortLayout, analysis: ResortAnalysis, ep: 
     for (const g of layout.snowGuns ?? []) {
       const t = sp.guns.find((x) => x.id === g.typeId);
       out.push({ id: g.id, kind: 'gun', name: t?.name ?? g.typeId, costPln: t?.costPln ?? 0, buildDays: 1, signature: sig({ typeId: g.typeId }) });
+    }
+    // Etap 7f: rowy zbierające wodę (wykop tylko latem). Rów zamieniony ze starego „budynku” rowów
+    // zachowuje jego podpis, dopóki gracz nie zmieni przebiegu – bez opłaty za przebudowę.
+    for (const d of layout.ditches ?? []) {
+      const L = d.points.reduce((a, q, i) => (i ? a + Math.hypot(q.xM - d.points[i - 1].xM, q.yM - d.points[i - 1].yM) : 0), 0);
+      const legacy = d.legacySig && d.legacyKey === ditchKey(d.points);
+      out.push({ id: d.id, kind: 'ditch', name: d.name, costPln: L * sp.ditch.costPlnPerM, buildDays: Math.max(1, Math.ceil(L / sp.ditch.metersPerDay)), signature: legacy ? d.legacySig! : sig({ ...d, legacySig: undefined, legacyKey: undefined }), summerOnly: true });
     }
   }
   return out;
@@ -471,6 +496,12 @@ function reconcileInternal(state: GameState, objects: ObjectCost[], ep: EconomyP
     if (present.has(id)) continue;
     const b = state.construction[id];
     if (b && !sandbox) refund += state.paid[id].costPln * (b.orderedOn === today ? 1 : c.cancelRefundShare);
+    else if (!sandbox) {
+      // Etap 7f: rozbiórka gotowego obiektu – zwrot części kosztu.
+      const r = state.paid[id].costPln * c.demolishRefundShare;
+      refund += r;
+      if (!dry && r > 0) messages.push(`Rozbiórka: zwrot ${fmtPln(r)}`);
+    }
     if (!dry) {
       delete state.paid[id];
       delete state.construction[id];

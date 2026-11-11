@@ -141,6 +141,8 @@ export interface EconomyParams {
     rebuildFeeShare: number;
     rebuildDaysShare: number;
     cancelRefundShare: number;
+    /** Etap 7f: zwrot przy rozbiórce gotowego obiektu (udział kosztu). */
+    demolishRefundShare: number;
   };
   reputation: { initial: number; priorWeight: number; dailyDecay: number };
   quickDay: {
@@ -244,7 +246,7 @@ export function parseEconomyParams(raw: unknown): EconomyParams {
       'energyPlnPerKWh', 'hourlyWagePln', 'employerCostFactor', 'staffExtraHours', 'staffSurfaceLift', 'staffAerialLift', 'staffMidStation', 'guestsPerCashier',
       'patrolPerKm', 'patrolMin', 'patrolHourlyPln', 'seasonalPer1000Guests', 'seasonalMin', 'permanentStaff', 'permanentStaffPerLift', 'adminShareOfRevenue', 'permanentMonthlyPln', 'inspectionSurfacePln',
       'inspectionAerialPln', 'insuranceRatePerYear', 'maintenanceLiftsRatePerYear', 'maintenancePistesRatePerYear', 'maintenanceBuildingsRatePerYear',
-      'winterBuildProgressFactor', 'winterBuildCostFactor', 'rebuildFeeShare', 'rebuildDaysShare', 'cancelRefundShare',
+      'winterBuildProgressFactor', 'winterBuildCostFactor', 'rebuildFeeShare', 'rebuildDaysShare', 'cancelRefundShare', 'demolishRefundShare',
     ] as const, { min: 0 }),
     reputation: readAll(re, ['initial', 'priorWeight', 'dailyDecay'] as const, { min: 0 }),
     quickDay: readAll(qd, ['meanStayH', 'activeShare', 'descentSpeedMs', 'cycleExtraMin', 'stayQueueTauMin', 'matchScore', 'sampleGuests', 'maxQueueMin', 'onPisteShare'] as const, { min: 0 }),

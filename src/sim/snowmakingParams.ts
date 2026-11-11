@@ -102,7 +102,13 @@ export interface SnowmakingParams {
     servicePlnPerHour: number;
     leaseMonthlyShare: number;
     types: GroomerType[];
+    /** Etap 7f: ratrak pod chmurką (bez miejsca w garażu). */
+    outdoor: { warmupMin: number; frostThresholdC: number; frostBreakdownFactor: number; serviceFactor: number; agingFactor: number };
+    /** Etap 7f: rynek ratraków używanych. */
+    used: { offersPerSeason: number; ageMinYears: number; ageMaxYears: number; priceShareOfNew: number; priceConditionSpread: number; conditionBreakdownFactor: number };
   };
+  /** Etap 7f: rowy zbierające wodę – koszt. */
+  ditch: { costPlnPerM: number; metersPerDay: number };
   calibration: { waterM3PerHa: number; energyKWhPerHa: number; energyKWhPerVisit: number; costEurPerM3: number; plnPerEur: number };
 }
 
@@ -165,7 +171,13 @@ export function parseSnowmakingParams(raw: unknown): SnowmakingParams {
         'freshFactorPerCm', 'freshThresholdCm', 'pilePushM3h', 'breakdownBasePerNight', 'breakdownAgeFactor', 'repairCostPln', 'repairNights', 'servicePlnPerHour', 'leaseMonthlyShare',
       ] as const, { min: 0 }),
       types,
+      outdoor: (() => {
+        const o = readSection(gr, 'outdoor', FILE);
+        return { ...readAll(o, ['warmupMin', 'frostBreakdownFactor', 'serviceFactor', 'agingFactor'] as const, { min: 0 }), frostThresholdC: readNumber(o, 'frostThresholdC', FILE) };
+      })(),
+      used: readAll(readSection(gr, 'used', FILE), ['offersPerSeason', 'ageMinYears', 'ageMaxYears', 'priceShareOfNew', 'priceConditionSpread', 'conditionBreakdownFactor'] as const, { min: 0 }),
     },
+    ditch: readAll(readSection(raw, 'ditch', FILE), ['costPlnPerM', 'metersPerDay'] as const, { min: 0.01 }),
     calibration: readAll(ca, ['waterM3PerHa', 'energyKWhPerHa', 'energyKWhPerVisit', 'costEurPerM3', 'plnPerEur'] as const, { min: 0 }),
   };
 }

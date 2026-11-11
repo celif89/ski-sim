@@ -793,7 +793,68 @@
           "source": "karta PistenBully 600 (pistenbully.com, za koncepcją gry); wyciągarka 1000 m liny, 45 kN uciągu"
         }
       }
-    ]
+    ],
+    "outdoor": {
+      "_opis": "Etap 7f: ratrak bez miejsca w garażu (stoi pod chmurką) – garaż nie jest wymagany. Ratraki ponad liczbę miejsc w garażach stoją na zewnątrz.",
+      "warmupMin": {
+        "value": 25,
+        "unit": "min",
+        "source": "rozgrzewanie silnika i hydrauliki wychłodzonego ratraka przed pracą (w garażu ok. 5 min); do kalibracji"
+      },
+      "frostThresholdC": {
+        "value": -8,
+        "unit": "°C",
+        "source": "mróz w nocy (najniższa temperatura przy dolnej stacji), przy którym ratrak pod chmurką częściej się psuje; do kalibracji"
+      },
+      "frostBreakdownFactor": {
+        "value": 2.5,
+        "unit": "×",
+        "source": "awarie ratraka pod chmurką w mrozie (rozruch na zimno, hydraulika, akumulatory); do kalibracji"
+      },
+      "serviceFactor": {
+        "value": 1.35,
+        "unit": "×",
+        "source": "serwis i części na godzinę pracy dla ratraka pod chmurką (korozja, zamarzanie); do kalibracji"
+      },
+      "agingFactor": {
+        "value": 1.5,
+        "unit": "×",
+        "source": "szybsze zużycie: każdy dzień pod chmurką liczy się jak 1,5 dnia wieku (awaryjność rośnie z wiekiem); do kalibracji"
+      }
+    },
+    "used": {
+      "_opis": "Etap 7f: rynek ratraków używanych – co sezon kilka losowych ofert (ziarno gry).",
+      "offersPerSeason": {
+        "value": 3,
+        "unit": "ofert",
+        "source": "liczba ofert w sezonie; do kalibracji"
+      },
+      "ageMinYears": {
+        "value": 4,
+        "unit": "lata",
+        "source": "najmłodszy używany ratrak w ofercie (po leasingu 5-letnim); do kalibracji"
+      },
+      "ageMaxYears": {
+        "value": 14,
+        "unit": "lata",
+        "source": "najstarszy w ofercie; do kalibracji"
+      },
+      "priceShareOfNew": {
+        "value": 0.33,
+        "unit": "× ceny nowego",
+        "source": "cena używanego ok. 1/3 nowego (polecenie etapu 7f; ogłoszenia PistenBully 600 z lat 2010–2015: ok. 80–150 tys. € wobec ok. 400 tys. € nowego); do kalibracji"
+      },
+      "priceConditionSpread": {
+        "value": 0.5,
+        "unit": "× ceny",
+        "source": "rozrzut ceny ze stanem: cena × (1 − spread/2 + spread × stan); do kalibracji"
+      },
+      "conditionBreakdownFactor": {
+        "value": 1.0,
+        "unit": "×",
+        "source": "dodatkowe awarie słabego egzemplarza: × (1 + współczynnik × (1 − stan)), stan 0–1; do kalibracji"
+      }
+    }
   },
   "calibration": {
     "_opis": "Dane do porównania (koncepcja gry, sekcja „Dane do kalibracji”).",
@@ -821,6 +882,19 @@
       "value": 4.25,
       "unit": "zł/€",
       "source": "kurs orientacyjny 2026; do kalibracji"
+    }
+  },
+  "ditch": {
+    "_opis": "Etap 7f: koszt rowów zbierających wodę (rysowanych jak rurociąg); hydrologia rowów – data/water.json, sekcja „ditches”.",
+    "costPlnPerM": {
+      "value": 60,
+      "unit": "zł/m",
+      "source": "rów z przepustami ok. 60 zł/m (dotychczasowy budynek „rowy”: ok. 1,5 km za 120 tys. zł z osadnikiem); do kalibracji"
+    },
+    "metersPerDay": {
+      "value": 60,
+      "unit": "m/dzień",
+      "source": "tempo kopania koparką z umocnieniem dna; do kalibracji"
     }
   }
 }

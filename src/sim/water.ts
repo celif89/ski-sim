@@ -38,6 +38,8 @@ export interface WaterParams {
   mains: { pricePlnPerM3: number; fixedPlnPerMonth: number; villageRadiusM: number; villageMinBuildings: number };
   wells: { medianYieldM3h: number; yieldSigma: number; depthExponent: number; dryProbability: number; dryYieldM3h: number; dynamicLevelShare: number; groundwaterFeePlnPerM3: number };
   catchment: { runoffCoefficient: number; searchRadiusM: number };
+  /** Etap 7f: rowy rysowane jako linie. */
+  ditches: { minSlopePercent: number; maxLocalRisePercent: number; checkStepM: number; reservoirRadiusM: number; maxCatchmentM2: number; legacyLengthM: number };
 }
 
 export function parseWaterParams(raw: unknown): WaterParams {
@@ -76,6 +78,17 @@ export function parseWaterParams(raw: unknown): WaterParams {
       groundwaterFeePlnPerM3: n(w, 'groundwaterFeePlnPerM3'),
     },
     catchment: { runoffCoefficient: readNumber(c, 'runoffCoefficient', FILE, { min: 0, max: 1 }), searchRadiusM: n(c, 'searchRadiusM') },
+    ditches: (() => {
+      const d = readSection(raw, 'ditches', FILE);
+      return {
+        minSlopePercent: n(d, 'minSlopePercent'),
+        maxLocalRisePercent: n(d, 'maxLocalRisePercent'),
+        checkStepM: readNumber(d, 'checkStepM', FILE, { min: 1 }),
+        reservoirRadiusM: n(d, 'reservoirRadiusM'),
+        maxCatchmentM2: n(d, 'maxCatchmentM2'),
+        legacyLengthM: n(d, 'legacyLengthM'),
+      };
+    })(),
   };
 }
 
@@ -646,4 +659,229 @@ export function cropStreamNet(net: StreamNet, i0: number, j0: number, W: number,
     flush();
   }
   return { widthCells: W, heightCells: H, cellSizeM: cs, down, accM2, meanZM, meanFlowM3s, lines };
+}
+
+// ------------------------------------------------------------------ etap 7f: rowy rysowane jako linie
+
+export interface DitchAnalysis {
+  ok: boolean;
+  /** Błędy (rów nie zadziała) i informacje. */
+  issues: string[];
+  /** Zbiornik przy dolnym końcu rowu (null – brak). */
+  reservoirId: string | null;
+  /** Punkty od górnego końca do zbiornika. */
+  oriented: PointM[];
+  lengthM: number;
+  dropM: number;
+  /** Średni spadek do zbiornika [%] (ujemny – pod górę). */
+  slopePercent: number;
+  /** Komórki siatki pod rowem. */
+  ditchCells: Int32Array;
+  /** Zlewnia: komórki, których spływ przecina rów (z komórkami rowu). */
+  catchment: Catchment;
+  /** Zlewnia, z której rów odprowadzi wodę (przepustowość – maxCatchmentM2). */
+  effectiveAreaM2: number;
+  /** Szacowany dopływ w roku przeciętnym [m³] (0, gdy nie wiadomo, jaki opad). */
+  annualInflowM3: number;
+  costPln: number;
+  buildDays: number;
+}
+
+/** Wysokość w punkcie – dwuliniowo ze środków komórek (NaN poza mapą). */
+export function sampleElevation(net: { widthCells: number; heightCells: number; cellSizeM: number }, elevationM: Float32Array, xM: number, yM: number): number {
+  const cs = net.cellSizeM;
+  const gx = xM / cs - 0.5;
+  const gy = yM / cs - 0.5;
+  const i0 = Math.max(0, Math.min(net.widthCells - 1, Math.floor(gx)));
+  const j0 = Math.max(0, Math.min(net.heightCells - 1, Math.floor(gy)));
+  const i1 = Math.min(net.widthCells - 1, i0 + 1);
+  const j1 = Math.min(net.heightCells - 1, j0 + 1);
+  const tx = Math.max(0, Math.min(1, gx - i0));
+  const ty = Math.max(0, Math.min(1, gy - j0));
+  const W = net.widthCells;
+  const z = (i: number, j: number) => elevationM[j * W + i];
+  return (z(i0, j0) * (1 - tx) + z(i1, j0) * tx) * (1 - ty) + (z(i0, j1) * (1 - tx) + z(i1, j1) * tx) * ty;
+}
+
+function lineLen(pts: PointM[]): number {
+  let L = 0;
+  for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i].xM - pts[i - 1].xM, pts[i].yM - pts[i - 1].yM);
+  return L;
+}
+
+function pointAlong(pts: PointM[], d: number): PointM {
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const seg = Math.hypot(pts[i].xM - pts[i - 1].xM, pts[i].yM - pts[i - 1].yM);
+    if (acc + seg >= d || i === pts.length - 1) {
+      const t = seg > 0 ? Math.max(0, Math.min(1, (d - acc) / seg)) : 0;
+      return { xM: pts[i - 1].xM + (pts[i].xM - pts[i - 1].xM) * t, yM: pts[i - 1].yM + (pts[i].yM - pts[i - 1].yM) * t };
+    }
+    acc += seg;
+  }
+  return pts[pts.length - 1];
+}
+
+/** Komórki, których spływ (po kierunkach `down`) przechodzi przez którąś z komórek startowych. */
+export function upstreamCells(net: StreamNet, start: Iterable<number>): Int32Array {
+  const W = net.widthCells;
+  const H = net.heightCells;
+  const seen = new Uint8Array(W * H);
+  const queue: number[] = [];
+  for (const k of start) {
+    if (k < 0 || seen[k]) continue;
+    seen[k] = 1;
+    queue.push(k);
+  }
+  for (let q = 0; q < queue.length; q++) {
+    const k = queue[q];
+    const i = k % W;
+    const j = (k - i) / W;
+    for (let d = 0; d < 8; d++) {
+      const ni = i + DI[d];
+      const nj = j + DJ[d];
+      if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
+      const nk = nj * W + ni;
+      if (!seen[nk] && net.down[nk] === k) {
+        seen[nk] = 1;
+        queue.push(nk);
+      }
+    }
+  }
+  return Int32Array.from(queue);
+}
+
+/**
+ * Rów: dolny koniec przy zbiorniku (najwyżej reservoirRadiusM), średni spadek do zbiornika co najmniej
+ * minSlopePercent, na żadnym odcinku kontrolnym teren nie wznosi się bardziej niż maxLocalRisePercent;
+ * zlewnia – wszystkie komórki, których spływ przecina rów; dopływ roczny = zlewnia (do przepustowości)
+ * × opad roczny na średniej wysokości zlewni × współczynnik spływu.
+ */
+export function analyzeDitch(
+  points: PointM[],
+  net: StreamNet,
+  elevationM: Float32Array,
+  reservoirs: { id: string; xM: number; yM: number }[],
+  wp: WaterParams,
+  annualPrecipMm?: (zM: number) => number,
+  cost?: { costPlnPerM: number; metersPerDay: number },
+): DitchAnalysis {
+  const dp = wp.ditches;
+  const issues: string[] = [];
+  const empty: Catchment = { cells: new Int32Array(0), areaM2: 0, meanZM: 0 };
+  if (points.length < 2) return { ok: false, issues: ['rów potrzebuje co najmniej dwóch punktów'], reservoirId: null, oriented: points, lengthM: 0, dropM: 0, slopePercent: 0, ditchCells: new Int32Array(0), catchment: empty, effectiveAreaM2: 0, annualInflowM3: 0, costPln: 0, buildDays: 0 };
+  const first = points[0];
+  const last = points[points.length - 1];
+  const nearest = (p: PointM) => {
+    let best: { id: string; d: number } | null = null;
+    for (const r of reservoirs) {
+      const d = Math.hypot(r.xM - p.xM, r.yM - p.yM);
+      if (d <= dp.reservoirRadiusM && (!best || d < best.d)) best = { id: r.id, d };
+    }
+    return best;
+  };
+  const atLast = nearest(last);
+  const atFirst = nearest(first);
+  // Dolny koniec: ten przy zbiorniku (przy obu – niższy).
+  let outletLast = true;
+  if (atLast && atFirst) outletLast = sampleElevation(net, elevationM, last.xM, last.yM) <= sampleElevation(net, elevationM, first.xM, first.yM);
+  else if (atFirst) outletLast = false;
+  const oriented = outletLast ? points : [...points].reverse();
+  const res = outletLast ? atLast : atFirst;
+  if (!res) issues.push(`koniec rowu musi być przy zbiorniku (najwyżej ${dp.reservoirRadiusM} m)`);
+  const L = lineLen(oriented);
+  const z0 = sampleElevation(net, elevationM, oriented[0].xM, oriented[0].yM);
+  const z1 = sampleElevation(net, elevationM, oriented[oriented.length - 1].xM, oriented[oriented.length - 1].yM);
+  const drop = z0 - z1;
+  const slope = L > 0 ? (drop / L) * 100 : 0;
+  if (slope < dp.minSlopePercent) issues.push(slope < 0 ? `rów idzie pod górę do zbiornika (${slope.toFixed(1)} %) – woda nie spłynie` : `za mały spadek do zbiornika (${slope.toFixed(1)} %, potrzeba ${dp.minSlopePercent} %)`);
+  else {
+    for (let d = 0; d < L; d += dp.checkStepM) {
+      const a = pointAlong(oriented, d);
+      const b = pointAlong(oriented, Math.min(L, d + dp.checkStepM));
+      const seg = Math.min(dp.checkStepM, L - d);
+      const rise = sampleElevation(net, elevationM, b.xM, b.yM) - sampleElevation(net, elevationM, a.xM, a.yM);
+      if (seg > 1 && (rise / seg) * 100 > dp.maxLocalRisePercent) {
+        issues.push(`na ${Math.round(d)}–${Math.round(d + seg)} m rów idzie pod górę (${((rise / seg) * 100).toFixed(1)} %)`);
+        break;
+      }
+    }
+  }
+  // Komórki pod rowem i zlewnia powyżej rowu.
+  const cs = net.cellSizeM;
+  const cellSet = new Set<number>();
+  for (let d = 0; d <= L; d += cs / 3) {
+    const q = pointAlong(oriented, d);
+    const i = Math.floor(q.xM / cs);
+    const j = Math.floor(q.yM / cs);
+    if (i >= 0 && j >= 0 && i < net.widthCells && j < net.heightCells && !Number.isNaN(elevationM[j * net.widthCells + i])) cellSet.add(j * net.widthCells + i);
+  }
+  const ditchCells = Int32Array.from(cellSet);
+  const cells = upstreamCells(net, cellSet);
+  let zSum = 0;
+  for (const k of cells) zSum += elevationM[k];
+  const area = cells.length * cs * cs;
+  const catchment: Catchment = { cells, areaM2: area, meanZM: cells.length ? zSum / cells.length : 0 };
+  const eff = Math.min(area, dp.maxCatchmentM2);
+  const annual = annualPrecipMm && cells.length ? (eff * annualPrecipMm(catchment.meanZM) * wp.catchment.runoffCoefficient) / 1000 : 0;
+  return {
+    ok: issues.length === 0,
+    issues,
+    reservoirId: res?.id ?? null,
+    oriented,
+    lengthM: L,
+    dropM: drop,
+    slopePercent: slope,
+    ditchCells,
+    catchment,
+    effectiveAreaM2: eff,
+    annualInflowM3: annual,
+    costPln: cost ? L * cost.costPlnPerM : 0,
+    buildDays: cost ? Math.max(1, Math.ceil(L / cost.metersPerDay)) : 1,
+  };
+}
+
+/**
+ * Zamiana starego „budynku” rowów (zlewnia wokół zbiornika) na rów wzdłuż dna doliny powyżej zbiornika:
+ * od komórki dna doliny przy zbiorniku w górę, zawsze do sąsiada o największej zlewni, aż do
+ * legacyLengthM. Zwraca punkty od góry do zbiornika (pusto – brak doliny przy zbiorniku).
+ */
+export function legacyDitchPoints(net: StreamNet, elevationM: Float32Array, reservoirXM: number, reservoirYM: number, wp: WaterParams): PointM[] {
+  const start = thalwegCell(net, reservoirXM, reservoirYM, wp.catchment.searchRadiusM);
+  if (start < 0) return [];
+  const W = net.widthCells;
+  const H = net.heightCells;
+  const cs = net.cellSizeM;
+  const path = [start];
+  let k = start;
+  let len = 0;
+  while (len < wp.ditches.legacyLengthM) {
+    const i = k % W;
+    const j = (k - i) / W;
+    let best = -1;
+    let bestAcc = 0;
+    for (let d = 0; d < 8; d++) {
+      const ni = i + DI[d];
+      const nj = j + DJ[d];
+      if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
+      const nk = nj * W + ni;
+      if (net.down[nk] === k && net.accM2[nk] > bestAcc) {
+        bestAcc = net.accM2[nk];
+        best = nk;
+      }
+    }
+    if (best < 0) break;
+    const bi = best % W;
+    const bj = (best - bi) / W;
+    len += Math.hypot(bi - i, bj - j) * cs;
+    path.push(best);
+    k = best;
+  }
+  // Komórki dna doliny niżej niż zbiornik (poniżej niego) odpadają – rów zawsze spływa do zbiornika.
+  const zRes = sampleElevation(net, elevationM, reservoirXM, reservoirYM);
+  const pts = path.filter((c) => !(elevationM[c] <= zRes + 0.5)).map((c) => ({ xM: ((c % W) + 0.5) * cs, yM: (Math.floor(c / W) + 0.5) * cs }));
+  // Od góry do zbiornika; ostatni punkt dokładnie przy zbiorniku.
+  pts.reverse();
+  pts.push({ xM: reservoirXM, yM: reservoirYM });
+  return pts.length >= 2 ? pts : [];
 }
