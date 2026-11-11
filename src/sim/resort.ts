@@ -252,7 +252,7 @@ export function parseLayout(raw: unknown): ResortLayout {
     if (typeof p.id !== 'string' || !Array.isArray(p.points)) throw new Error('Plik układu ośrodka: uszkodzona trasa');
     const points = (p.points as Record<string, unknown>[]).filter((q) => isPoint(q) && isNum(q.widthM)).map((q) => ({ xM: q.xM as number, yM: q.yM as number, widthM: q.widthM as number }));
     if (points.length < 2) continue;
-    out.pistes.push({ id: p.id, name: typeof p.name === 'string' ? p.name : p.id, points, ...(p.closed === true ? { closed: true } : {}), ...(p.graded === true ? { graded: true } : {}), ...(p.catwalk === true ? { catwalk: true } : {}), ...(ctrlFields(p, true) as { ctrl?: { xM: number; yM: number; widthM: number }[]; smooth?: number }) });
+    out.pistes.push({ id: p.id, name: typeof p.name === 'string' ? p.name : p.id, points, ...(p.closed === true ? { closed: true } : {}), ...(p.graded === true ? { graded: true } : {}), ...(p.catwalk === true ? { catwalk: true } : {}), ...(p.lit === true ? { lit: true } : {}), ...(ctrlFields(p, true) as { ctrl?: { xM: number; yM: number; widthM: number }[]; smooth?: number }) });
   }
   for (const b of bases as Record<string, unknown>[]) {
     if (typeof b.id === 'string' && isNum(b.xM) && isNum(b.yM)) out.bases.push({ id: b.id, name: typeof b.name === 'string' ? b.name : 'Baza', xM: b.xM, yM: b.yM, ...(typeof b.typeId === 'string' ? { typeId: b.typeId } : {}) });

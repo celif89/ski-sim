@@ -8,6 +8,7 @@
  * zatrzymują kolej i tor. Parkingi – zajęte miejsca w każdej chwili (do pojemności). Krok 1 s,
  * deterministycznie (ziarno). Wynik dnia jak model zgrubny (SummerOutcome) + statystyki do kart.
  */
+import { isFoodType } from './economyParams';
 import type { PointM } from './lifts';
 import { Rng } from './rng';
 import type { SummerFacts, SummerOutcome, SummerPlan, SummerWeather } from './summer';
@@ -100,7 +101,7 @@ export function buildSummerNet(i: SummerNetInput): SummerNet {
   for (const d of i.destinations) addPoi({ kind: d.kind, id: d.name, name: d.name, xM: d.xM, yM: d.yM, ref: -1 });
   const foods: SummerNet['foods'] = [];
   for (const b of i.buildings) {
-    if (b.typeId === 'gastronomy') foods.push({ id: b.id, poi: addPoi({ kind: 'food', id: b.id, name: b.name, xM: b.xM, yM: b.yM, ref: foods.length }), seats: sp.guests.summerFoodSeatsPerBuilding });
+    if (isFoodType(b.typeId)) foods.push({ id: b.id, poi: addPoi({ kind: 'food', id: b.id, name: b.name, xM: b.xM, yM: b.yM, ref: foods.length }), seats: sp.guests.summerFoodSeatsPerBuilding });
     else if (b.typeId === 'playground') addPoi({ kind: 'play', id: b.id, name: b.name, xM: b.xM, yM: b.yM, ref: -1 });
     else if (b.typeId === 'viewpoint') addPoi({ kind: 'view', id: b.id, name: b.name, xM: b.xM, yM: b.yM, ref: -1 });
   }

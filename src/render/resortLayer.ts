@@ -80,6 +80,7 @@ export interface ResortDrawState {
 const BUILDING_STYLE: Record<string, { color: number; letter: string }> = {
   parking: { color: 0x2563eb, letter: 'P' },
   gastronomy: { color: 0xd9480f, letter: 'G' },
+  bar: { color: 0xe8590c, letter: 'B' },
   rental: { color: 0x7048e8, letter: 'W' },
   school: { color: 0x2b8a3e, letter: 'S' },
   intake: { color: 0x1971c2, letter: 'U' },

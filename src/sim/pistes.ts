@@ -115,6 +115,8 @@ export interface PisteDesign {
   graded?: boolean;
   /** Etap 6b: nartostrada – łatwy łącznik (szerokość i limit nachylenia z pistes.json, sekcja catwalk). */
   catwalk?: boolean;
+  /** Etap 7g: oświetlenie trasy (jazda wieczorna; odblokowuje kamień milowy). */
+  lit?: boolean;
   /** Etap 7c (edycja, tylko widok): punkty kontrolne linii i gładkość łuku (0 – łamana, 1 – łuk); `points` to gęsty przebieg z nich liczony. */
   ctrl?: AxisPoint[];
   smooth?: number;

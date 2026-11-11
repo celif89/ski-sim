@@ -5,6 +5,7 @@
  * typu gości, model zgrubny dnia letniego i przepływy pieniędzy dnia. Bez DOM – ten sam kod w grze,
  * testach i bez grafiki.
  */
+import { isFoodType } from './economyParams';
 import type { EconomyParams } from './economyParams';
 import * as inspectionsApi from './inspections';
 import type { Flows, GameState, ResortFacts } from './economy';
@@ -368,7 +369,7 @@ export function summerFacts(
   const parks = facts.buildings.filter((b) => b.type.base && b.built && b.accessible);
   for (const b of facts.buildings) {
     if (!b.built) continue;
-    if (b.type.id === 'gastronomy') {
+    if (isFoodType(b.type.id)) {
       const far = parks.length > 0 && parks.every((p) => Math.hypot(p.xM - b.xM, p.yM - b.yM) >= STATION_RADIUS_M * 2);
       if (far) foodTop++;
       else foodBase++;
@@ -713,7 +714,7 @@ export function summerDayFlows(o: SummerOutcome, plan: SummerPlan, sf: SummerFac
     add('seasonal', Math.max(c.seasonalMin, Math.ceil((o.guests / 1000) * c.seasonalPer1000Guests)) * staffH * wage);
   }
   // Gastronomia, wypożyczalnia, parking.
-  const food = facts.buildings.find((b) => b.built && b.type.id === 'gastronomy')?.type;
+  const food = facts.buildings.find((b) => b.built && isFoodType(b.type.id))?.type;
   if (food && o.meals > 0) {
     const rev = o.meals * sp.guests.mealSpendPln;
     add('gastronomy', rev);
@@ -721,7 +722,7 @@ export function summerDayFlows(o: SummerOutcome, plan: SummerPlan, sf: SummerFac
   }
   for (const b of facts.buildings) {
     if (!b.built) continue;
-    if (b.type.id === 'gastronomy' || (b.type.id === 'rental' && o.bikeRentals > 0)) add('buildingsStaff', b.type.staffPerDay * staffH * wage);
+    if (isFoodType(b.type.id) || (b.type.id === 'rental' && o.bikeRentals > 0)) add('buildingsStaff', b.type.staffPerDay * staffH * wage);
   }
   const rent = facts.buildings.find((b) => b.built && b.type.id === 'rental')?.type;
   if (rent && o.bikeRentals > 0) add('goods', o.bikeRentals * sp.prices.bikeRentalDayPln * rent.costShare);
@@ -828,7 +829,7 @@ export function seasonExtras(i: SeasonExtrasInput): SeasonExtras {
     });
     if (sf.toboggan) objectRevenue[sf.toboggan.id] = outcome.tobogganRides * prices.tobogganRidePln;
     for (const bt of sf.bikeTrails) objectRevenue[bt.id] = ((f.bikePasses ?? 0) * bt.lengthM) / Math.max(1, sf.bikeKm * 1000);
-    const food = i.facts.buildings.filter((b) => b.built && b.type.id === 'gastronomy');
+    const food = i.facts.buildings.filter((b) => b.built && isFoodType(b.type.id));
     for (const b of food) objectRevenue[b.id] = (f.gastronomy ?? 0) / food.length;
     const parks = i.facts.buildings.filter((b) => b.built && b.type.base && b.accessible);
     let cars = outcome.cars;

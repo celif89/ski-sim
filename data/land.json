@@ -1,0 +1,58 @@
+{
+  "_opis": "Etap 7g: działki do dokupienia (wzór: Cities: Skylines). Mapa podzielona na kwadraty; działka częściowo poza Polską / poza mapą – liczy się tylko część polska. Cena z powierzchni i rodzaju gruntu; las tylko w dzierżawie (jak od Lasów Państwowych, które lasów nie sprzedają).",
+  "parcelSizeM": {
+    "value": 1000,
+    "unit": "m",
+    "source": "polecenie etapu 7g: kwadraty ok. 1 × 1 km (100 ha)"
+  },
+  "minAreaHa": {
+    "value": 5,
+    "unit": "ha",
+    "source": "działka z mniejszą częścią polską niż 5 ha jest łączona z niczym – pomijana (skrawki przy granicy); do wyczucia"
+  },
+  "roadTouchM": {
+    "value": 30,
+    "unit": "m",
+    "source": "działka „przy drodze publicznej”: droga publiczna (OSM) w działce albo najwyżej 30 m od jej granicy; do wyczucia"
+  },
+  "meadowPlnPerHa": {
+    "value": 55000,
+    "unit": "zł/ha",
+    "source": "średnia cena 1 ha użytków rolnych w woj. śląskim 53 414 zł/ha (GUS, IV kw. 2024; komunikat ARiMR obowiązujący od 24 III 2025 – wiescirolnicze.pl); krajowo I poł. 2025 69 752 zł/ha (GUS, blog.ongeo.pl); oferty małych działek rolnych w gm. Jeleśnia 21–41 zł/m² (otodom, adresowo 2026) dotyczą działek < 0,5 ha – duże łąki górskie przyjęte bliżej średniej GUS; do kalibracji"
+  },
+  "forestValuePlnPerHa": {
+    "value": 69000,
+    "unit": "zł/ha",
+    "source": "średnia cena gruntów leśnych w woj. śląskim ok. 69 tys. zł/ha (2023, za Rocznikiem Leśnictwa GUS – blog.ongeo.pl „Ceny działek leśnych 2025”); kraj 43 007 zł/ha; służy tylko do wyliczenia czynszu – lasów Skarbu Państwa się nie kupuje"
+  },
+  "builtPlnPerHa": {
+    "value": 1700000,
+    "unit": "zł/ha",
+    "source": "grunty przy zabudowie (tereny budowlane): oferty działek budowlanych w Korbielowie 168–249 zł/m² (otodom, adresowo 2026) → ok. 170 zł/m²; liczone dla części działki z zabudową (ESA WorldCover „built-up”); do kalibracji"
+  },
+  "forestLeaseOnlyShare": {
+    "value": 0.5,
+    "unit": "-",
+    "source": "działka, której co najmniej połowa to las – tylko dzierżawa (Lasy Państwowe wydzierżawiają grunty na podstawie art. 39 ustawy o lasach za zgodą dyrektora RDLP, nie sprzedają); do kalibracji"
+  },
+  "leaseSharePerYear": {
+    "value": 0.05,
+    "unit": "1/rok",
+    "source": "czynsz dzierżawy łąk i gruntów rolnych pod stok – 5 % wartości gruntu rocznie (ok. 0,28 zł/m²; stawki gminne za grunty rekreacyjne rzędu 0,1–0,25 zł/m² rocznie – zarządzenia gmin Gierałtowice, Ostrołęka; przetarg pod trasy w Świeradowie-Zdroju ok. 13,5 zł/m² – działki w centrum uzdrowiska); do kalibracji"
+  },
+  "forestLeaseSharePerYear": {
+    "value": 0.05,
+    "unit": "1/rok",
+    "source": "czynsz dzierżawy gruntów Lasów Państwowych – 5 % wartości gruntu leśnego rocznie (ok. 3450 zł/ha); stawki wg wytycznych RDLP Katowice (zarządzenie nr 77 Dyrektora Generalnego LP z 1 XII 2009 o kształtowaniu czynszu), przykład: czynsz wywoławczy 200 zł/rok za małą działkę – Nadleśnictwo Sucha; płatny z góry do 31 III; do kalibracji"
+  },
+  "leaseDueMonth": {
+    "value": 5,
+    "unit": "miesiąc",
+    "source": "czynsz dzierżawny płatny co roku na początku roku gry (1 maja) i przy zawarciu umowy; do kalibracji"
+  },
+  "startCapitalIncludesParcel": {
+    "value": 1,
+    "unit": "0/1",
+    "source": "działka startowa jest kupowana (albo dzierżawiona) z kapitału startowego kariery"
+  }
+}

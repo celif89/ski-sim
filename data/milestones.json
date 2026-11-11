@@ -1,0 +1,261 @@
+{
+  "_opis": "Etap 7g: kamienie milowe (wzór: Cities: Skylines). Kamień osiąga się, gdy jednocześnie: łączna liczba wizyt gości (zima i lato) ≥ visits, reputacja (lepsza z zimowej i letniej) ≥ reputation, rozegrane sezony (zakończone lata gry 1 V–30 IV) ≥ seasons. Każdy odblokowuje typy wyciągów, armatek, budynków, atrakcji letnich, oświetlenie tras, liczbę działek do kupienia i limit kredytu. Progi do kalibracji (Pilsko: ok. 38 tys. wizyt zimą i 87 tys. latem w przeciętnym roku – raport lata). W piaskownicy wszystko odblokowane.",
+  "milestones": [
+    {
+      "id": "start",
+      "name": "Górka za wsią",
+      "visits": {
+        "value": 0,
+        "unit": "wizyt",
+        "source": "start"
+      },
+      "reputation": {
+        "value": 0,
+        "unit": "gwiazdki",
+        "source": "start"
+      },
+      "seasons": {
+        "value": 0,
+        "unit": "sezony",
+        "source": "start"
+      },
+      "lifts": [
+        "tasma",
+        "talerzyk",
+        "orczyk"
+      ],
+      "guns": [
+        "lance"
+      ],
+      "buildings": [
+        "parking",
+        "bar",
+        "rental",
+        "school",
+        "intake",
+        "mains",
+        "well100",
+        "well200",
+        "reservoir20",
+        "pump150",
+        "grid500",
+        "garage",
+        "anchor",
+        "catchment"
+      ],
+      "trails": [
+        "walk"
+      ],
+      "lighting": false,
+      "parcels": {
+        "value": 1,
+        "unit": "działek",
+        "source": "polecenie: na start jedna działka; 1 dodatkowa do kupienia od razu (np. pod parking przy drodze); do kalibracji"
+      },
+      "loanLimitPln": {
+        "value": 3000000,
+        "unit": "zł",
+        "source": "mały ośrodek – bank pożyczy do 3 mln zł; do kalibracji"
+      }
+    },
+    {
+      "id": "local",
+      "name": "Lokalny stok",
+      "visits": {
+        "value": 5000,
+        "unit": "wizyt",
+        "source": "do kalibracji: ok. pierwszej udanej zimy z orczykiem (raport ekonomii: 6,1 tys. gości/sezon bez naśnieżania)"
+      },
+      "reputation": {
+        "value": 3.3,
+        "unit": "gwiazdki",
+        "source": "do kalibracji"
+      },
+      "seasons": {
+        "value": 1,
+        "unit": "sezony",
+        "source": "do kalibracji"
+      },
+      "lifts": [
+        "kanapa2s"
+      ],
+      "guns": [
+        "fan"
+      ],
+      "buildings": [
+        "reservoir50",
+        "pump300",
+        "grid1000",
+        "shuttle"
+      ],
+      "trails": [],
+      "lighting": true,
+      "parcels": {
+        "value": 2,
+        "unit": "działek",
+        "source": "do kalibracji"
+      },
+      "loanLimitPln": {
+        "value": 8000000,
+        "unit": "zł",
+        "source": "do kalibracji"
+      }
+    },
+    {
+      "id": "regional",
+      "name": "Ośrodek regionalny",
+      "visits": {
+        "value": 20000,
+        "unit": "wizyt",
+        "source": "polecenie etapu 7g (przykład: 20 tys. wizyt, reputacja 3,8)"
+      },
+      "reputation": {
+        "value": 3.8,
+        "unit": "gwiazdki",
+        "source": "polecenie etapu 7g"
+      },
+      "seasons": {
+        "value": 2,
+        "unit": "sezony",
+        "source": "do kalibracji"
+      },
+      "lifts": [
+        "kanapa4s"
+      ],
+      "guns": [],
+      "buildings": [
+        "gastronomy",
+        "playground"
+      ],
+      "trails": [
+        "bike"
+      ],
+      "lighting": false,
+      "parcels": {
+        "value": 3,
+        "unit": "działek",
+        "source": "do kalibracji"
+      },
+      "loanLimitPln": {
+        "value": 20000000,
+        "unit": "zł",
+        "source": "do kalibracji"
+      }
+    },
+    {
+      "id": "mountain",
+      "name": "Ośrodek górski",
+      "visits": {
+        "value": 60000,
+        "unit": "wizyt",
+        "source": "do kalibracji (ok. pół roku ośrodka wielkości Pilska)"
+      },
+      "reputation": {
+        "value": 4.1,
+        "unit": "gwiazdki",
+        "source": "do kalibracji"
+      },
+      "seasons": {
+        "value": 3,
+        "unit": "sezony",
+        "source": "do kalibracji"
+      },
+      "lifts": [
+        "kanapa4d",
+        "kanapa6d"
+      ],
+      "guns": [],
+      "buildings": [
+        "reservoir100",
+        "pump600",
+        "grid2000",
+        "viewpoint"
+      ],
+      "trails": [
+        "toboggan"
+      ],
+      "lighting": false,
+      "parcels": {
+        "value": 4,
+        "unit": "działek",
+        "source": "do kalibracji"
+      },
+      "loanLimitPln": {
+        "value": 50000000,
+        "unit": "zł",
+        "source": "do kalibracji"
+      }
+    },
+    {
+      "id": "resort",
+      "name": "Kurort",
+      "visits": {
+        "value": 150000,
+        "unit": "wizyt",
+        "source": "do kalibracji (ponad rok ośrodka wielkości Pilska z latem)"
+      },
+      "reputation": {
+        "value": 4.4,
+        "unit": "gwiazdki",
+        "source": "do kalibracji"
+      },
+      "seasons": {
+        "value": 5,
+        "unit": "sezony",
+        "source": "do kalibracji"
+      },
+      "lifts": [
+        "gondola"
+      ],
+      "guns": [],
+      "buildings": [],
+      "trails": [],
+      "lighting": false,
+      "parcels": {
+        "value": 100,
+        "unit": "działek",
+        "source": "bez limitu (więcej niż działek na mapie)"
+      },
+      "loanLimitPln": {
+        "value": 150000000,
+        "unit": "zł",
+        "source": "do kalibracji"
+      }
+    }
+  ],
+  "lighting": {
+    "costPlnPerM": {
+      "value": 650,
+      "unit": "zł/m",
+      "source": "oświetlenie trasy: maszty co ok. 40 m z naświetlaczami LED, kable w wykopie – ok. 25 tys. zł za maszt; do kalibracji"
+    },
+    "powerWPerM": {
+      "value": 30,
+      "unit": "W/m",
+      "source": "ok. 1,2 kW (4 × 300 W LED) na maszt co 40 m; do kalibracji"
+    },
+    "maxCloseLitH": {
+      "value": 21,
+      "unit": "h",
+      "source": "jazda wieczorna na oświetlonych trasach do 21:00 (typowo w Beskidach: Szczyrk, Korbielów – do 20–21)"
+    },
+    "darkFromH": {
+      "value": [
+        16.75,
+        17.55,
+        18.3,
+        20.12,
+        20.95,
+        21.57,
+        21.46,
+        20.64,
+        19.52,
+        18.44,
+        16.62,
+        16.35
+      ],
+      "unit": "h (czas lokalny)",
+      "source": "koniec zmierzchu cywilnego (Słońce 6° pod horyzontem) 15. dnia miesiąca dla 49,57° N, 19,35° E, czas zimowy / letni UE – wzór NOAA (jak src/sim/sun.ts)"
+    }
+  }
+}

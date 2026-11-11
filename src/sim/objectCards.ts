@@ -7,6 +7,7 @@
  * dni – profil dnia z modelu: obecność gości w czasie z rozkładu przyjazdów i pobytu (te same parametry
  * co u gości), samochody na parkingach wypełniane po kolei do pojemności (jak w zamknięciu dnia).
  */
+import { isFoodType } from './economyParams';
 import type { EconomyParams } from './economyParams';
 import type { GameState, OpsSummary, ResortFacts } from './economy';
 import type { GuestParams } from './guestParams';
@@ -466,7 +467,7 @@ function buildingCard(id: string, c: CardContext): ObjectCard | null {
     return card;
   }
   // Gastronomia (restauracja, schronisko, bar).
-  if (t?.id === 'gastronomy') {
+  if (t && isFoodType(t.id)) {
     const seats = sp?.guests.summerFoodSeatsPerBuilding ?? 0;
     const rows: [string, string][] = [['miejsca', String(seats)]];
     const s = c.summer;

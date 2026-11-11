@@ -923,8 +923,63 @@
         }
       },
       {
+        "id": "bar",
+        "name": "Bar przy stoku",
+        "base": false,
+        "costPln": {
+          "value": 600000,
+          "unit": "zł",
+          "source": "etap 7g: mały bar / bistro w kontenerze lub drewnianym budynku na ok. 40 miejsc – ok. 1/5 restauracji; do kalibracji"
+        },
+        "cars": {
+          "value": 0,
+          "unit": "aut",
+          "source": "-"
+        },
+        "feePerCarPln": {
+          "value": 0,
+          "unit": "zł",
+          "source": "-"
+        },
+        "buildDays": {
+          "value": 45,
+          "unit": "dni",
+          "source": "do kalibracji"
+        },
+        "staffPerDay": {
+          "value": 2,
+          "unit": "osób",
+          "source": "do kalibracji"
+        },
+        "revenuePerGuestPln": {
+          "value": 30,
+          "unit": "zł",
+          "source": "przekąska + napój (zapiekanka, herbata, grzaniec); do kalibracji"
+        },
+        "costShare": {
+          "value": 0.4,
+          "unit": "-",
+          "source": "koszt towaru 40 % przychodu; do kalibracji"
+        },
+        "useShare": {
+          "value": 0.6,
+          "unit": "-",
+          "source": "część gości jedząca w ośrodku; do kalibracji"
+        },
+        "capacityPerDay": {
+          "value": 200,
+          "unit": "gości/dzień",
+          "source": "40 miejsc × ok. 5 zmian; do kalibracji"
+        },
+        "minDistanceFromParkingM": {
+          "value": 0,
+          "unit": "m",
+          "source": "-"
+        }
+      },
+      {
         "id": "gastronomy",
-        "name": "Gastronomia",
+        "name": "Restauracja",
         "base": false,
         "costPln": {
           "value": 3000000,

@@ -22,7 +22,7 @@ import liftsJson from '../data/lifts.json';
 import pistesJson from '../data/pistes.json';
 import constructionJson from '../data/construction.json';
 import economyJson from '../data/economy.json';
-import { parseEconomyParams, withRoads, withSnowmaking, withSummer } from './sim/economyParams';
+import { isFoodType, parseEconomyParams, withRoads, withSnowmaking, withSummer } from './sim/economyParams';
 import { parkingCapacityPersons } from './sim/economy';
 import snowmakingJson from '../data/snowmaking.json';
 import winterClassesJson from '../data/winter-classes.json';
@@ -544,7 +544,7 @@ async function start(): Promise<void> {
         icon: 'home',
         key: 'B',
         tip: 'Parking, gastronomia, wypożyczalnia, szkółka, transport do schroniska',
-        cards: economyParams.buildings.map((b) => buildingCard(b.id, b.name, b.base ? 'parking' : b.id === 'gastronomy' ? 'food' : 'building', b.base ? `${f0n(b.cars)} aut` : `${f0n(b.capacityPerDay)} os./dzień`, b.costPln)),
+        cards: economyParams.buildings.map((b) => buildingCard(b.id, b.name, b.base ? 'parking' : isFoodType(b.id) ? 'food' : 'building', b.base ? `${f0n(b.cars)} aut` : `${f0n(b.capacityPerDay)} os./dzień`, b.costPln)),
       },
       {
         id: 'summer',
@@ -1497,7 +1497,7 @@ async function start(): Promise<void> {
         parking: (guests) => parkingModel(guests),
         food: (guests) => {
           const f = factsNow();
-          const foods = (f?.buildings ?? []).filter((b) => b.type.id === 'gastronomy' && b.built);
+          const foods = (f?.buildings ?? []).filter((b) => isFoodType(b.type.id) && b.built);
           const cap = foods.reduce((a, b) => a + b.type.capacityPerDay, 0);
           return { has: foods.length > 0, full: foods.length > 0 && guests * (foods[0]?.type.useShare ?? 0) >= cap * 0.99, id: foods[0]?.id ?? null };
         },
@@ -1521,7 +1521,7 @@ async function start(): Promise<void> {
           else if (id === 'buildParking') {
             openBuild('buildings');
             build.setBuildingType('parking');
-          } else if (id === 'showFood') centerOn(f?.buildings.find((b) => b.type.id === 'gastronomy')?.id);
+          } else if (id === 'showFood') centerOn(f?.buildings.find((b) => isFoodType(b.type.id))?.id);
           else if (id === 'buildFood') {
             openBuild('buildings');
             build.setBuildingType('gastronomy');

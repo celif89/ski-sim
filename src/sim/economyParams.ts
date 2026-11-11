@@ -3,6 +3,8 @@
  * ferie, koszty, kredyt, reputacja, model zgrubny dnia, konkurencja, budynki.
  * Same wartości – jednostki i źródła są w pliku.
  */
+import type { LandParams } from './parcels';
+import type { MilestoneParams } from './milestones';
 import type { RoadParams } from './resort';
 import type { SummerParams } from './summerParams';
 import { readNumber, readNumberArray, readSection } from './params';
@@ -172,6 +174,9 @@ export interface EconomyParams {
   roads?: RoadParams | null;
   /** Etap 7b: sezon letni, przeglądy wyciągów (data/summer.json) – dołączane przez withSummer. */
   summer?: SummerParams | null;
+  /** Etap 7g: działki (data/land.json) i kamienie milowe (data/milestones.json). */
+  land?: LandParams | null;
+  milestones?: MilestoneParams | null;
 }
 
 /** Ekonomia z sezonem letnim i przeglądami wyciągów (etap 7b). */
@@ -182,6 +187,11 @@ export function withSummer(ep: EconomyParams, sp: SummerParams): EconomyParams {
 /** Ekonomia z parametrami naśnieżania (koszty rurociągów, armatek, infrastruktury). */
 export function withSnowmaking(ep: EconomyParams, sp: SnowmakingParams): EconomyParams {
   return { ...ep, snowmaking: sp };
+}
+
+/** Etap 7g: ekonomia z działkami i kamieniami milowymi. */
+export function withLand(ep: EconomyParams, lp: LandParams, mp: MilestoneParams): EconomyParams {
+  return { ...ep, land: lp, milestones: mp };
 }
 
 /** Ekonomia z parametrami dróg (etap 6b: odśnieżanie, data/construction.json – sekcja roads). */
@@ -269,6 +279,9 @@ export function parseEconomyParams(raw: unknown): EconomyParams {
     }),
   };
 }
+
+/** Etap 7g: gastronomia – restauracja i bar (ten sam model przychodu, inne pojemności i ceny). */
+export const isFoodType = (id: string | undefined): boolean => id === 'gastronomy' || id === 'bar';
 
 export function buildingTypeById(p: EconomyParams, id: string | undefined): BuildingType | null {
   return p.buildings.find((b) => b.id === id) ?? null;

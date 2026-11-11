@@ -10,7 +10,7 @@ import type { DayInfo } from './calendar';
 import { dayInfo, seasonStartYear, yearPhase } from './calendar';
 import type { CompetitorDay } from './competition';
 import type { BuildingType, EconomyParams, OpeningHours, PassPrices } from './economyParams';
-import { buildingTypeById } from './economyParams';
+import { buildingTypeById, isFoodType } from './economyParams';
 import { GROUND_FOREST } from './ground';
 import type { GuestNet } from './guestNetwork';
 import type { GuestParams } from './guestParams';
@@ -28,6 +28,10 @@ import type { InspectionState } from './inspections';
 import { inspectionStatus, processInspections } from './inspections';
 import type { SummerOutcome, SummerPlan, SummerState } from './summer';
 import { newSummerState, summerReputationOf } from './summer';
+import type { LandState } from './parcels';
+import { annualLeasePln } from './parcels';
+import type { Milestone, ProgressState } from './milestones';
+import { checkMilestones, ensureProgress, unlocksOf } from './milestones';
 import type { CalendarDate } from './weather';
 import type { DayWeather, WeatherBook } from './weatherBook';
 
@@ -39,12 +43,12 @@ export const REVENUE_KEYS = ['passes', 'parking', 'gastronomy', 'rental', 'schoo
 export const COST_KEYS = [
   'energy', 'liftStaff', 'cashiers', 'patrol', 'seasonal', 'buildingsStaff', 'goods',
   'snowEnergy', 'water', 'groomFuel', 'groomStaff', 'groomService', 'leasing', 'repairs',
-  'permanent', 'admin', 'roads', 'trails', 'mowing', 'insurance', 'maintenance', 'inspections', 'interest',
+  'permanent', 'admin', 'roads', 'trails', 'mowing', 'insurance', 'maintenance', 'inspections', 'interest', 'landLease',
 ] as const;
 /** Etap 7b: koszty stałe (nie przypisywane do zimy ani lata w raporcie roku). */
-export const COMMON_COST_KEYS: readonly CostKey[] = ['permanent', 'insurance', 'maintenance', 'inspections', 'interest', 'trails', 'mowing'];
+export const COMMON_COST_KEYS: readonly CostKey[] = ['permanent', 'insurance', 'maintenance', 'inspections', 'interest', 'trails', 'mowing', 'landLease'];
 /** Inwestycje i finansowanie (nie są kosztem dnia, ale zmieniają saldo). */
-export const CAPITAL_KEYS = ['construction', 'equipment', 'refunds', 'loanIn', 'loanPrincipal'] as const;
+export const CAPITAL_KEYS = ['construction', 'equipment', 'land', 'refunds', 'loanIn', 'loanPrincipal'] as const;
 export type RevenueKey = (typeof REVENUE_KEYS)[number];
 export type CostKey = (typeof COST_KEYS)[number];
 export type CapitalKey = (typeof CAPITAL_KEYS)[number];
@@ -85,6 +89,8 @@ export const FLOW_NAMES: Record<keyof Flows, string> = {
   interest: 'odsetki',
   construction: 'budowa',
   equipment: 'zakup ratraków',
+  land: 'zakup działek',
+  landLease: 'dzierżawa gruntów',
   refunds: 'zwroty za anulowane budowy',
   loanIn: 'kredyt (wypłata)',
   loanPrincipal: 'spłata kapitału kredytu',
@@ -96,10 +102,10 @@ export function zeroFlows(): Flows {
   return f;
 }
 
-export const sumRevenue = (f: Flows) => REVENUE_KEYS.reduce((a, k) => a + f[k], 0);
-export const sumCosts = (f: Flows) => COST_KEYS.reduce((a, k) => a + f[k], 0);
-/** Zmiana salda z przepływów: przychody − koszty − budowa + zwroty + kredyt − spłata kapitału. */
-export const balanceChange = (f: Flows) => sumRevenue(f) - sumCosts(f) - f.construction - f.equipment + f.refunds + f.loanIn - f.loanPrincipal;
+export const sumRevenue = (f: Flows) => REVENUE_KEYS.reduce((a, k) => a + (f[k] ?? 0), 0);
+export const sumCosts = (f: Flows) => COST_KEYS.reduce((a, k) => a + (f[k] ?? 0), 0);
+/** Zmiana salda z przepływów: przychody − koszty − budowa − zakupy + zwroty + kredyt − spłata kapitału. */
+export const balanceChange = (f: Flows) => sumRevenue(f) - sumCosts(f) - f.construction - f.equipment - (f.land ?? 0) + f.refunds + f.loanIn - f.loanPrincipal;
 
 function addFlows(a: Flows, b: Flows): void {
   for (const k of [...REVENUE_KEYS, ...COST_KEYS, ...CAPITAL_KEYS]) a[k] = (a[k] ?? 0) + (b[k] ?? 0);
@@ -313,6 +319,11 @@ export interface GameState {
   lastDay: (DayRecord & { flows: Flows }) | null;
   /** Etap 7c (tylko do wyświetlenia): przepływy ostatnich 7 zamkniętych dni – raport tygodnia. */
   recentFlows?: { date: string; flows: Flows }[];
+  /** Etap 7g: działki gracza (kupione, dzierżawione) i postęp (wizyty, kamień milowy). */
+  land?: LandState;
+  progress?: ProgressState;
+  /** Etap 7g: kariera czeka na wybór działki startowej. */
+  needsStartParcel?: boolean;
 }
 
 export function newGameState(o: { mode: GameMode; seed: number; date: CalendarDate; ep: EconomyParams }): GameState {
@@ -396,7 +407,9 @@ export function objectCosts(layout: ResortLayout, analysis: ResortAnalysis, ep: 
   }
   for (const p of layout.pistes) {
     const a = analysis.pistes.get(p.id);
-    if (a) out.push({ id: p.id, kind: 'piste', name: p.name, costPln: a.cost.totalPln, buildDays: Math.max(1, Math.round(a.buildDays)), signature: sig(p) });
+    // Etap 7g: oświetlenie trasy – maszty z naświetlaczami za metr długości.
+    const lightPln = p.lit && ep.milestones ? a?.lengthM ? a.lengthM * ep.milestones.lighting.costPlnPerM : 0 : 0;
+    if (a) out.push({ id: p.id, kind: 'piste', name: p.name, costPln: a.cost.totalPln + lightPln, buildDays: Math.max(1, Math.round(a.buildDays)), signature: sig(p) });
   }
   for (const b of [...layout.bases, ...(layout.buildings ?? [])]) {
     const t = buildingTypeById(ep, b.typeId);
@@ -567,6 +580,8 @@ export interface PisteFact {
   areaM2: number;
   built: boolean;
   open: boolean;
+  /** Etap 7g: trasa oświetlona (jazda wieczorna). */
+  lit?: boolean;
 }
 
 export interface BuildingFact {
@@ -638,7 +653,7 @@ export function resortFacts(layout: ResortLayout, analysis: ResortAnalysis, net:
   const pistes: PisteFact[] = layout.pistes.map((p) => {
     const a = analysis.pistes.get(p.id);
     const built = !state.construction[p.id];
-    return { id: p.id, name: p.name, classIndex: a?.classIndex ?? 0, lengthM: a?.lengthM ?? 0, areaM2: a?.areaM2 ?? 0, built, open: built && !p.closed && anyLift && !blocked?.has(p.id) };
+    return { id: p.id, name: p.name, classIndex: a?.classIndex ?? 0, lengthM: a?.lengthM ?? 0, areaM2: a?.areaM2 ?? 0, built, open: built && !p.closed && anyLift && !blocked?.has(p.id), ...(p.lit ? { lit: true } : {}) };
   });
   const buildings: BuildingFact[] = [];
   for (const b of [...layout.bases, ...(layout.buildings ?? [])]) {
@@ -993,6 +1008,8 @@ export interface CloseDayResult {
   passes: PassSales;
   finishedConstruction: string[];
   seasonReport: SeasonReport | null;
+  /** Etap 7g: kamienie milowe osiągnięte tego dnia. */
+  milestones?: Milestone[];
 }
 
 /** Koszty i przychody dnia, raty, przeglądy, budowy, reputacja; przejście do następnego dnia. */
@@ -1045,6 +1062,13 @@ export function closeDay(
       flows.energy += hours * (l.idleKw + (l.powerKw - l.idleKw) * u) * c.energyPlnPerKWh;
       flows.liftStaff += ((l.aerial ? c.staffAerialLift : c.staffSurfaceLift) + l.midStations * c.staffMidStation) * staffH * wage;
     });
+    // Etap 7g: oświetlenie tras po zmroku (do zamknięcia wyciągów).
+    if (ep.milestones) {
+      const li = ep.milestones.lighting;
+      const litH = Math.max(0, plan.hours.closeH - li.darkFromH[date.month - 1]);
+      const litM = facts.pistes.reduce((a, p) => a + (p.lit && p.open ? p.lengthM : 0), 0);
+      if (litH > 0 && litM > 0) flows.energy += (litH * litM * li.powerWPerM * c.energyPlnPerKWh) / 1000;
+    }
     const g = outcome.guests;
     flows.cashiers += Math.max(1, Math.ceil(g / c.guestsPerCashier)) * staffH * wage;
     flows.patrol += Math.max(c.patrolMin, Math.ceil(facts.kmOpen * c.patrolPerKm)) * staffH * c.patrolHourlyPln * c.employerCostFactor;
@@ -1073,7 +1097,7 @@ export function closeDay(
       if (t.id === 'shuttle') {
         // Transport do schroniska: tylko gdy jest gastronomia z dala od parkingów; goście gastronomii, nie narciarze.
         const parks = facts.buildings.filter((x) => x.type.base && x.built && x.accessible);
-        const hut = facts.buildings.some((x) => x.built && x.type.id === 'gastronomy' && parks.every((pk) => Math.hypot(pk.xM - x.xM, pk.yM - x.yM) >= t.minDistanceFromParkingM));
+        const hut = facts.buildings.some((x) => x.built && isFoodType(x.type.id) && parks.every((pk) => Math.hypot(pk.xM - x.xM, pk.yM - x.yM) >= t.minDistanceFromParkingM));
         if (!hut) continue;
         const users = Math.min(t.capacityPerDay, g * t.useShare);
         flows.shuttle += users * t.revenuePerGuestPln;
@@ -1084,7 +1108,7 @@ export function closeDay(
       const users = Math.min(t.capacityPerDay, (t.id === 'school' ? beginners : g) * t.useShare);
       const rev = users * t.revenuePerGuestPln;
       objRev[b.id] = (objRev[b.id] ?? 0) + rev;
-      if (t.id === 'gastronomy') flows.gastronomy += rev;
+      if (isFoodType(t.id)) flows.gastronomy += rev;
       else if (t.id === 'rental') flows.rental += rev;
       else flows.school += rev;
       flows.goods += rev * t.costShare;
@@ -1150,6 +1174,8 @@ export function closeDay(
     state.summer.reputation.sum = state.summer.reputation.sum * sd + (summerDay ? summerDay.outcome.ratingSum : 0);
     state.summer.reputation.weight = state.summer.reputation.weight * sd + (summerDay ? summerDay.outcome.ratingCount : 0);
   }
+  // Etap 7g: roczny czynsz dzierżawy działek (początek roku gry).
+  if (ep.land && date.month === ep.land.leaseDueMonth && date.day === 1) flows.landLease += annualLeasePln(state);
   // Saldo.
   const dayFlows = zeroFlows();
   addFlows(dayFlows, flows);
@@ -1186,7 +1212,7 @@ export function closeDay(
     rating: working && outcome.ratingCount > 0 ? outcome.ratingSum / outcome.ratingCount : summerDay && summerDay.outcome.ratingCount > 0 ? summerDay.outcome.ratingSum / summerDay.outcome.ratingCount : null,
     revenuePln: sumRevenue(dayFlows),
     costPln: sumCosts(dayFlows),
-    capitalPln: dayFlows.construction + dayFlows.equipment - dayFlows.refunds - dayFlows.loanIn + dayFlows.loanPrincipal,
+    capitalPln: dayFlows.construction + dayFlows.equipment + (dayFlows.land ?? 0) - dayFlows.refunds - dayFlows.loanIn + dayFlows.loanPrincipal,
     balancePln: state.balancePln,
     src: working ? (outcome.source === 'agents' ? 'a' : 'q') : summerDay ? (summerDay.outcome.source === 'agents' ? 'a' : 'q') : '-',
     snowScore: ctx.snow.score,
@@ -1224,9 +1250,19 @@ export function closeDay(
     state.year = { startYear: next.year, balanceStart: state.balancePln, flows: zeroFlows(), days: [], seasonFlows: zeroSeasonFlows() };
     state.objectRevenue = {};
   }
+  // Etap 7g: wizyty gości i kamienie milowe (po raporcie sezonu – liczy się też zakończony sezon).
+  let milestones: Milestone[] = [];
+  if (state.mode === 'career') {
+    ensureProgress(state).visits += record.guests;
+    if (ep.milestones) {
+      const rep = Math.max(reputationOf(state, ep), ep.summer ? summerReputationOf(state, ep.summer) : 0);
+      milestones = checkMilestones(state, rep, ep.milestones);
+      for (const m of milestones) log(state, `Kamień milowy: ${m.name}!`);
+    }
+  }
   state.date = next;
   state.hour = 0;
-  return { record, flows: dayFlows, passes, finishedConstruction: finished, seasonReport: report };
+  return { record, flows: dayFlows, passes, finishedConstruction: finished, seasonReport: report, milestones };
 }
 
 /** Raport roku gry (od 1 maja do teraz) – także w trakcie (podgląd). */
@@ -1326,15 +1362,24 @@ export function setPrices(state: GameState, prices: Partial<PassPrices>, ep: Eco
   }
 }
 
-export function setHours(state: GameState, hours: OpeningHours, ep: EconomyParams): void {
-  const open = Math.max(ep.hours.minOpenH, Math.min(hours.openH, ep.hours.maxCloseH - 1));
-  const close = Math.min(ep.hours.maxCloseH, Math.max(hours.closeH, open + 1));
+/** Etap 7g: najpóźniejsze zamknięcie – później tylko z oświetloną trasą (odblokowane oświetlenie). */
+export function maxCloseH(ep: EconomyParams, anyLit: boolean): number {
+  return anyLit && ep.milestones ? Math.max(ep.hours.maxCloseH, ep.milestones.lighting.maxCloseLitH) : ep.hours.maxCloseH;
+}
+
+export function setHours(state: GameState, hours: OpeningHours, ep: EconomyParams, anyLit = false): void {
+  const maxC = maxCloseH(ep, anyLit);
+  const open = Math.max(ep.hours.minOpenH, Math.min(hours.openH, maxC - 1));
+  const close = Math.min(maxC, Math.max(hours.closeH, open + 1));
   state.hours = { openH: open, closeH: close };
 }
 
 /** Największy możliwy nowy kredyt [zł]. */
 export function loanLimit(state: GameState, facts: ResortFacts, ep: EconomyParams): number {
-  return Math.max(0, ep.loan.maxLoanToAssets * (facts.assetValuePln + Math.max(0, state.balancePln)) - debtOf(state));
+  const byAssets = ep.loan.maxLoanToAssets * (facts.assetValuePln + Math.max(0, state.balancePln)) - debtOf(state);
+  // Etap 7g: limit kredytu z kamienia milowego (łączny dług).
+  const byMilestone = ep.milestones && state.mode === 'career' ? unlocksOf(state, ep.milestones).loanLimitPln - debtOf(state) : Infinity;
+  return Math.max(0, Math.min(byAssets, byMilestone));
 }
 
 /** Kredyt inwestycyjny (rata annuitetowa co miesiąc). Zwraca komunikat błędu albo null. */
@@ -1344,7 +1389,7 @@ export function takeLoan(state: GameState, amountPln: number, years: number, fac
   const amount = Math.round(amountPln);
   if (!(amount > 0)) return 'Podaj kwotę kredytu.';
   const lim = loanLimit(state, facts, ep);
-  if (amount > lim) return `Bank pożyczy najwyżej ${fmtPln(lim)} (70 % majątku i gotówki minus obecne kredyty).`;
+  if (amount > lim) return `Bank pożyczy najwyżej ${fmtPln(lim)} (70 % majątku i gotówki minus obecne kredyty; limit z kamienia milowego).`;
   const n = Math.round(Math.min(ep.loan.maxTermYears, Math.max(ep.loan.minTermYears, years)) * 12);
   const r = ep.loan.interestRatePerYear / 12;
   const payment = r > 0 ? (amount * r) / (1 - (1 + r) ** -n) : amount / n;
