@@ -1,0 +1,250 @@
+{
+  "_opis": "Etap 3D-0: prototyp widoku 3D (Three.js) – tylko rysowanie, symulacja bez zmian. Wartości „do wyczucia” – stroić na Macu.",
+  "terrain": {
+    "chunkCells": {
+      "value": 50,
+      "unit": "komórek",
+      "source": "kawałek terenu 50 × 50 komórek po 10 m = 500 m; 8 × 9 kawałków na mapę Pilska"
+    },
+    "lodDistancesM": {
+      "value": [
+        900,
+        2000,
+        4000
+      ],
+      "unit": "m",
+      "source": "odległość kamery od kawałka, powyżej której krok siatki 2×, 4×, 8× (10 → 20 → 40 → 80 m); do wyczucia"
+    },
+    "skirtM": {
+      "value": 15,
+      "unit": "m",
+      "source": "fartuch na brzegach kawałków – zasłania szczeliny między poziomami szczegółowości"
+    },
+    "backgroundStepCells": {
+      "value": 2,
+      "unit": "komórek",
+      "source": "teren okolicy (Copernicus 30 m) co 2 komórki = 60 m"
+    },
+    "backgroundDropM": {
+      "value": 8,
+      "unit": "m",
+      "source": "teren okolicy poza mapą obniżony o średnią różnicę Copernicus DEM (model powierzchni z lasem) – NMT, ok. +10 m wg CLAUDE.md; do wyczucia"
+    },
+    "snowLineWidthM": {
+      "value": 150,
+      "unit": "m",
+      "source": "przejście śniegu na terenie okolicy wg średniej grubości śniegu w pasach wysokości mapy"
+    }
+  },
+  "forest": {
+    "spacingM": {
+      "value": 7,
+      "unit": "m",
+      "source": "odstęp siatki drzew (jedno drzewo na oczko, położenie ze skrótu jak w 2D); świerki w Beskidach ok. 400–700 szt./ha w drzewostanach dojrzałych → 6–7 m"
+    },
+    "heightM": {
+      "value": 24,
+      "unit": "m",
+      "source": "wysokość świerka (z rozrzutem 0,75–1,25×) – drzewostany Beskidu Żywieckiego 20–30 m"
+    },
+    "shrubSpacingM": {
+      "value": 5,
+      "unit": "m",
+      "source": "kosodrzewina – kępy co 5 m"
+    },
+    "shrubHeightM": {
+      "value": 1.8,
+      "unit": "m",
+      "source": "kosodrzewina 1–2,5 m"
+    },
+    "variants": {
+      "value": 4,
+      "unit": "szt.",
+      "source": "warianty świerka generowane kodem"
+    },
+    "seed": {
+      "value": 7331,
+      "unit": "-",
+      "source": "ziarno rozmieszczenia drzew (to samo, co warstwa drzew 2D)"
+    }
+  },
+  "quality": {
+    "_opis": "trzy ustawienia jakości: niskie, średnie, wysokie",
+    "shadowCascades": {
+      "value": [
+        1,
+        3,
+        4
+      ],
+      "unit": "szt.",
+      "source": "kaskady mapy cieni"
+    },
+    "shadowMapPx": {
+      "value": [
+        1024,
+        2048,
+        2048
+      ],
+      "unit": "px",
+      "source": "rozdzielczość mapy cieni kaskady"
+    },
+    "shadowFarM": {
+      "value": [
+        1500,
+        3000,
+        5000
+      ],
+      "unit": "m",
+      "source": "zasięg cieni"
+    },
+    "treesNearM": {
+      "value": [
+        300,
+        500,
+        900
+      ],
+      "unit": "m",
+      "source": "drzewa 3D (z cieniem) do tej odległości, dalej płaskie obrazki"
+    },
+    "ao": {
+      "value": [
+        0,
+        1,
+        1
+      ],
+      "unit": "0/1",
+      "source": "przyciemnienie zagłębień (GTAO)"
+    },
+    "pixelRatio": {
+      "value": [
+        0.75,
+        1,
+        1.5
+      ],
+      "unit": "×",
+      "source": "mnożnik gęstości pikseli (najwyżej gęstość ekranu)"
+    },
+    "peopleMax": {
+      "value": [
+        800,
+        3000,
+        6000
+      ],
+      "unit": "os.",
+      "source": "najwięcej postaci rysowanych naraz"
+    }
+  },
+  "camera": {
+    "fovDeg": {
+      "value": 40,
+      "unit": "°",
+      "source": "kąt widzenia kamery (Cities: Skylines ok. 40–45°)"
+    },
+    "minDistanceM": {
+      "value": 25,
+      "unit": "m",
+      "source": "najbliżej celu"
+    },
+    "maxDistanceM": {
+      "value": 9000,
+      "unit": "m",
+      "source": "najdalej od celu"
+    },
+    "minPitchDeg": {
+      "value": 8,
+      "unit": "°",
+      "source": "najbardziej poziomo (prawie poziomo)"
+    },
+    "maxPitchDeg": {
+      "value": 89,
+      "unit": "°",
+      "source": "z góry"
+    },
+    "minClearanceM": {
+      "value": 6,
+      "unit": "m",
+      "source": "kamera nie schodzi niżej niż tyle nad terenem"
+    },
+    "panSpeed": {
+      "value": 1.2,
+      "unit": "1/s",
+      "source": "WASD: przesunięcie celu o tyle odległości kamery na sekundę"
+    },
+    "rotateSpeedDegS": {
+      "value": 90,
+      "unit": "°/s",
+      "source": "Q / E: obrót"
+    },
+    "zoomStep": {
+      "value": 1.18,
+      "unit": "×",
+      "source": "kółko myszy: zmiana odległości na jeden ząbek"
+    }
+  },
+  "atmosphere": {
+    "fogDensity": {
+      "value": 0.00007,
+      "unit": "1/m",
+      "source": "mgła wykładnicza – widoczność kilkunastu km w pogodny dzień; do wyczucia"
+    },
+    "valleyFogTopM": {
+      "value": 820,
+      "unit": "m n.p.m.",
+      "source": "mgła w dolinach do tej wysokości (rano zimą najgęstsza)"
+    },
+    "valleyFogStrength": {
+      "value": 0.25,
+      "unit": "-",
+      "source": "siła mgły w dolinach"
+    },
+    "exposure": {
+      "value": 1.15,
+      "unit": "-",
+      "source": "ekspozycja mapowania tonów (ACES)"
+    },
+    "nightAmbient": {
+      "value": 0.06,
+      "unit": "-",
+      "source": "jasność nocnego nieba"
+    },
+    "pisteLightIntensity": {
+      "value": 0.5,
+      "unit": "-",
+      "source": "jasność oświetlonych tras nocą (emisja)"
+    }
+  },
+  "people": {
+    "heightM": {
+      "value": 1.75,
+      "unit": "m",
+      "source": "wzrost postaci"
+    },
+    "seatHeightM": {
+      "value": 1.6,
+      "unit": "m",
+      "source": "siedzący na krzesełku: wysokość pod liną"
+    }
+  },
+  "pistes": {
+    "poleSpacingM": {
+      "value": 25,
+      "unit": "m",
+      "source": "tyczki na krawędziach trasy co 25 m"
+    },
+    "poleHeightM": {
+      "value": 1.8,
+      "unit": "m",
+      "source": "wysokość tyczki"
+    },
+    "netSlopePercent": {
+      "value": 40,
+      "unit": "%",
+      "source": "siatki zabezpieczające tam, gdzie nachylenie ≥ 40 % i las przy krawędzi"
+    },
+    "netHeightM": {
+      "value": 2.2,
+      "unit": "m",
+      "source": "wysokość siatki"
+    }
+  }
+}

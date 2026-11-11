@@ -186,6 +186,17 @@ i pracujące, trasy zamknięte przez pryzmy, flota ratraków, przewidywany konie
 - Raport sezonu: śnieg (m³), woda, energia, paliwo, koszty naśnieżania i ratraków, **dni otwarte dzięki
   naśnieżaniu**.
 
+### Widok 3D – podgląd (etap 3D-0)
+
+- **F3** albo menu ☰ → „Widok 3D (podgląd)” – przełącza na widok 3D; **F3** lub przycisk „Mapa 2D” wraca.
+  Budowanie zostaje w mapie 2D – w 3D tylko się ogląda (dane te same: śnieg, goście, wyciągi, ratraki).
+- Kamera: **W A S D** / strzałki albo przeciąganie lewym przyciskiem – przesuwanie; **Q E** albo prawy /
+  środkowy przycisk – obrót; **R F** – pochylenie (od widoku z góry do niemal poziomego); kółko – zbliżenie
+  do miejsca pod kursorem; przycisk „Widok z góry”. Kamera nie wchodzi pod teren.
+- „Jakość: niska / średnia / wysoka” – cienie, zasięg drzew 3D, przyciemnienie zagłębień, rozdzielczość.
+- Menu `Dev` – licznik klatek, czas pracy kodu, liczba wywołań rysowania, trójkątów, drzew i postaci.
+- Zrzuty i opis: `docs/3d/README.md`.
+
 ### Sterowanie
 
 | Czynność | Jak |

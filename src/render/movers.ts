@@ -322,6 +322,11 @@ export class MoverLayer {
     return this.count;
   }
 
+  /** Etap 3D-0: ostatnia ramka z wątku gości (tylko odczyt – widok 3D rysuje te same osoby). */
+  get frame(): { data: Float32Array<ArrayBufferLike>; count: number; timeS: number; summer: boolean } {
+    return { data: this.data, count: this.count, timeS: this.frameTimeS, summer: this.summer };
+  }
+
   private sync(pc: ParticleContainer, n: number, texture: Texture): Particle[] {
     const arr = pc.particleChildren as Particle[];
     while (arr.length < n) arr.push(new Particle({ texture, anchorX: 0.5, anchorY: 0.5 }));

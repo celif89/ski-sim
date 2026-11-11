@@ -46,6 +46,7 @@ wyciąg po wyciągu. Pełna koncepcja gry: dokument „Symulator ośrodka narcia
 ```
 src/sim/       model świata: teren, słońce, pogoda, śnieg, naśnieżanie, ratraki, goście, ekonomia
 src/render/    PixiJS: mapa, nakładki, interfejs
+src/render3d/  Three.js: widok 3D (tylko oglądanie; etap 3D-0)
 src/worker/    Web Worker: uruchamia symulację w tle, wymiana wiadomości z widokiem
 src/tools/     narzędzia poza grą: konwerter NMT, symulacja bez grafiki z raportem
 data/          pliki JSON z parametrami; data/maps/ – mapy terenu
@@ -750,7 +751,44 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
     działek, budowa poza działkami odrzucona z listą brakujących (także ujęcie), dzierżawa przy podpisaniu
     i 1 maja, progi kamienia „dokładnie” (każdy z trzech osobno), blokady typów i oświetlenia,
     piaskownica, starszy zapis.
-- **Następny: etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja.**
+- **Etap 3D-0 – zrobiony** (listopad 2026): prototyp widoku 3D (Three.js 0.186) obok mapy 2D; symulacja
+  i widok 2D bez zmian; kopia stanu sprzed 3D na gałęzi `wersja-2d-przed-3d`.
+  - przełączanie: F3 i menu ☰ „Widok 3D (podgląd)”; moduł ładowany dopiero przy pierwszym włączeniu
+    (osobny plik ok. 660 kB); budowanie tylko w 2D; parametry `data/render3d.json`;
+  - `src/render3d/` – czyste obliczenia (testowane): `terrainMesh.ts` (siatka gry 10 m w kawałkach 50 × 50
+    komórek, 4 poziomy szczegółowości co 2^n wg odległości 900/2000/4000 m, fartuchy przeciw szczelinom,
+    NaN – bez trójkątów, normalne z różnic środkowych, na brzegu jednostronnych), `cameraRig.ts` (cel,
+    odległość, obrót, pochylenie; nie pod teren: najpierw podnosi pochylenie, potem cel), `liftGeometry.ts`
+    (lina = krzywa zwisu z symulacji `cableElevationAt`, krzesełka ze wzoru (czas · prędkość) mod odstęp –
+    jak w 2D), `buildingShapes.ts` (prostokąt o najmniejszym polu z obrysu OSM, dach 40°);
+  - rysowanie: `terrain3d.ts` (materiał terenu z teksturami danych: grubość śniegu, trasa / oświetlona,
+    las, kosówka – liniowo; stan śniegu, muldy, zabudowa – najbliższy; barwy puchu, sztruksu, firnu, brei,
+    lodu, przetarć – łaty śniegu na cienkiej pokrywie, trawa i kamienie; latem łąki; sztruks i muldy jako
+    zaburzenie normalnych do ~260 m; mgła w dolinach poniżej 820 m rano i nocą; trasy oświetlone nocą);
+    tło okolicy z Copernicus 30 m (`horizon-dem`, obniżone o 8 m – model z lasem), plamy lasu z szumu,
+    linia śniegu z mapy; `forest3d.ts` (świerki 4 warianty niskopoligonowe, kosodrzewina, rozkład
+    `treesInRect` z ziarnem jak w 2D, kawałki 500 m: blisko instancje 3D z cieniem, dalej skrzyżowane
+    obrazki; śnieg na gałęziach ze średniej grubości; wycinka z analizy układu); `objects3d.ts` (podpory
+    z belką, stacje, liny, krzesełka / gondole / orczyki z instancji, budynki OSM i gracza z dachem
+    dwuspadowym i śniegiem, tyczki co 25 m w kolorze trasy, siatki na stromiznach ≥ 40 % przy lesie, numery
+    tras, ratraki ze światłami i reflektorami nocą, armatki z chmurą cząstek); `people3d.ts` (postacie
+    instancjonowane z ramek wątku gości: narty / deska, kurtka z ziarna, pochylenie w skręcie, siedzący
+    na krzesełkach); `view3d.ts` (Słońce z `sunPosition` i `localToUtcMs`, zachmurzenie z modelu pogody,
+    cienie kaskadowe CSM, niebo Preetham, mgła, noc, GTAO, ACES, korekcja barw; jakość 0–2 – kaskady
+    1/3/4, mapa cieni 1024/2048/2048, drzewa 3D do 300/500/900 m, GTAO od średniej);
+  - pomiar (kontener bez karty graficznej, SwiftShader, 1920 × 1080): praca kodu na klatkę 5–12 ms,
+    520–950 wywołań rysowania, cały ośrodek 2,9 mln trójkątów, z bliska 13–20 mln (z przebiegami cieni),
+    do 40–70 tys. drzew 3D; sama klatka w kontenerze trwa ok. 5–10 s (0,1–0,2 kl./s – karta graficzna
+    udawana przez procesor) – nic nie mówi o Macu; miarodajny pomiar dopiero na Macu (menu `Dev`);
+    po pomiarze zasięg drzew 3D zmniejszony 800 → 500 m (średnia jakość: 23 → 14 mln trójkątów z bliska);
+  - zrzuty `docs/3d/` (README.md): cały ośrodek o poranku, Hala Miziowa w południe, trasa z narciarzami,
+    wyciąg z krzesełkami, zachód słońca, noc z ratrakami, lato; scenariusz w trybie `?r3d=manual`
+    (bez pętli klatek, klatka przez `__view3d.renderOnce()`);
+  - testy `tests/render3d.test.ts` (10): kawałki bez szczelin, poziomy szczegółowości, wysokości i normalne
+    na stoku 30 %, NaN, kamera nigdy pod terenem (stok 30 %, pełny obrót i pochylenie), widok z góry,
+    zbliżenie do kursora, krzesełka na linie w stałym odstępie i z okresem odstęp / prędkość, zamknięty
+    wyciąg, prostokąt budynku.
+- **Następny: etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja** (albo dalsze kroki 3D – patrz „Na później”).
 
 Uwagi techniczne:
 - Przed wypchnięciem uruchamiać `npm run build` (nie tylko `npm test` i `tsc -p tsconfig.json`):
@@ -819,6 +857,16 @@ Uwagi techniczne:
   w trakcie rysowania punktami (dopiero po zakończeniu).
 
 ## Na później
+
+- Widok 3D (3D-0): modele generowane kodem (stożki świerków, prostopadłościany stacji, postacie
+  z brył) – do wymiany na modele z programu graficznego (glTF) i animacje; siatka terenu tylko 10 m
+  (bez kafli 1 m przy zbliżeniu – sztruks i muldy jako zaburzenie normalnych, nie geometria); stan śniegu
+  w komórkach 10 m (schodki na brzegach przetarć i oświetlenia tras); brak dróg, parkingów, potoków,
+  szlaków, rurociągów i tras letnich w 3D; brak cieni chmur, opadu, gwiazd i Księżyca; tło okolicy bez
+  drzew (plamy z szumu); dalekie drzewa (obrazki) budowane od razu dla całej mapy (~290 tys.); cień
+  rzucają tylko bliskie drzewa; kamera może wejść między korony drzew; brak wyboru obiektów kliknięciem
+  i kart w 3D; śnieg na gałęziach ze średniej grubości na mapie (nie z opadu i temperatury); płynność
+  na Macu nieznana.
 
 - Lato (7b): popyt letni, udziały typów gości, ceny i koszty atrakcji do kalibracji (frekwencja Pilska,
   Babiej Góry, dane kolei); wynik lata w raporcie raczej optymistyczny (cała kanapa i restauracja

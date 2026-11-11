@@ -33,6 +33,15 @@ export class DevMenu {
     this.panel.classList.toggle('hidden');
   }
 
+  /** Etap 3D-0: sekcja z tekstem (np. licznik widoku 3D) – zwraca element do wypełniania. */
+  addInfo(title: string): HTMLElement {
+    const box = document.createElement('div');
+    box.className = 'dev-info';
+    box.innerHTML = `<div class="dev-title">${title}</div><div class="dev-info-body muted small">włącz widok 3D (F3)</div>`;
+    this.panel.appendChild(box);
+    return box.querySelector('.dev-info-body')!;
+  }
+
   /**
    * Etap 7e: sekcja suwaków (np. rzeźba terenu). get/set – odczyt i zmiana wartości (zmiana od razu
    * na mapie, bez zapisu do pliku); onCopy – tekst JSON do skopiowania (do wklejenia w plik danych),

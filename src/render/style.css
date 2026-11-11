@@ -3023,3 +3023,37 @@ tr.g-closed td {
   margin: 4px 0 0 18px;
   padding: 0;
 }
+
+/* Etap 3D-0: widok 3D – płótno pod interfejsem, pasek z przyciskami. */
+.view3d-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  outline: none;
+}
+.u-3d-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  z-index: 6;
+}
+.u-3d-bar.hidden,
+body.view-3d .u-build,
+body.view-3d .u-palette,
+body.view-3d .u-nav,
+body.view-3d .u-legend,
+body.view-3d .u-minimap {
+  display: none;
+}
+.u-3d-help {
+  font-size: 12.5px;
+  color: var(--text-2, #9db0c3);
+  margin-left: 6px;
+}

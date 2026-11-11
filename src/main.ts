@@ -113,7 +113,7 @@ import { TopBar, type GameSpeed, type SnowAtPoints } from './render/topBar';
 import { BuildBar } from './render/buildBar';
 import type { BuildCategory, PaletteCard } from './render/buildBar';
 import uiJson from '../data/ui.json';
-import { UiShell, parseScaleParams } from './render/ui/shell';
+import { UiShell, parseScaleParams, tipAttrs } from './render/ui/shell';
 import { DataViews } from './render/ui/dataViews';
 import { Notifications, parseNoticeParams } from './render/ui/notifications';
 import type { Notice } from './render/ui/notifications';
@@ -696,6 +696,7 @@ async function start(): Promise<void> {
         { id: 'snow', icon: 'snow', label: 'Naśnieżanie i ratraki' },
         { id: 'tutorial', icon: 'info', label: 'Samouczek naśnieżania' },
         { id: 'milestones', icon: 'star', label: 'Kamienie milowe' },
+        { id: 'view3d', icon: 'terrain', label: 'Widok 3D (podgląd)', key: 'F3' },
         { id: 'objects', icon: 'layers', label: 'Obiekty ośrodka i plik układu' },
         { id: 'history', icon: 'bell', label: 'Historia powiadomień', sep: true },
         { id: 'save', icon: 'save', label: 'Zapisz grę do pliku', sep: true },
@@ -724,6 +725,7 @@ async function start(): Promise<void> {
         else if (arg === 'history') infoWindow.show('Historia powiadomień', notices.historyHtml());
         else if (arg === 'tutorial') snowTutorial.start();
         else if (arg === 'milestones') infoWindow.show('Kamienie milowe', milestonesHtml());
+        else if (arg === 'view3d') void toggle3D();
         else if (arg === 'compact') {
           buildBar.setCompact(!buildBar.compact);
           buildBar.showToast(buildBar.compact ? 'Menu budowy: tryb kompaktowy.' : 'Menu budowy: pełne karty.');
@@ -1541,6 +1543,97 @@ async function start(): Promise<void> {
       else if (mode !== 'widok') void game.showStart();
     }
     const devMenu = new DevMenu(ui);
+    // ---------------------------------------------------------------- etap 3D-0: widok 3D (Three.js, ładowany przy pierwszym użyciu)
+    let view3d: import('./render3d/view3d').View3D | null = null;
+    let view3dLoading = false;
+    const devInfo3d = devMenu.addInfo('Widok 3D');
+    const bar3d = document.createElement('div');
+    bar3d.className = 'u-panel u-3d-bar hidden';
+    bar3d.innerHTML = `<button type="button" class="u-btn" data-3d="top" ${tipAttrs('Widok z góry nad środkiem ekranu')}>Widok z góry</button><button type="button" class="u-btn" data-3d="quality" ${tipAttrs('Jakość: cienie, przyciemnienie zagłębień, zasięg drzew 3D')}>Jakość: średnia</button><button type="button" class="u-btn primary" data-3d="back" ${tipAttrs('Wróć do mapy 2D (budowanie)', 'F3')}>Mapa 2D</button><span class="u-3d-help">WASD / przeciągnij – przesuń · Q E / prawy przycisk – obrót · R F – pochylenie · kółko – zbliżenie</span>`;
+    ui.appendChild(bar3d);
+    bar3d.addEventListener('click', (e) => {
+      const a = (e.target as HTMLElement).closest<HTMLElement>('[data-3d]')?.getAttribute('data-3d');
+      if (!view3d) return;
+      if (a === 'top') view3d.topView();
+      else if (a === 'back') void toggle3D();
+      else if (a === 'quality') {
+        const q = ((view3d.qualityLevel + 1) % 3) as 0 | 1 | 2;
+        view3d.setQuality(q);
+        bar3d.querySelector('[data-3d="quality"]')!.textContent = `Jakość: ${['niska', 'średnia', 'wysoka'][q]}`;
+      }
+    });
+    async function toggle3D(): Promise<void> {
+      if (view3d?.active) {
+        view3d.hide();
+        app.canvas.style.visibility = '';
+        app.stage.visible = true;
+        bar3d.classList.add('hidden');
+        document.body.classList.remove('view-3d');
+        return;
+      }
+      if (view3dLoading) return;
+      if (!view3d) {
+        view3dLoading = true;
+        timePanel.setStatus('Wczytuję widok 3D…');
+        try {
+          const [{ View3D }, { parseRender3DParams }, r3json] = await Promise.all([import('./render3d/view3d'), import('./render3d/params'), import('../data/render3d.json')]);
+          const ctx3 = OSM_CONTEXTS[`../data/maps/${simSettings.mapName}/osm-context.json`] as MapContextData | undefined;
+          const osmBuildings = (ctx3?.buildings ?? []).map((b) => b.points.map(([e, n]) => grid.puwg92ToLocal(e, n)).filter((q): q is PointM => q !== null)).filter((l) => l.length >= 3);
+          const geo = grid.georef;
+          view3d = new View3D(
+            root,
+            {
+              grid,
+              forest: landCover?.forest ?? null,
+              shrub: landCover?.shrub ?? null,
+              built: landCover?.built ?? null,
+              dem: () => horizonDem ?? null,
+              mapWestE: geo?.westEastingM ?? 0,
+              mapNorthN: geo?.northNorthingM ?? 0,
+              location,
+              lp: liftParams,
+              osmBuildings,
+              layout: () => build.current,
+              snow: () => lastSnow,
+              summer: () => {
+                const m = timePanel.date.month;
+                return m >= 5 && m <= 10;
+              },
+              date: () => timePanel.date,
+              hour: () => timePanel.hour,
+              cloud: () => lastState?.cloudFraction ?? 0.3,
+              gameTimeS: () => guestCtl.gameTimeS ?? timePanel.hour * 3600,
+              frame: () => movers.frame,
+              groomers: () => movers.groomers,
+              plumes: () => build.plumes,
+            },
+            parseRender3DParams((r3json as { default: unknown }).default),
+          );
+          (window as unknown as { __view3d?: unknown }).__view3d = view3d;
+        } catch (e) {
+          console.error(e);
+          buildBar.showToast(`Nie udało się uruchomić widoku 3D: ${e instanceof Error ? e.message : String(e)}`);
+          view3dLoading = false;
+          timePanel.setStatus('');
+          return;
+        }
+        view3dLoading = false;
+        timePanel.setStatus('');
+      }
+      build.setTool('select');
+      buildBar.close();
+      app.canvas.style.visibility = 'hidden';
+      app.stage.visible = false;
+      bar3d.classList.remove('hidden');
+      document.body.classList.add('view-3d');
+      // ?r3d=manual – bez pętli klatek (zrzuty w teście; klatka przez __view3d.renderOnce()).
+      view3d.show(new URLSearchParams(window.location.search).get('r3d') !== 'manual');
+    }
+    setInterval(() => {
+      if (!view3d?.active) return;
+      const s3 = view3d.stats;
+      devInfo3d.innerHTML = `${s3.fps.toFixed(1)} kl./s · praca kodu ${s3.frameMs.toFixed(1)} ms/kl.<br>${s3.drawCalls} wywołań rysowania, ${(s3.triangles / 1e6).toFixed(2)} mln trójkątów<br>drzewa 3D ${s3.treesNear.toLocaleString('pl-PL')}, obrazki ${s3.treesFar.toLocaleString('pl-PL')}<br>postacie ${s3.people}, krzesełka ${s3.carriers}; jakość ${['niska', 'średnia', 'wysoka'][view3d.qualityLevel]}`;
+    }, 500);
     // Etap 7e: pierścień nachylenia przy budowie (na ekranie, nad wszystkim) i suwaki rzeźby w menu Dev.
     const slopeRing = new SlopeRing(
       grid,
@@ -1773,6 +1866,12 @@ async function start(): Promise<void> {
     input.onDragMove = (x, y) => build.handleDragMove(x, y);
     input.onDragEnd = () => build.handleDragEnd();
     input.onKey = (code) => {
+      // Etap 3D-0: F3 – widok 3D; w 3D klawisze mapy i budowania nie działają (sterowanie kamerą 3D).
+      if (code === 'F3') {
+        void toggle3D();
+        return true;
+      }
+      if (view3d?.active && code !== 'Escape' && code !== 'Backquote') return true;
       if (code === 'Escape') {
         if (reportWindow.visible) return (reportWindow.hide(), true);
         if (infoWindow.visible) return (infoWindow.hide(), true);
