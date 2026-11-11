@@ -3,7 +3,7 @@
  * (Web Worker), buduje mapę bazową i nakładki, liczy horyzont (cienie), uruchamia moduł słońca
  * i pogody, obsługuje przesuwanie, zoom, panele i narzędzia.
  */
-import { Application, CanvasSource, Container, Sprite, Texture } from 'pixi.js';
+import { Application, CanvasSource, Container, Graphics, Sprite, Texture } from 'pixi.js';
 import '@fontsource/barlow/400.css';
 import '@fontsource/barlow/500.css';
 import '@fontsource/barlow/600.css';
@@ -78,7 +78,7 @@ import { DevMenu } from './render/devMenu';
 import { BuildController } from './render/buildController';
 import type { SnowWarning } from './render/buildController';
 import type { MapContextData, MapLabel } from './render/resortLayer';
-import { ROAD_WIDTH_M } from './render/resortLayer';
+import { ROAD_WIDTH_M, drawEditHandles } from './render/resortLayer';
 import { parseLiftParams } from './sim/lifts';
 import type { PointM } from './sim/lifts';
 import { parsePisteParams } from './sim/pistes';
@@ -1583,12 +1583,12 @@ async function start(): Promise<void> {
     const devInfo3d = devMenu.addInfo('Widok 3D');
     const bar3d = document.createElement('div');
     bar3d.className = 'u-panel u-3d-bar hidden';
-    bar3d.innerHTML = `<button type="button" class="u-btn" data-3d="top" ${tipAttrs('Widok z góry nad środkiem ekranu')}>Widok z góry</button><button type="button" class="u-btn" data-3d="quality" ${tipAttrs('Jakość: cienie, przyciemnienie zagłębień, zasięg drzew 3D')}>Jakość: średnia</button><button type="button" class="u-btn primary" data-3d="back" ${tipAttrs('Wróć do mapy 2D (budowanie)', 'F3')}>Mapa 2D</button><span class="u-3d-help">WASD / przeciągnij – przesuń · Q E / prawy przycisk – obrót · R F – pochylenie · kółko – zbliżenie</span>`;
+    bar3d.innerHTML = `<button type="button" class="u-btn" data-3d="top" ${tipAttrs('Widok z góry nad miejscem pod kursorem (precyzja na stromych stokach); drugi raz – powrót', 'Z')}>Widok z góry</button><button type="button" class="u-btn" data-3d="quality" ${tipAttrs('Jakość: cienie, przyciemnienie zagłębień, zasięg drzew 3D')}>Jakość: średnia</button><button type="button" class="u-btn primary" data-3d="back" ${tipAttrs('Mapa 2D z góry (to samo miejsce). Kamera 3D: W A S D / przeciągnij – przesuń, Q E / prawy przycisk – obrót, R F – pochylenie, kółko – zbliżenie, Z – widok z góry', 'F3')}>Mapa 2D</button><span class="u-3d-help">WASD / przeciągnij – przesuń · Q E / prawy przycisk – obrót · R F – pochylenie · kółko – zbliżenie · Z – widok z góry</span>`;
     ui.appendChild(bar3d);
     bar3d.addEventListener('click', (e) => {
       const a = (e.target as HTMLElement).closest<HTMLElement>('[data-3d]')?.getAttribute('data-3d');
       if (!view3d) return;
-      if (a === 'top') view3d.topView();
+      if (a === 'top') view3d.toggleTopDown();
       else if (a === 'back') void toggle3D();
       else if (a === 'quality') {
         const q = ((view3d.qualityLevel + 1) % 3) as 0 | 1 | 2;
@@ -1596,8 +1596,6 @@ async function start(): Promise<void> {
         bar3d.querySelector('[data-3d="quality"]')!.textContent = `Jakość: ${['niska', 'średnia', 'wysoka'][q]}`;
       }
     });
-    /** Klawisze działające w widoku 3D (etap 3D-1: nakładki, czas, profil, dymek, menu). */
-    const VIEW3D_KEYS = new Set(['Escape', 'Backquote', 'Space', 'KeyK', 'KeyM', 'KeyG', 'KeyI', 'KeyP', 'Delete']);
     async function toggle3D(): Promise<void> {
       if (view3d?.active) {
         // Powrót do mapy: mapa 2D nad tym miejscem, na które patrzyła kamera 3D.
@@ -1676,8 +1674,6 @@ async function start(): Promise<void> {
         view3dLoading = false;
         timePanel.setStatus('');
       }
-      build.setTool('select');
-      buildBar.close();
       // Etap 3D-1: płótno mapy 2D zostaje nad widokiem 3D – przezroczyste, bez świata mapy, tylko
       // elementy ekranu (profil, pierścień nachylenia, okienko budowy, działki); mysz trafia do 3D,
       // a kliknięcia i przeciągnięcia – do tych samych narzędzi co w 2D (przelicznik `viewCam`).
@@ -1722,6 +1718,10 @@ async function start(): Promise<void> {
     // Etap 7f: przyciąganie, linie pomocnicze i okienko przy kursorze w trakcie budowy.
     const snapOverlay = new SnapOverlay();
     app.stage.addChild(snapOverlay.root);
+    // Etap 3D-2: uchwyty edycji nad widokiem 3D (w 2D rysuje je warstwa mapy) – te same kształty, rzut przez viewCam.
+    const handles3d = new Graphics();
+    handles3d.eventMode = 'none';
+    app.stage.addChild(handles3d);
     let reliefPending = false;
     const applyReliefLater = () => {
       if (reliefPending) return;
@@ -1948,8 +1948,13 @@ async function start(): Promise<void> {
         void toggle3D();
         return true;
       }
-      // W 3D: klawisze kamery (WASD, strzałki, Q E R F) obsługuje widok 3D; narzędzia budowy – od etapu 3D-2.
-      if (view3d?.active && (CAMERA_KEYS.has(code) || (!VIEW3D_KEYS.has(code) && !/^(Digit|Numpad)[1-9]$/.test(code)))) return true;
+      // W 3D: klawisze kamery (WASD, strzałki, Q E R F) obsługuje widok 3D, Z – widok z góry; reszta jak w 2D
+      // (narzędzia budowy E, Q, F – w 3D tylko z palety, bo te litery sterują kamerą).
+      if (view3d?.active && CAMERA_KEYS.has(code)) return true;
+      if (view3d?.active && code === 'KeyZ') {
+        view3d.toggleTopDown();
+        return true;
+      }
       if (code === 'Escape') {
         if (reportWindow.visible) return (reportWindow.hide(), true);
         if (infoWindow.visible) return (infoWindow.hide(), true);
@@ -2225,6 +2230,11 @@ async function start(): Promise<void> {
       slopeRing.update(viewCam, cur, RING_TOOLS.has(build.currentTool));
       build.update(cur, guestCtl.gameTimeS ?? nowS);
       snapOverlay.update(viewCam, cur, build.snapView);
+      handles3d.clear();
+      if (cam3d) {
+        const st3 = build.drawState;
+        if (st3) drawEditHandles(handles3d, st3.handles ?? [], st3.hoverPoint, (x, y) => viewCam.worldToScreen(x, y));
+      }
       parcelFrame();
       if (performance.now() - tutorialMs > 500) {
         tutorialMs = performance.now();

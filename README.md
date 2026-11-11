@@ -186,14 +186,17 @@ i pracujące, trasy zamknięte przez pryzmy, flota ratraków, przewidywany konie
 - Raport sezonu: śnieg (m³), woda, energia, paliwo, koszty naśnieżania i ratraków, **dni otwarte dzięki
   naśnieżaniu**.
 
-### Widok 3D (etapy 3D-0, 3D-1)
+### Widok 3D (etapy 3D-0 – 3D-2)
 
 - **F3** albo menu ☰ → „Widok 3D” – przełącza na widok 3D; **F3** lub przycisk „Mapa 2D” wraca (mapa 2D
   pokazuje to samo miejsce).
 - W 3D widać wszystko, co na mapie: drogi, potoki, parkingi, rurociągi, hydranty, rowy, szlaki, trasy
   letnie; kliknięcie obiektu (także liny, podpory, dachu) albo gościa otwiera tę samą kartę co w 2D;
   nakładki danych (lewy pasek, klawisze 1–9, G, M, K) leżą na terenie 3D, legenda jak w 2D.
-  Budowanie w 3D – etap 3D-2.
+- Budowanie w 3D: te same narzędzia i paleta co na mapie; linie biegną po terenie (za wzgórzem
+  przerywane), wyciąg widać od razu z podporami i liną na prawdziwej wysokości (za mały prześwit na
+  czerwono). **Z** (albo przycisk „Widok z góry”) – kamera pionowo nad miejscem pod kursorem, drugi raz –
+  powrót. Klawisze E, Q, F, R sterują w 3D kamerą – drogę, ścieżkę i rurę zasilającą wybieraj z palety.
 - Kamera: **W A S D** / strzałki albo przeciąganie lewym przyciskiem – przesuwanie; **Q E** albo prawy /
   środkowy przycisk – obrót; **R F** – pochylenie (od widoku z góry do niemal poziomego); kółko – zbliżenie
   do miejsca pod kursorem; przycisk „Widok z góry”. Kamera nie wchodzi pod teren.

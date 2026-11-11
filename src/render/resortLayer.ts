@@ -905,31 +905,39 @@ export class ResortLayer {
     }
     if (st.draftLift) drawLift(st.draftLift.design, st.draftLift.analysis, { selected: false, draft: true });
     // ---- uchwyty edycji (przeciąganie punktów osi, szerokości, stacji)
-    for (const h of st.handles ?? []) {
-      const p = toS(h.xM, h.yM);
-      const r = h.hover ? 8 : 6;
-      if (h.kind === 'pisteAdd' || h.kind === 'liftAdd') {
-        g.circle(p.xPx, p.yPx, h.hover ? 7 : 5).fill({ color: 0xffffff, alpha: 0.85 }).stroke({ width: 1.5, color: 0xff7a1a });
-        g.moveTo(p.xPx - 3, p.yPx).lineTo(p.xPx + 3, p.yPx).moveTo(p.xPx, p.yPx - 3).lineTo(p.xPx, p.yPx + 3).stroke({ width: 1.5, color: 0xff7a1a });
-      } else if (h.kind === 'pisteWidth') {
-        g.rect(p.xPx - r / 2, p.yPx - r / 2, r, r).fill({ color: 0xff7a1a }).stroke({ width: 1.5, color: 0xffffff });
-      } else if (h.kind === 'liftBend') {
-        g.moveTo(p.xPx, p.yPx - r - 2).lineTo(p.xPx + r + 2, p.yPx).lineTo(p.xPx, p.yPx + r + 2).lineTo(p.xPx - r - 2, p.yPx).closePath().fill({ color: h.mid ? 0x2f9e44 : 0xfacc15 }).stroke({ width: 2, color: INK });
-      } else if (h.kind === 'liftBottom' || h.kind === 'liftTop') {
-        g.roundRect(p.xPx - r - 3, p.yPx - r, 2 * r + 6, 2 * r, 3).fill({ color: 0xfacc15 }).stroke({ width: 2, color: INK });
-      } else if (h.kind === 'linePoint' || h.kind === 'pistePoint') {
-        // Punkt kontrolny linii (etap 7c): biały z pomarańczową obwódką, większy pod kursorem.
-        g.circle(p.xPx, p.yPx, r).fill({ color: 0xffffff }).stroke({ width: 2.5, color: 0xff7a1a });
-        if (h.hover) g.circle(p.xPx, p.yPx, r + 4).stroke({ width: 1.5, color: 0xff7a1a, alpha: 0.5 });
-      } else {
-        g.circle(p.xPx, p.yPx, r).fill({ color: 0xffffff }).stroke({ width: 2.5, color: 0xff7a1a });
-      }
-    }
-    if (st.hoverPoint) {
-      const p = toS(st.hoverPoint.xM, st.hoverPoint.yM);
-      g.circle(p.xPx, p.yPx, 6).fill({ color: SELECT_COLOR }).stroke({ width: 2, color: 0x000000 });
-    }
+    drawEditHandles(g, st.handles ?? [], st.hoverPoint, toS);
     for (let i = li; i < this.labelPool.length; i++) this.labelPool[i].visible = false;
     void this.grid;
+  }
+}
+
+/**
+ * Uchwyty edycji (punkty osi, szerokość, stacje, załamania) i punkt pod kursorem – w pikselach ekranu.
+ * Etap 3D-2: ta sama funkcja rysuje uchwyty nad widokiem 3D (rzut przez `ViewCamera`).
+ */
+export function drawEditHandles(g: Graphics, handles: EditHandle[], hoverPoint: { xM: number; yM: number } | null, toS: (x: number, y: number) => { xPx: number; yPx: number }): void {
+  for (const h of handles) {
+    const p = toS(h.xM, h.yM);
+    const r = h.hover ? 8 : 6;
+    if (h.kind === 'pisteAdd' || h.kind === 'liftAdd') {
+      g.circle(p.xPx, p.yPx, h.hover ? 7 : 5).fill({ color: 0xffffff, alpha: 0.85 }).stroke({ width: 1.5, color: 0xff7a1a });
+      g.moveTo(p.xPx - 3, p.yPx).lineTo(p.xPx + 3, p.yPx).moveTo(p.xPx, p.yPx - 3).lineTo(p.xPx, p.yPx + 3).stroke({ width: 1.5, color: 0xff7a1a });
+    } else if (h.kind === 'pisteWidth') {
+      g.rect(p.xPx - r / 2, p.yPx - r / 2, r, r).fill({ color: 0xff7a1a }).stroke({ width: 1.5, color: 0xffffff });
+    } else if (h.kind === 'liftBend') {
+      g.moveTo(p.xPx, p.yPx - r - 2).lineTo(p.xPx + r + 2, p.yPx).lineTo(p.xPx, p.yPx + r + 2).lineTo(p.xPx - r - 2, p.yPx).closePath().fill({ color: h.mid ? 0x2f9e44 : 0xfacc15 }).stroke({ width: 2, color: INK });
+    } else if (h.kind === 'liftBottom' || h.kind === 'liftTop') {
+      g.roundRect(p.xPx - r - 3, p.yPx - r, 2 * r + 6, 2 * r, 3).fill({ color: 0xfacc15 }).stroke({ width: 2, color: INK });
+    } else if (h.kind === 'linePoint' || h.kind === 'pistePoint') {
+      // Punkt kontrolny linii (etap 7c): biały z pomarańczową obwódką, większy pod kursorem.
+      g.circle(p.xPx, p.yPx, r).fill({ color: 0xffffff }).stroke({ width: 2.5, color: 0xff7a1a });
+      if (h.hover) g.circle(p.xPx, p.yPx, r + 4).stroke({ width: 1.5, color: 0xff7a1a, alpha: 0.5 });
+    } else {
+      g.circle(p.xPx, p.yPx, r).fill({ color: 0xffffff }).stroke({ width: 2.5, color: 0xff7a1a });
+    }
+  }
+  if (hoverPoint) {
+    const p = toS(hoverPoint.xM, hoverPoint.yM);
+    g.circle(p.xPx, p.yPx, 6).fill({ color: SELECT_COLOR }).stroke({ width: 2, color: 0x000000 });
   }
 }

@@ -28,6 +28,7 @@ import { Objects3D } from './objects3d';
 import type { Quality, Render3DParams } from './params';
 import type { NetworkStatic } from './network3d';
 import { Network3D } from './network3d';
+import { LiftPreview3D } from './liftPreview3d';
 import { People3D } from './people3d';
 import { governStep } from './governor';
 import type { GovernorState } from './governor';
@@ -97,6 +98,10 @@ export class View3D {
   private readonly objects: Objects3D;
   private readonly people: People3D;
   private readonly network: Network3D;
+  private readonly liftPreview: LiftPreview3D;
+  /** Etap 3D-2: „widok z góry” nad miejscem rysowania – zapamiętane ustawienie kamery do powrotu. */
+  private topSaved: RigState | null = null;
+  private anim: { from: RigState; to: RigState; t: number; durS: number } | null = null;
   private quality: Quality = 1;
   private rig: RigState;
   private running = false;
@@ -106,6 +111,7 @@ export class View3D {
   private drag: { button: number; x: number; y: number } | null = null;
   private lastLayout: unknown = null;
   private lastSnow: unknown = undefined;
+  private clearedSig = -1;
   private frames = 0;
   private fpsT = performance.now();
   private cpuSum = 0;
@@ -140,7 +146,8 @@ export class View3D {
     this.objects = new Objects3D({ groundAt, lp: src.lp, p, osmBuildings: src.osmBuildings, forest: src.forest, widthCells: g.widthCells, cellSizeM: g.cellSizeM });
     this.people = new People3D(p.quality.peopleMax[2], p.people.heightM, p.people.seatHeightM);
     this.network = new Network3D(groundAt, src.network);
-    this.scene.add(this.terrain.group, this.objects.group, this.people.group, this.network.group, this.hemi);
+    this.liftPreview = new LiftPreview3D(src.lp, groundAt);
+    this.scene.add(this.terrain.group, this.objects.group, this.people.group, this.network.group, this.liftPreview.group, this.hemi);
     if (this.forest) this.scene.add(this.forest.group);
     this.sky.scale.setScalar(45000);
     this.scene.add(this.sky);
@@ -282,6 +289,32 @@ export class View3D {
     cancelAnimationFrame(this.raf);
     this.canvas.style.display = 'none';
     this.keys.clear();
+  }
+
+  /**
+   * Etap 3D-2: przełącznik „widok z góry” – kamera płynnie pionowo nad miejscem pod kursorem (albo
+   * nad celem), ten sam obrót; drugie naciśnięcie wraca do poprzedniego ustawienia.
+   */
+  toggleTopDown(): void {
+    if (this.topSaved) {
+      this.animateTo(this.topSaved);
+      this.topSaved = null;
+      return;
+    }
+    this.topSaved = { ...this.rig };
+    const at = this.cursor ? this.adapter.pick(this.cursor.xPx, this.cursor.yPx) : null;
+    const tx = at ? at.x : this.rig.tx;
+    const tz = at ? at.z : this.rig.tz;
+    const g = this.terrain.groundAt(tx, tz);
+    this.animateTo({ ...this.rig, tx, tz, ty: Number.isFinite(g) ? g : this.rig.ty, pitchRad: (this.p.camera.maxPitchDeg * Math.PI) / 180, distanceM: Math.min(this.rig.distanceM, 1500) });
+  }
+
+  get topDownActive(): boolean {
+    return this.topSaved !== null;
+  }
+
+  private animateTo(to: RigState): void {
+    this.anim = { from: { ...this.rig }, to, t: 0, durS: 0.6 };
   }
 
   /** Widok z góry nad bieżącym celem. */
@@ -436,6 +469,15 @@ export class View3D {
 
   private updateCamera(dt: number): void {
     const cp = this.p.camera;
+    if (this.anim) {
+      // Płynne przejście (widok z góry i powrót): wygładzona interpolacja w 0,6 s.
+      const a = this.anim;
+      a.t = Math.min(1, a.t + dt / a.durS);
+      const k = a.t * a.t * (3 - 2 * a.t);
+      const L = (x: number, y: number) => x + (y - x) * k;
+      this.rig = { tx: L(a.from.tx, a.to.tx), ty: L(a.from.ty, a.to.ty), tz: L(a.from.tz, a.to.tz), distanceM: L(a.from.distanceM, a.to.distanceM), yawRad: L(a.from.yawRad, a.to.yawRad), pitchRad: L(a.from.pitchRad, a.to.pitchRad) };
+      if (a.t >= 1) this.anim = null;
+    }
     const a = groundAxes(this.rig.yawRad);
     const v = cp.panSpeed * this.rig.distanceM * dt;
     let { tx, tz, yawRad, pitchRad } = this.rig;
@@ -525,7 +567,14 @@ export class View3D {
       this.objects.setLayout(layout, analysis, (x, z) => g.sampleLayer(g.slopePercent, x, z));
       this.people.setCables(this.objects.cableIndex);
       this.terrain.setPistes(layout.pistes.map((p) => ({ cells: analysis.pistes.get(p.id)?.cells ?? [], lit: p.lit === true })));
-      this.forest?.setCleared(analysis.clearedMask ?? null, { widthCells: g.widthCells, heightCells: g.heightCells, cellSizeM: g.cellSizeM, elevationM: g.elevationM });
+      // Wycinka: drzewa przeliczane tylko, gdy zmieniła się maska (budowa drogi czy rury jej nie zmienia).
+      const mask = analysis.clearedMask ?? null;
+      let sig = 0;
+      if (mask) for (let k = 0; k < mask.length; k++) if (mask[k]) sig = (sig * 31 + k) % 2147483647;
+      if (sig !== this.clearedSig) {
+        this.clearedSig = sig;
+        this.forest?.setCleared(mask, { widthCells: g.widthCells, heightCells: g.heightCells, cellSizeM: g.cellSizeM, elevationM: g.elevationM });
+      }
     }
     const snow = this.src.snow();
     const summer = this.src.summer();
@@ -550,7 +599,20 @@ export class View3D {
     }
     this.terrain.setSeason(summer, night);
     this.network.setSummer(summer);
-    this.network.update(this.src.drawState());
+    const st = this.src.drawState();
+    this.network.update(st);
+    // Podgląd wyciągu: rysowany (podgląd budowy) i zaznaczony (edycja) – podpory i lina w prawdziwej wysokości.
+    if (st) {
+      const items: { design: import('../sim/lifts').LiftDesign; analysis: import('../sim/lifts').LiftAnalysis }[] = [];
+      if (st.draftLift) items.push(st.draftLift);
+      if (st.selection?.kind === 'lift') {
+        const id = st.selection.id;
+        const d = st.layout.lifts.find((x) => x.id === id);
+        const a = st.analysis.lifts.get(id);
+        if (d && a) items.push({ design: d, analysis: a });
+      }
+      this.liftPreview.update(items, `${st.version}|${st.drawVersion}|${st.selection?.id ?? ''}|${items.length}`);
+    }
     // Nakładka danych: na terenie; las wtedy schowany (dane pod koronami czytelne jak w 2D).
     const ov = this.src.overlay();
     this.terrain.setOverlay(ov);

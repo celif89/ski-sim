@@ -90,10 +90,10 @@ tests/         testy Vitest
     pogoda letnia (deszcz zmniejsza ruch, burze zatrzymują wyciągi); atrakcje odblokowywane w trakcie
     kariery.
 3D-0. Prototyp widoku 3D (Three.js) obok mapy 2D – tylko oglądanie (zrobiony).
-3D-1. W 3D widać wszystko co w 2D: drogi, potoki, parkingi, rurociągi, hydranty, rowy, szlaki i trasy
+3D-1. (zrobiony) W 3D widać wszystko co w 2D: drogi, potoki, parkingi, rurociągi, hydranty, rowy, szlaki i trasy
     letnie; wybór obiektów i gości kliknięciem (karty jak w 2D); nakładki danych jako tekstura terenu
     (legenda bez zmian); strojenie wydajności.
-3D-2. Budowa i edycja w 3D: wszystkie narzędzia budowy (wspólny kod z 2D – buildController, snapping,
+3D-2. Budowa i edycja w 3D (zrobiony): wszystkie narzędzia budowy (wspólny kod z 2D – buildController, snapping,
     lineTools; inna tylko zamiana ekran ↔ teren), linie przyklejone do terenu (za wzgórzem przerywane),
     podgląd wyciągu w prawdziwej wysokości, „widok z góry” nad miejscem rysowania, uchwyty, przyciąganie,
     okienko i pierścień nachylenia jak w 2D; test: punkt wskazany w 3D = punkt mapy ±0,5 m.
@@ -829,7 +829,30 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
     automatyczna płynność, punkt mapy → ekran → punkt ±0,5 m (stok 0 i 40 %, obroty co 30°,
     pochylenia 12–88°, odległości 120–2000 m; punkty zasłonięte wzgórzem pominięte), piksel → punkt
     → piksel.
-- **Następny: etap 3D-2 – budowa i edycja w 3D**, potem etap 8.
+- **Etap 3D-2 – zrobiony** (listopad 2026): budowa i edycja w widoku 3D.
+  - wszystkie narzędzia budowy działają w 3D tym samym kodem co w 2D (`BuildController`, `snapping`,
+    `lineTools`) – inna jest tylko zamiana ekran ↔ teren (`ViewCamera` → `Camera3DAdapter`); mysz z płótna
+    3D trafia do tych samych funkcji (`View3D.hooks`: klik, podwójny klik, prawy, przeciąganie narzędzia –
+    gdy narzędzie nie przejmie przeciągania, przeciąganie przesuwa kamerę); dolne menu budowy i paleta
+    widoczne w 3D; klawisze narzędzi jak w 2D poza literami kamery (E – droga, Q – ścieżka, F – rura
+    zasilająca, R – obrót budynku: w 3D z palety / prawym przyciskiem);
+  - linie budowy przyklejone do terenu (`network3d.ts`, warstwa podglądów): rysowana droga, rurociąg,
+    trasa letnia, trasa narciarska (pas o szerokości trasy w kolorze klasy z analizy), oś wyciągu;
+    za wzgórzem i drzewami – przerywane, półprzezroczyste; linie pomocnicze przyciągania próbkowane na
+    mapie i rzutowane (w 3D idą po terenie, w 2D bez zmian);
+  - podgląd wyciągu (`liftPreview3d.ts`): podpory i lina w prawdziwej wysokości z analizy symulacji, odcinki
+    z prześwitem poniżej minimum (poza strefą stacji, jak w `lifts.ts`: `lowClearanceSpans`) i podpory na
+    nich – na czerwono; lina widoczna przez drzewa (przerywana); także zaznaczony wyciąg w trakcie edycji;
+  - „widok z góry” (klawisz Z albo przycisk): kamera płynnie (0,6 s) pionowo nad miejscem pod kursorem,
+    ten sam obrót, odległość ≤ 1,5 km; drugie naciśnięcie – powrót do poprzedniego ustawienia;
+  - uchwyty edycji (`drawEditHandles` – wspólna funkcja 2D i 3D, rzut przez `ViewCamera`), przyciąganie,
+    okienko z długością, kosztem i nachyleniem, pierścień nachylenia – jak w 2D;
+  - wycinka w lesie 3D przeliczana tylko przy zmianie maski (budowa drogi czy rury nie przebudowuje drzew);
+  - testy: `tests/render3d1.test.ts` – punkt wskazany w 3D = punkt mapy ±0,5 m (stok 0 i 40 %, obroty
+    co 30°, pochylenia 12–88°), piksel → mapa → piksel, za mały prześwit tylko poza strefą stacji;
+    sprawdzenie w przeglądarce: wyciąg zbudowany dwoma kliknięciami w 3D (błąd wskazania 1 mm), droga
+    narysowana ręką (349 m), widok z góry (89°) i powrót.
+- **Następny: etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja.**
 
 Uwagi techniczne:
 - Przed wypchnięciem uruchamiać `npm run build` (nie tylko `npm test` i `tsc -p tsconfig.json`):
@@ -911,6 +934,10 @@ Uwagi techniczne:
   zlewnia rowu i kolejki rysowane w pikselach ekranu (proste odcinki między punktami terenu co 50 m /
   komórkami 10 m); linie dróg i rur rozjaśnia mapowanie tonów (ACES) – kolory nieco jaśniejsze niż w 2D;
   wybór gościa na krzesełku (w powietrzu) – po punkcie terenu pod nim; minimapa w 3D schowana.
+- Budowa w 3D (3D-2): klawisze E, Q, F, R sterują kamerą – te narzędzia tylko z palety; zlewnia rowu,
+  podgląd „Naśnież trasę”, przesuwany budynek i działki rysowane w pikselach ekranu (odcinki między
+  punktami terenu); podgląd trasy narciarskiej to pas stałej szerokości po terenie (bez obrysu
+  z analizy); profil wyciągu / trasy w panelu jak w 2D (zasłania dół ekranu).
 
 - Lato (7b): popyt letni, udziały typów gości, ceny i koszty atrakcji do kalibracji (frekwencja Pilska,
   Babiej Góry, dane kolei); wynik lata w raporcie raczej optymistyczny (cała kanapa i restauracja

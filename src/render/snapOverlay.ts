@@ -40,19 +40,45 @@ export class SnapOverlay {
     const S = (x: number, y: number) => camera.worldToScreen(x, y);
     // Linia pomocnicza: przerywana, przez cały ekran wzdłuż kierunku.
     if (v.guide) {
-      const a = S(v.guide.from.xM, v.guide.from.yM);
-      const b = S(v.guide.to.xM, v.guide.to.yM);
-      const L = Math.hypot(b.xPx - a.xPx, b.yPx - a.yPx);
-      if (L > 1) {
-        const ux = (b.xPx - a.xPx) / L;
-        const uy = (b.yPx - a.yPx) / L;
-        const ext = v.guide.kind === 'parallel' ? 0 : 400;
-        const x0 = v.guide.kind === 'angle' ? a.xPx : a.xPx - ux * ext;
-        const y0 = v.guide.kind === 'angle' ? a.yPx : a.yPx - uy * ext;
-        const total = L + ext * (v.guide.kind === 'angle' ? 1 : 2);
-        for (let d = 0; d < total; d += 12) {
-          const d1 = Math.min(total, d + 7);
-          g.moveTo(x0 + ux * d, y0 + uy * d).lineTo(x0 + ux * d1, y0 + uy * d1);
+      // Etap 3D-2: linia próbkowana na mapie (co kilka metrów) i rzutowana – w 3D idzie po terenie,
+      // w 2D wychodzi ta sama prosta.
+      const f = v.guide.from;
+      const t = v.guide.to;
+      const Lm = Math.hypot(t.xM - f.xM, t.yM - f.yM);
+      const a = S(f.xM, f.yM);
+      if (Lm > 1e-6) {
+        const ux = (t.xM - f.xM) / Lm;
+        const uy = (t.yM - f.yM) / Lm;
+        const extM = v.guide.kind === 'parallel' ? 0 : 400 * camera.metersPerPixel;
+        const m0 = v.guide.kind === 'angle' ? 0 : -extM;
+        const m1 = Lm + extM;
+        const step = Math.max(2, (m1 - m0) / 160);
+        const pts: { xPx: number; yPx: number }[] = [];
+        for (let m = m0; m <= m1 + 1e-9; m += step) pts.push(S(f.xM + ux * m, f.yM + uy * m));
+        // Kreski 7 px co 12 px wzdłuż łamanej na ekranie (punkty za kamerą – przerwa).
+        const cum = [0];
+        for (let i = 1; i < pts.length; i++) {
+          const seg = Math.hypot(pts[i].xPx - pts[i - 1].xPx, pts[i].yPx - pts[i - 1].yPx);
+          cum.push(cum[i - 1] + (seg > 4000 ? 0 : seg));
+        }
+        const at = (d: number) => {
+          let lo = 0;
+          let hi = cum.length - 1;
+          while (hi - lo > 1) {
+            const mid = (lo + hi) >> 1;
+            if (cum[mid] <= d) lo = mid;
+            else hi = mid;
+          }
+          const q = cum[hi] > cum[lo] ? (d - cum[lo]) / (cum[hi] - cum[lo]) : 0;
+          return { i: lo, xPx: pts[lo].xPx + (pts[hi].xPx - pts[lo].xPx) * q, yPx: pts[lo].yPx + (pts[hi].yPx - pts[lo].yPx) * q };
+        };
+        const total = cum[cum.length - 1];
+        for (let d = 0; d < total && d < 20000; d += 12) {
+          const p0 = at(d);
+          const p1 = at(Math.min(total, d + 7));
+          g.moveTo(p0.xPx, p0.yPx);
+          for (let i = p0.i + 1; i <= p1.i; i++) g.lineTo(pts[i].xPx, pts[i].yPx);
+          g.lineTo(p1.xPx, p1.yPx);
         }
         g.stroke({ width: 2, color: ACCENT, alpha: 0.95 });
         if (v.guide.kind === 'angle') {

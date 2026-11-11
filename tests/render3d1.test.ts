@@ -130,3 +130,19 @@ describe('Zamiana ekran ↔ teren w widoku 3D', () => {
     expect(a.metersPerPixel).toBeGreaterThan(near);
   });
 });
+
+describe('Podgląd wyciągu w 3D – za mały prześwit', () => {
+  it('na czerwono tylko odcinek z prześwitem poniżej minimum, poza strefą stacji', async () => {
+    const { lp } = await import('./guestFixture');
+    const { lowClearanceSpans } = await import('../src/render3d/liftPreview3d');
+    const type = lp.types.find((t) => t.kind === 'aerial')!;
+    const n = 101;
+    const ground = Array.from({ length: n }, (_, i) => ({ distanceM: i * 5, xM: i * 5, yM: 0, elevationM: 1000 }));
+    const cable = Float64Array.from(ground, (g) => 1000 + (g.distanceM >= 200 && g.distanceM <= 260 ? type.minClearanceM - 2 : type.minClearanceM + 4));
+    // Przy samych stacjach lina nisko (strefa stacji – bez sprawdzania).
+    cable[0] = cable[1] = cable[n - 1] = cable[n - 2] = 1000.5;
+    const an = { type, ground, cableElevationM: cable, supports: [{ distanceM: 0, cableElevationM: 1000, groundElevationM: 1000, kind: 'station' }, { distanceM: 500, cableElevationM: 1000, groundElevationM: 1000, kind: 'station' }] } as never;
+    const spans = lowClearanceSpans(an, lp);
+    expect(spans).toEqual([{ fromM: 200, toM: 260 }]);
+  });
+});

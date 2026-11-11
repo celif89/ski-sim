@@ -291,10 +291,15 @@ export class Network3D {
     // Podglądy rysowania (etap 3D-2 używa tych samych danych co 2D).
     const draftStyle = (color: number) => ({ color, widthM: 2.5, minPx: 4 });
     if (st.draftPiste?.points.length) {
+      // Trasa w budowie: pas o szerokości trasy w kolorze klasy (z analizy) i jaśniejsza oś.
       const a = st.draftPiste.analysis;
-      D.addLine(st.draftPiste.points, draftStyle(a ? (PISTE[a.classIndex] ?? 0x1c7ed6) : 0x1c7ed6), 5);
+      const pts = st.draftPiste.points;
+      const w = pts.reduce((acc, q) => acc + (q.widthM || 0), 0) / pts.length || 20;
+      const col = a ? (PISTE[a.classIndex] ?? 0x1c7ed6) : 0x1c7ed6;
+      D.addLine(pts, { color: col, widthM: w, minPx: 6 }, 5);
+      D.addLine(pts, { color: 0xffffff, widthM: 0.8, minPx: 1.5, dashPx: [6, 6] }, 5);
     }
-    if (st.draftLift) D.addLine(liftPath(st.draftLift.design), draftStyle(st.draftLift.analysis.ok ? 0x334155 : 0xdc2626), 5);
+    if (st.draftLift) D.addLine(liftPath(st.draftLift.design), draftStyle(st.draftLift.analysis.ok ? 0xffffff : 0xdc2626), 5);
     if (st.roadDraft?.points.length) D.addLine(st.roadDraft.points, draftStyle(0x6b7280), 5);
     if (st.trailDraft?.points.length) D.addLine(st.trailDraft.points, draftStyle(st.trailDraft.kind === 'bike' ? 0x1c7ed6 : st.trailDraft.kind === 'walk' ? 0x8d5524 : 0xdc2626), 5);
     if (st.snowNet?.draftPipe.length) D.addLine(st.snowNet.draftPipe, draftStyle(PIPE), 5);
