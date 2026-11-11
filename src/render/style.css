@@ -3026,6 +3026,7 @@ tr.g-closed td {
 
 /* Etap 3D-0: widok 3D – płótno pod interfejsem, pasek z przyciskami. */
 .view3d-canvas {
+  z-index: 0;
   position: absolute;
   inset: 0;
   width: 100%;
@@ -3047,8 +3048,6 @@ tr.g-closed td {
 .u-3d-bar.hidden,
 body.view-3d .u-build,
 body.view-3d .u-palette,
-body.view-3d .u-nav,
-body.view-3d .u-legend,
 body.view-3d .u-minimap {
   display: none;
 }
@@ -3056,4 +3055,12 @@ body.view-3d .u-minimap {
   font-size: 12.5px;
   color: var(--text-2, #9db0c3);
   margin-left: 6px;
+}
+
+/* Etap 3D-1: płótno mapy 2D nad widokiem 3D – przezroczyste, bez myszy (elementy ekranu: profil, pierścień, okienka). */
+canvas.over-3d {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
 }

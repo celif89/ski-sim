@@ -6,7 +6,7 @@
  */
 import { Container, Graphics, Text } from 'pixi.js';
 import type { TerrainGrid } from '../sim/terrainGrid';
-import type { Camera } from './camera';
+import type { ViewCamera } from './camera';
 import type { ReliefParams, RingClass } from './relief';
 import { downhillScreen, ringClass } from './relief';
 
@@ -38,7 +38,7 @@ export class SlopeRing {
   }
 
   /** Co klatkę: kursor na ekranie (albo null), czy narzędzie budowy rysuje linię. */
-  update(camera: Camera, cursor: { xPx: number; yPx: number } | null, active: boolean): void {
+  update(camera: ViewCamera, cursor: { xPx: number; yPx: number } | null, active: boolean): void {
     if (!active || !cursor) {
       this.root.visible = false;
       return;
@@ -60,7 +60,12 @@ export class SlopeRing {
     g.circle(cx, cy, r).stroke({ width: 7, color: 0xffffff, alpha: 0.85 });
     g.circle(cx, cy, r).stroke({ width: 4, color: col, alpha: 1 });
     if (sl > this.flatPercent && Number.isFinite(asp)) {
-      const d = downhillScreen(asp, camera.rotated);
+      // Kierunek w dół stoku na ekranie: rzut odcinka 5 m na mapie (2D: jak downhillScreen, 3D: z perspektywą).
+      const w = camera.screenToWorld(cx, cy);
+      const ar = (asp * Math.PI) / 180;
+      const s2 = camera.worldToScreen(w.xM + Math.sin(ar) * 5, w.yM - Math.cos(ar) * 5);
+      const dl = Math.hypot(s2.xPx - cx, s2.yPx - cy);
+      const d = dl > 1e-6 ? { x: (s2.xPx - cx) / dl, y: (s2.yPx - cy) / dl } : downhillScreen(asp, camera.rotated);
       const a = this.p.arrowPx;
       // Strzałka od pierścienia w dół stoku.
       const x0 = cx + d.x * (r - a * 0.35);

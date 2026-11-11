@@ -89,7 +89,15 @@ tests/         testy Vitest
     rysowane jak narciarskie, trudność z nachylenia), tor saneczkowy całoroczny, gastronomia na górze;
     pogoda letnia (deszcz zmniejsza ruch, burze zatrzymują wyciągi); atrakcje odblokowywane w trakcie
     kariery.
-8. Anomalie, awarie, ratownicy, reputacja, konkurencja.
+3D-0. Prototyp widoku 3D (Three.js) obok mapy 2D – tylko oglądanie (zrobiony).
+3D-1. W 3D widać wszystko co w 2D: drogi, potoki, parkingi, rurociągi, hydranty, rowy, szlaki i trasy
+    letnie; wybór obiektów i gości kliknięciem (karty jak w 2D); nakładki danych jako tekstura terenu
+    (legenda bez zmian); strojenie wydajności.
+3D-2. Budowa i edycja w 3D: wszystkie narzędzia budowy (wspólny kod z 2D – buildController, snapping,
+    lineTools; inna tylko zamiana ekran ↔ teren), linie przyklejone do terenu (za wzgórzem przerywane),
+    podgląd wyciągu w prawdziwej wysokości, „widok z góry” nad miejscem rysowania, uchwyty, przyciąganie,
+    okienko i pierścień nachylenia jak w 2D; test: punkt wskazany w 3D = punkt mapy ±0,5 m.
+8. Anomalie, awarie, ratownicy, reputacja, konkurencja (po 3D-1 i 3D-2).
 9. Dopracowanie, zapis gry, druga lokalizacja.
 
 Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, nie wybiegać do przodu.
@@ -788,7 +796,40 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
     na stoku 30 %, NaN, kamera nigdy pod terenem (stok 30 %, pełny obrót i pochylenie), widok z góry,
     zbliżenie do kursora, krzesełka na linie w stałym odstępie i z okresem odstęp / prędkość, zamknięty
     wyciąg, prostokąt budynku.
-- **Następny: etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja** (albo dalsze kroki 3D – patrz „Na później”).
+- **Etap 3D-1 – zrobiony** (listopad 2026): w widoku 3D wszystko, co na mapie 2D.
+  - linie po terenie (`src/render3d/lines3d.ts`): oś co kilka metrów po terenie (`drapePolyline`), wstęga
+    rozszerzana w shaderze (szerokość w metrach, ale nie mniej niż kilka pikseli – bez przeliczania przy
+    ruchu kamery), uniesiona tym bardziej, im dalej (zgrubniejszy teren w oddali), przerywane w pikselach
+    przy celu kamery; druga warstwa „za wzgórzem” (odwrócony test głębokości) – przerywana,
+    półprzezroczysta (zaznaczenie i podglądy);
+  - `network3d.ts` (te same dane co 2D – `BuildController.drawState`, `ResortDrawState`): drogi
+    publiczne i parkingi z OSM, granica, potoki (grubość z przepływu), szlaki PTTK latem, nazwy miejsc,
+    drogi dojazdowe, rowy, trasy letnie (rower w kolorze trudności, ścieżki, tor), rurociągi (zasilające
+    inaczej), hydranty (słupki), znaczki baz i budynków (litery jak w 2D), place budowy (postęp %);
+    zaznaczenie na pomarańczowo; podglądy rysowania (dla 3D-2);
+  - wybór kliknięciem: `ViewCamera` (`render/camera.ts`) – wspólny przelicznik ekran ↔ mapa dla
+    `BuildController` (`view`), `GuestController`, `ProfileTool`, `SlopeRing` (kierunek spadku z rzutu
+    odcinka 5 m), `SnapOverlay`, `ParcelView` (boki co 50 m – po terenie), `Hud`, dymka; w 3D
+    `Camera3DAdapter` (`render3d/picking.ts`: promień z kamery, marsz po terenie i połowienie do 1 mm,
+    rzut na wysokości terenu, metry na piksel przy kursorze, `viewKey` do odświeżania rysunków);
+    klik w linę, podporę, dach, znaczek – wybór obiektu pod spodem (`groundUnderObjectAt`); płótno 2D
+    zostaje nad 3D przezroczyste (bez świata mapy, tło czarne z alfą 0 – mnożenie przez alfę) i bez
+    myszy: profil, pierścień, okienka, ikony wypadków, kolejki, zaznaczony gość rysują się w 3D;
+  - nakładki danych: ta sama tekstura co w 2D (`FieldOverlay.canvasEl` + `version`, nachylenie
+    i ekspozycja – płótna) na terenie 3D (`Terrain3D.setOverlay`, barwa wmieszana i lekko świecąca);
+    przy nakładce las schowany; lewy pasek widoków danych i legenda działają w 3D; kolejki (K),
+    zlewnia rowu i działki – w pikselach ekranu przez `ViewCamera`;
+  - klawisze w 3D: kamera (W A S D, strzałki, Q E R F), nakładki (1–9, G, M, K), czas (spacja), dymek
+    (I), profil (P), Esc, menu Dev; narzędzia budowy – etap 3D-2;
+  - wydajność: pomiar właściciela na Macu – 60 kl./s przy średniej jakości (1920 × 1080); automatyczna
+    płynność (`governor.ts`, `data/render3d.json` sekcja `governor`): co 2 s, poniżej 50 kl./s mniejsza
+    rozdzielczość (do ×0,6), potem bliższe drzewa 3D (do ×0,5); przy ~60 kl./s powrót do ustawień
+    jakości (nie wyżej); stan w menu Dev;
+  - testy `tests/render3d1.test.ts` (7): linia po terenie (krok, wysokość, długość, przerwa poza mapą),
+    automatyczna płynność, punkt mapy → ekran → punkt ±0,5 m (stok 0 i 40 %, obroty co 30°,
+    pochylenia 12–88°, odległości 120–2000 m; punkty zasłonięte wzgórzem pominięte), piksel → punkt
+    → piksel.
+- **Następny: etap 3D-2 – budowa i edycja w 3D**, potem etap 8.
 
 Uwagi techniczne:
 - Przed wypchnięciem uruchamiać `npm run build` (nie tylko `npm test` i `tsc -p tsconfig.json`):
@@ -862,11 +903,14 @@ Uwagi techniczne:
   z brył) – do wymiany na modele z programu graficznego (glTF) i animacje; siatka terenu tylko 10 m
   (bez kafli 1 m przy zbliżeniu – sztruks i muldy jako zaburzenie normalnych, nie geometria); stan śniegu
   w komórkach 10 m (schodki na brzegach przetarć i oświetlenia tras); brak dróg, parkingów, potoków,
-  szlaków, rurociągów i tras letnich w 3D; brak cieni chmur, opadu, gwiazd i Księżyca; tło okolicy bez
+  szlaków, rurociągów i tras letnich w 3D (dodane w 3D-1); brak cieni chmur, opadu, gwiazd i Księżyca; tło okolicy bez
   drzew (plamy z szumu); dalekie drzewa (obrazki) budowane od razu dla całej mapy (~290 tys.); cień
-  rzucają tylko bliskie drzewa; kamera może wejść między korony drzew; brak wyboru obiektów kliknięciem
-  i kart w 3D; śnieg na gałęziach ze średniej grubości na mapie (nie z opadu i temperatury); płynność
-  na Macu nieznana.
+  rzucają tylko bliskie drzewa; kamera może wejść między korony drzew; śnieg na gałęziach ze średniej grubości na mapie (nie z opadu i temperatury); płynność
+  na Macu – 60 kl./s przy średniej jakości (pomiar właściciela po 3D-0).
+- Widok 3D (3D-1): nakładki przykrywają teren, a las jest wtedy schowany (dane pod koronami); działki,
+  zlewnia rowu i kolejki rysowane w pikselach ekranu (proste odcinki między punktami terenu co 50 m /
+  komórkami 10 m); linie dróg i rur rozjaśnia mapowanie tonów (ACES) – kolory nieco jaśniejsze niż w 2D;
+  wybór gościa na krzesełku (w powietrzu) – po punkcie terenu pod nim; minimapa w 3D schowana.
 
 - Lato (7b): popyt letni, udziały typów gości, ceny i koszty atrakcji do kalibracji (frekwencja Pilska,
   Babiej Góry, dane kolei); wynik lata w raporcie raczej optymistyczny (cała kanapa i restauracja
@@ -947,7 +991,11 @@ Uwagi techniczne:
 - Jeden ośrodek naraz; nowa lokalizacja = nowa rozgrywka.
 - Pozwolenia środowiskowe pomijamy. Wycinka kosztuje i trwa.
 - Sezon letni (etap 7b): od maja do października, gracz otwiera i zamyka; dni jak zimą.
-- Grafika 2D z góry. **Mapa: styl A – „ilustrowana mapa narciarska”** (od etapu 4b):
+- **Widok 3D jest docelowy** (od etapu 3D-1; pomiar na Macu: 60 kl./s przy średniej jakości, 1920 × 1080).
+  Mapa 2D zostaje jako „mapa” (przełącznik F3 / menu ☰), ale **nowe elementy graficzne robimy tylko
+  w 3D** (`src/render3d/`). Narzędzia (budowa, wybór, profil, pierścień, okienka) liczą ekran ↔ mapa
+  przez wspólny `ViewCamera` – w 2D kamera mapy, w 3D promień z kamery na teren (`Camera3DAdapter`).
+- Mapa 2D z góry. **Mapa: styl A – „ilustrowana mapa narciarska”** (od etapu 4b):
   biały śnieg z niebieskawym cieniowaniem rzeźby, świerki rysowane z boku, trasy jako kolorowe
   linie z białą obwódką, wyciąg jako ciemna linia z podporami i stacjami, etykiety z białą obwódką.
   Nowe elementy (goście, ratraki, armatki, budynki) rysować w tym stylu: widok z góry z cieniem

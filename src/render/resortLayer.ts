@@ -127,7 +127,7 @@ function shortType(typeId: string): string {
   return 'taśma';
 }
 
-const ROAD_WIDTH_M: Record<string, number> = { primary: 7, secondary: 6, tertiary: 5.5, unclassified: 4.5, residential: 4.5, living_street: 4, service: 3.5, track: 3 };
+export const ROAD_WIDTH_M: Record<string, number> = { primary: 7, secondary: 6, tertiary: 5.5, unclassified: 4.5, residential: 4.5, living_street: 4, service: 3.5, track: 3 };
 
 export class ResortLayer {
   private readonly g = new Graphics();
@@ -181,6 +181,12 @@ export class ResortLayer {
   setHikingTrails(lines: { colour: string; points: { xM: number; yM: number }[] }[]): void {
     this.hikingLines = lines;
     this.hikingMpp = -1;
+  }
+
+  /** Etap 3D-1: w widoku 3D rysunek mapy w pikselach ekranu (trasy, wyciągi, napisy) schowany. */
+  setScreenVisible(on: boolean): void {
+    this.g.visible = on;
+    this.labels.visible = on;
   }
 
   /** Etap 7b: lato – szlaki widoczne. */

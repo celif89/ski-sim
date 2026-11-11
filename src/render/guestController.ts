@@ -14,7 +14,7 @@ import type { GuestCard, GuestConditions, GuestCounts, GuestDayReport, GuestEcon
 import { LIFT_STRIDE } from '../sim/guests';
 import type { GuestClient } from '../worker/guestClient';
 import type { GuestFrameMessage } from '../worker/guestProtocol';
-import type { Camera } from './camera';
+import type { Camera, ViewCamera } from './camera';
 import { DayReportView, GuestCardView, GuestPanel } from './guestPanels';
 import type { LiftRow, SnowWarningRow } from './guestPanels';
 import { KIND_BOARD, KIND_SKI } from './movers';
@@ -54,7 +54,7 @@ export interface GuestControllerOptions {
   /** Ślady nart: bufor 2 m (oddalenie) i warstwa detalu 1 m (etap 7d). */
   ski: Pick<TrackBuffer, 'stamp'>;
   screenLayer: Container;
-  camera: Camera;
+  camera: ViewCamera;
   panelParent: HTMLElement;
   cardParent: HTMLElement;
   /** Etap 7c: raport dnia w nowym oknie (zamiast starego panelu). */
@@ -401,6 +401,8 @@ export class GuestController {
   /** Co klatkę: postacie, ikony wypadków, czasy oczekiwania, zaznaczony gość. */
   update(camera: Camera, night: number, renderTimeS: number, dtRealS: number): void {
     this.o.movers.update(camera, night, renderTimeS);
+    // Ikony, kolejki i zaznaczenie – przez przelicznik narzędzi (w widoku 3D rzut na teren).
+    const view = this.o.camera;
     const g = this.gfx;
     g.clear();
     let li = 0;
@@ -408,7 +410,7 @@ export class GuestController {
     for (const e of this.events) {
       const age = renderTimeS - e.timeS;
       if (age < 0) continue;
-      const s = camera.worldToScreen(e.xM, e.yM);
+      const s = view.worldToScreen(e.xM, e.yM);
       const a = age < iconS ? 1 : 0.35;
       g.circle(s.xPx, s.yPx, 8).fill({ color: 0xffffff, alpha: a }).stroke({ width: 2, color: 0xd92b2b, alpha: a });
       g.rect(s.xPx - 1.5, s.yPx - 5, 3, 10).fill({ color: 0xd92b2b, alpha: a });
@@ -418,7 +420,7 @@ export class GuestController {
       this.net.lifts.forEach((l, i) => {
         const row = this.liftRows[i];
         if (!row) return;
-        const s = camera.worldToScreen(l.bottomX, l.bottomY);
+        const s = view.worldToScreen(l.bottomX, l.bottomY);
         const w = row.waitMin;
         // Etap 7c: kolory stanów z zasad wyglądu (dobrze / uwaga / źle), tekst ciemny na jasnym tle.
         const color = row.closed ? 0x64748b : w < 5 ? 0x5fd39a : w < 15 ? 0xf5c542 : 0xff6b6b;
@@ -443,8 +445,8 @@ export class GuestController {
     if (this.selected >= 0) {
       const p = this.findById(this.selected, renderTimeS);
       if (p) {
-        if (this.follow) camera.centerOn(p.xM, p.yM);
-        const s = camera.worldToScreen(p.xM, p.yM);
+        if (this.follow) view.centerOn(p.xM, p.yM);
+        const s = view.worldToScreen(p.xM, p.yM);
         g.circle(s.xPx, s.yPx, 11).stroke({ width: 2.5, color: 0xff7a1a });
       }
       this.cardTimer -= dtRealS;

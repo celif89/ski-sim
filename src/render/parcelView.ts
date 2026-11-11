@@ -6,7 +6,7 @@
  */
 import { Container, Graphics, Text } from 'pixi.js';
 import type { Parcel, ParcelGrid } from '../sim/parcels';
-import type { Camera } from './camera';
+import type { ViewCamera } from './camera';
 import { icon } from './ui/icons';
 import { tipAttrs } from './ui/shell';
 
@@ -44,11 +44,11 @@ export class ParcelLayer {
     }
   }
 
-  update(camera: Camera, st: ParcelViewState): void {
+  update(camera: ViewCamera, st: ParcelViewState): void {
     const show = st.active || st.choosing || st.missing.length > 0;
     this.root.visible = show;
     if (!show) return;
-    const key = `${camera.centerXM}|${camera.centerYM}|${camera.metersPerPixel}|${camera.rotated}|${camera.viewportWidthPx}|${JSON.stringify(st)}`;
+    const key = `${camera.centerXM}|${camera.centerYM}|${camera.metersPerPixel}|${camera.rotated}|${camera.viewportWidthPx}|${camera.viewKey ?? ''}|${JSON.stringify(st)}`;
     if (key === this.key) return;
     this.key = key;
     const g = this.g.clear();
@@ -63,11 +63,18 @@ export class ParcelLayer {
         lab.visible = false;
         return;
       }
-      const a = S(p.x0, p.y0);
-      const b = S(p.x1, p.y0);
-      const c = S(p.x1, p.y1);
-      const d = S(p.x0, p.y1);
-      const poly = [a.xPx, a.yPx, b.xPx, b.yPx, c.xPx, c.yPx, d.xPx, d.yPx];
+      // Boki co 50 m – w widoku 3D obrys idzie po terenie (w 2D bez różnicy).
+      const poly: number[] = [];
+      const corners: [number, number][] = [[p.x0, p.y0], [p.x1, p.y0], [p.x1, p.y1], [p.x0, p.y1]];
+      for (let e = 0; e < 4; e++) {
+        const [x0, y0] = corners[e];
+        const [x1, y1] = corners[(e + 1) % 4];
+        const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 50));
+        for (let k = 0; k < n; k++) {
+          const q = S(x0 + ((x1 - x0) * k) / n, y0 + ((y1 - y0) * k) / n);
+          poly.push(q.xPx, q.yPx);
+        }
+      }
       const fill = missing ? 0xff6b6b : st.owned && mine === 'buy' ? 0x5fd39a : mine === 'lease' ? 0x7cc4f2 : startable ? 0xff7a1a : 0x0f172a;
       const alpha = missing ? 0.3 : st.owned && mine ? 0.18 : startable ? 0.16 : st.choosing ? 0.28 : 0.04;
       g.poly(poly).fill({ color: fill, alpha });

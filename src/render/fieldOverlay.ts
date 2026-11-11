@@ -46,6 +46,8 @@ export class FieldOverlay {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly image: ImageData;
   private readonly source: CanvasSource;
+  /** Etap 3D-1: numer zmiany (widok 3D odświeża teksturę terenu tylko po zmianie). */
+  version = 0;
 
   constructor(private readonly grid: TerrainGrid) {
     this.canvas = document.createElement('canvas');
@@ -55,6 +57,11 @@ export class FieldOverlay {
     this.image = this.ctx.createImageData(grid.widthCells, grid.heightCells);
     this.source = new CanvasSource({ resource: this.canvas, scaleMode: 'linear' });
     this.texture = new Texture({ source: this.source });
+  }
+
+  /** Płótno z kolorami (komórka = piksel) – także tekstura nakładki w widoku 3D. */
+  get canvasEl(): HTMLCanvasElement {
+    return this.canvas;
   }
 
   /** Kolory kategorii (np. stan śniegu); kod 0 = przezroczysty. */
@@ -75,6 +82,7 @@ export class FieldOverlay {
     }
     this.ctx.putImageData(this.image, 0, 0);
     this.source.update();
+    this.version++;
   }
 
   /** Wartości z progiem: poniżej `transparentBelow` – przezroczyste (np. brak śniegu). */
@@ -97,6 +105,7 @@ export class FieldOverlay {
     }
     this.ctx.putImageData(this.image, 0, 0);
     this.source.update();
+    this.version++;
   }
 }
 

@@ -8,7 +8,7 @@ import { GROUND_FOREST, GROUND_NAMES } from '../sim/ground';
 import type { RidingParams } from '../sim/snowRiding';
 import { minBaseCm, packedBaseCm } from '../sim/snowRiding';
 import type { TerrainGrid } from '../sim';
-import type { Camera } from './camera';
+import type { ViewCamera } from './camera';
 import { compassName } from './colors';
 import { computeScaleBar } from './scaleBar';
 
@@ -117,7 +117,7 @@ export class Hud {
     this.scaleBarLine = scaleBar.querySelector('.scale-bar-line')!;
   }
 
-  update(camera: Camera, grid: TerrainGrid, cursor: { xPx: number; yPx: number } | null, snow: SnowReadoutData | null = null): void {
+  update(camera: ViewCamera, grid: TerrainGrid, cursor: { xPx: number; yPx: number } | null, snow: SnowReadoutData | null = null): void {
     let readout = EMPTY;
     if (cursor) {
       const { xM, yM } = camera.screenToWorld(cursor.xPx, cursor.yPx);

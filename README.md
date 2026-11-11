@@ -186,15 +186,21 @@ i pracujące, trasy zamknięte przez pryzmy, flota ratraków, przewidywany konie
 - Raport sezonu: śnieg (m³), woda, energia, paliwo, koszty naśnieżania i ratraków, **dni otwarte dzięki
   naśnieżaniu**.
 
-### Widok 3D – podgląd (etap 3D-0)
+### Widok 3D (etapy 3D-0, 3D-1)
 
-- **F3** albo menu ☰ → „Widok 3D (podgląd)” – przełącza na widok 3D; **F3** lub przycisk „Mapa 2D” wraca.
-  Budowanie zostaje w mapie 2D – w 3D tylko się ogląda (dane te same: śnieg, goście, wyciągi, ratraki).
+- **F3** albo menu ☰ → „Widok 3D” – przełącza na widok 3D; **F3** lub przycisk „Mapa 2D” wraca (mapa 2D
+  pokazuje to samo miejsce).
+- W 3D widać wszystko, co na mapie: drogi, potoki, parkingi, rurociągi, hydranty, rowy, szlaki, trasy
+  letnie; kliknięcie obiektu (także liny, podpory, dachu) albo gościa otwiera tę samą kartę co w 2D;
+  nakładki danych (lewy pasek, klawisze 1–9, G, M, K) leżą na terenie 3D, legenda jak w 2D.
+  Budowanie w 3D – etap 3D-2.
 - Kamera: **W A S D** / strzałki albo przeciąganie lewym przyciskiem – przesuwanie; **Q E** albo prawy /
   środkowy przycisk – obrót; **R F** – pochylenie (od widoku z góry do niemal poziomego); kółko – zbliżenie
   do miejsca pod kursorem; przycisk „Widok z góry”. Kamera nie wchodzi pod teren.
 - „Jakość: niska / średnia / wysoka” – cienie, zasięg drzew 3D, przyciemnienie zagłębień, rozdzielczość.
-- Menu `Dev` – licznik klatek, czas pracy kodu, liczba wywołań rysowania, trójkątów, drzew i postaci.
+- Menu `Dev` – licznik klatek, czas pracy kodu, liczba wywołań rysowania, trójkątów, drzew i postaci,
+  stan automatycznej płynności (przy spadku poniżej 50 kl./s gra sama zmniejsza rozdzielczość i zasięg
+  drzew 3D, potem wraca do wybranej jakości).
 - Zrzuty i opis: `docs/3d/README.md`.
 
 ### Sterowanie

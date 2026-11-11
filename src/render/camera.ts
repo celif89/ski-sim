@@ -27,6 +27,27 @@ export interface WorldPoint {
   yM: number;
 }
 
+/**
+ * Etap 3D-1: wspólny przelicznik ekran ↔ mapa dla narzędzi (budowa, wybór, profil, pierścień
+ * nachylenia, okienko przy kursorze). W 2D – kamera mapy, w 3D – promień z kamery na teren
+ * (`Camera3DAdapter`). Narzędzia nie wiedzą, który widok jest włączony.
+ */
+export interface ViewCamera {
+  readonly centerXM: number;
+  readonly centerYM: number;
+  /** Metry na piksel (w 3D – przy kursorze albo w środku ekranu). */
+  readonly metersPerPixel: number;
+  readonly viewportWidthPx: number;
+  readonly viewportHeightPx: number;
+  /** Mapa obrócona o 180° (tylko 2D; w 3D zawsze false). */
+  readonly rotated: boolean;
+  /** Zmienia się przy każdym ruchu kamery 3D (obrót, pochylenie) – klucze pamięci podręcznej rysunków. */
+  readonly viewKey?: string;
+  screenToWorld(xPx: number, yPx: number): WorldPoint;
+  worldToScreen(xM: number, yM: number): ScreenPoint;
+  centerOn(xM: number, yM: number): void;
+}
+
 export class Camera {
   readonly mapWidthM: number;
   readonly mapHeightM: number;

@@ -77,3 +77,6 @@ export function zoomToward(s: RigState, factor: number, px: number, py: number, 
   const k = 1 - d / s.distanceM; // ułamek drogi celu w stronę punktu
   return { ...s, distanceM: d, tx: s.tx + (px - s.tx) * k, ty: s.ty + (py - s.ty) * k, tz: s.tz + (pz - s.tz) * k };
 }
+
+/** Klawisze kamery 3D (pozostałe idą do gry – narzędzia, nakładki, czas). */
+export const CAMERA_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyQ', 'KeyE', 'KeyR', 'KeyF']);

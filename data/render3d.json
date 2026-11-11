@@ -246,5 +246,38 @@
       "unit": "m",
       "source": "wysokość siatki"
     }
+  },
+  "governor": {
+    "_opis": "etap 3D-1: automatyczne utrzymanie płynności – zmniejsza rozdzielczość i zasięg drzew 3D, gdy klatek za mało, i wraca do ustawień jakości, gdy jest zapas",
+    "targetFps": {
+      "value": 60,
+      "unit": "kl./s",
+      "source": "cel na Macu (pomiar właściciela: 60 kl./s przy średniej jakości, 1920 × 1080)"
+    },
+    "lowFps": {
+      "value": 50,
+      "unit": "kl./s",
+      "source": "poniżej – obniżanie; do wyczucia"
+    },
+    "windowS": {
+      "value": 2,
+      "unit": "s",
+      "source": "okno uśredniania pomiaru klatek"
+    },
+    "minResolutionScale": {
+      "value": 0.6,
+      "unit": "-",
+      "source": "najmniejsza skala rozdzielczości obrazu względem ustawienia jakości"
+    },
+    "minTreeScale": {
+      "value": 0.5,
+      "unit": "-",
+      "source": "najmniejszy zasięg drzew 3D względem ustawienia jakości"
+    },
+    "step": {
+      "value": 0.1,
+      "unit": "-",
+      "source": "krok zmiany skali"
+    }
   }
 }

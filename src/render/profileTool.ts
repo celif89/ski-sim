@@ -5,7 +5,7 @@
 import { Container, Graphics } from 'pixi.js';
 import { classifySlope, computeProfile, slopePercentToDeg } from '../sim';
 import type { SlopeClass, TerrainGrid, TerrainProfile } from '../sim';
-import type { Camera } from './camera';
+import type { ViewCamera } from './camera';
 import { niceStep, niceTicks } from './niceTicks';
 
 const formatInt = new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 });
@@ -35,7 +35,7 @@ export class ProfileTool {
     screenLayer: Container,
     parent: HTMLElement,
     private readonly grid: TerrainGrid,
-    private readonly camera: Camera,
+    private readonly camera: ViewCamera,
     private readonly slopeClasses: SlopeClass[],
     private readonly onActiveChange: (active: boolean) => void,
   ) {

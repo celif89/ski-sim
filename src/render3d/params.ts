@@ -37,6 +37,7 @@ export interface Render3DParams {
   atmosphere: { fogDensity: number; valleyFogTopM: number; valleyFogStrength: number; exposure: number; nightAmbient: number; pisteLightIntensity: number };
   people: { heightM: number; seatHeightM: number };
   pistes: { poleSpacingM: number; poleHeightM: number; netSlopePercent: number; netHeightM: number };
+  governor: { targetFps: number; lowFps: number; windowS: number; minResolutionScale: number; minTreeScale: number; step: number };
 }
 
 export function parseRender3DParams(raw: unknown): Render3DParams {
@@ -58,5 +59,6 @@ export function parseRender3DParams(raw: unknown): Render3DParams {
     atmosphere: nums(a, 'atmosphere', ['fogDensity', 'valleyFogTopM', 'valleyFogStrength', 'exposure', 'nightAmbient', 'pisteLightIntensity'] as const),
     people: nums(pe, 'people', ['heightM', 'seatHeightM'] as const),
     pistes: nums(pi, 'pistes', ['poleSpacingM', 'poleHeightM', 'netSlopePercent', 'netHeightM'] as const),
+    governor: nums(sec(r, 'governor'), 'governor', ['targetFps', 'lowFps', 'windowS', 'minResolutionScale', 'minTreeScale', 'step'] as const),
   };
 }

@@ -26,6 +26,8 @@ const GLSL_COMMON = /* glsl */ `
 uniform sampler2D uSnowTex;   // liniowo: R – grubość [cm]/255, G – trasa (0,5) / oświetlona (1), B – las, A – kosodrzewina
 uniform sampler2D uStateTex;  // najbliższy: R – stan śniegu, G – muldy (0–15), B – wolne, A – zabudowa
 uniform vec2 uMapSize;
+uniform sampler2D uOverlay;    // etap 3D-1: nakładka danych (jak w 2D), wiersz 0 = północ
+uniform float uOverlayOn;      // krycie nakładki (0 – wyłączona)
 uniform float uHasSnow;
 uniform float uSummer;
 uniform float uNight;
@@ -62,7 +64,12 @@ export class Terrain3D {
     uPisteLight: { value: 0.9 },
     uValleyTop: { value: 820 },
     uValleyFog: { value: 0 },
+    uOverlay: { value: null as THREE.Texture | null },
+    uOverlayOn: { value: 0 },
   };
+  private overlayTex: THREE.CanvasTexture | null = null;
+  private overlayCanvas: HTMLCanvasElement | null = null;
+  private overlayVersion = -1;
   /** Liczba trójkątów rysowanych w ostatniej klatce (licznik). */
   triangles = 0;
 
@@ -191,6 +198,13 @@ export class Terrain3D {
         .replace(
           '#include <emissivemap_fragment>',
           /* glsl */ `#include <emissivemap_fragment>
+  // Nakładka danych: barwa wmieszana w podłoże i lekko świecąca (czytelna także w cieniu).
+  if (uOverlayOn > 0.0) {
+    vec4 ov = texture2D(uOverlay, vWorld.xz / uMapSize);
+    float oa = ov.a * uOverlayOn;
+    diffuseColor.rgb = mix(diffuseColor.rgb, ov.rgb, oa);
+    totalEmissiveRadiance += ov.rgb * oa * 0.45;
+  }
   // Oświetlenie tras nocą: plamy światła lamp (szum co ok. 25 m), łagodny brzeg.
   float lamp = 0.45 + 0.55 * smoothstep(0.3, 0.8, vnoise(vWorld.xz * 0.04 + 5.0));
   totalEmissiveRadiance += vec3(1.0, 0.84, 0.58) * smoothstep(0.55, 1.0, sd.g) * lamp * uNight * uPisteLight * mix(0.25, 1.0, cover);`,
@@ -332,6 +346,30 @@ export class Terrain3D {
     }
     this.snowTex.needsUpdate = true;
     this.stateTex.needsUpdate = true;
+  }
+
+  /** Etap 3D-1: nakładka danych (płótno z kolorami na całą mapę) albo null. */
+  setOverlay(o: { canvas: HTMLCanvasElement; version: number; opacity: number } | null): void {
+    if (!o) {
+      this.uniforms.uOverlayOn.value = 0;
+      return;
+    }
+    if (o.canvas !== this.overlayCanvas) {
+      this.overlayTex?.dispose();
+      this.overlayCanvas = o.canvas;
+      this.overlayTex = new THREE.CanvasTexture(o.canvas);
+      this.overlayTex.flipY = false;
+      this.overlayTex.colorSpace = THREE.SRGBColorSpace;
+      this.overlayTex.magFilter = THREE.LinearFilter;
+      this.overlayTex.minFilter = THREE.LinearFilter;
+      this.overlayTex.generateMipmaps = false;
+      this.uniforms.uOverlay.value = this.overlayTex;
+      this.overlayVersion = o.version;
+    } else if (o.version !== this.overlayVersion && this.overlayTex) {
+      this.overlayTex.needsUpdate = true;
+      this.overlayVersion = o.version;
+    }
+    this.uniforms.uOverlayOn.value = Math.min(1, o.opacity + 0.15);
   }
 
   setValleyFog(topM: number, strength: number): void {

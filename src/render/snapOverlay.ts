@@ -6,7 +6,7 @@
  */
 import { Container, Graphics, Text } from 'pixi.js';
 import type { SnapView } from './buildController';
-import type { Camera } from './camera';
+import type { ViewCamera } from './camera';
 
 const FONT = 'Barlow, sans-serif';
 const FONT_COND = '"Barlow Condensed", Barlow, sans-serif';
@@ -30,7 +30,7 @@ export class SnapOverlay {
     this.root.visible = false;
   }
 
-  update(camera: Camera, cursor: { xPx: number; yPx: number } | null, v: SnapView | null): void {
+  update(camera: ViewCamera, cursor: { xPx: number; yPx: number } | null, v: SnapView | null): void {
     if (!cursor || !v) {
       this.root.visible = false;
       return;

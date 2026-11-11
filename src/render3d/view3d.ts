@@ -16,16 +16,23 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import type { HorizonDem } from '../sim/horizon';
 import type { LiftParams, PointM } from '../sim/lifts';
 import type { ResortAnalysis, ResortLayout } from '../sim/resort';
+import type { ResortDrawState } from '../render/resortLayer';
 import { sunPosition } from '../sim/sun';
 import type { TerrainGrid } from '../sim/terrainGrid';
 import { localToUtcMs } from '../sim/time';
 import type { CalendarDate, Location } from '../sim';
 import type { RigState } from './cameraRig';
-import { cameraPosition, groundAxes, keepAboveTerrain, zoomToward } from './cameraRig';
+import { CAMERA_KEYS, cameraPosition, groundAxes, keepAboveTerrain, zoomToward } from './cameraRig';
 import { Forest3D } from './forest3d';
 import { Objects3D } from './objects3d';
 import type { Quality, Render3DParams } from './params';
+import type { NetworkStatic } from './network3d';
+import { Network3D } from './network3d';
 import { People3D } from './people3d';
+import { governStep } from './governor';
+import type { GovernorState } from './governor';
+import type { PickView } from './picking';
+import { Camera3DAdapter } from './picking';
 import { Terrain3D } from './terrain3d';
 
 export interface View3DSources {
@@ -50,6 +57,11 @@ export interface View3DSources {
   frame(): { data: Float32Array<ArrayBufferLike>; count: number; timeS: number; summer: boolean };
   groomers(): { xM: number; yM: number; headingRad: number; lightsOn: boolean }[];
   plumes(): { xM: number; yM: number; aimXM: number; aimYM: number; rateM3h: number; windFromDeg: number; windMs: number }[];
+  /** Etap 3D-1: stan rysowania mapy 2D (układ, zaznaczenie, podglądy) i stałe linie z OSM. */
+  drawState(): ResortDrawState | null;
+  network: NetworkStatic;
+  /** Etap 3D-1: nakładka danych z mapy 2D (płótno, numer zmiany, krycie) albo null. */
+  overlay(): { canvas: HTMLCanvasElement; version: number; opacity: number } | null;
 }
 
 export interface View3DStats {
@@ -84,6 +96,7 @@ export class View3D {
   private readonly forest: Forest3D | null;
   private readonly objects: Objects3D;
   private readonly people: People3D;
+  private readonly network: Network3D;
   private quality: Quality = 1;
   private rig: RigState;
   private running = false;
@@ -98,6 +111,11 @@ export class View3D {
   private cpuSum = 0;
   readonly stats: View3DStats = { fps: 0, frameMs: 0, drawCalls: 0, triangles: 0, treesNear: 0, treesFar: 0, people: 0, carriers: 0 };
   private readonly materials: THREE.Material[] = [];
+  /** Etap 3D-1: automatyczna płynność (skala rozdzielczości i zasięgu drzew względem jakości). */
+  private gov: GovernorState = { resolutionScale: 1, treeScale: 1 };
+  private govT = performance.now();
+  private govFrames = 0;
+  autoQuality = true;
   private readonly ownCompile = new WeakMap<THREE.Material, THREE.Material['onBeforeCompile']>();
 
   constructor(
@@ -121,7 +139,8 @@ export class View3D {
     const groundAt = (x: number, z: number) => this.terrain.groundAt(x, z);
     this.objects = new Objects3D({ groundAt, lp: src.lp, p, osmBuildings: src.osmBuildings, forest: src.forest, widthCells: g.widthCells, cellSizeM: g.cellSizeM });
     this.people = new People3D(p.quality.peopleMax[2], p.people.heightM, p.people.seatHeightM);
-    this.scene.add(this.terrain.group, this.objects.group, this.people.group, this.hemi);
+    this.network = new Network3D(groundAt, src.network);
+    this.scene.add(this.terrain.group, this.objects.group, this.people.group, this.network.group, this.hemi);
     if (this.forest) this.scene.add(this.forest.group);
     this.sky.scale.setScalar(45000);
     this.scene.add(this.sky);
@@ -134,6 +153,11 @@ export class View3D {
     this.setQuality(1);
     this.bindInput();
     window.addEventListener('resize', () => this.resize());
+  }
+
+  /** Metry na piksel na metr odległości od kamery (2·tg(pół kąta widzenia) / wysokość okna). */
+  get pxScale(): number {
+    return (2 * Math.tan((this.camera.fov * Math.PI) / 360)) / Math.max(1, this.canvas.clientHeight || window.innerHeight);
   }
 
   get active(): boolean {
@@ -195,10 +219,21 @@ export class View3D {
       m.customProgramCacheKey = () => key;
       m.needsUpdate = true;
     }
-    if (this.forest) this.forest.nearM = qp.treesNearM[q];
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * qp.pixelRatio[q]);
+    this.gov = { resolutionScale: 1, treeScale: 1 };
+    this.applyGovernor();
     this.buildComposer();
     this.resize();
+  }
+
+  private applyGovernor(): void {
+    const qp = this.p.quality;
+    if (this.forest) this.forest.nearM = qp.treesNearM[this.quality] * this.gov.treeScale;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * qp.pixelRatio[this.quality] * this.gov.resolutionScale);
+  }
+
+  /** Stan automatycznej płynności (licznik w menu Dev). */
+  get governor(): GovernorState {
+    return this.gov;
   }
 
   private buildComposer(): void {
@@ -265,15 +300,104 @@ export class View3D {
     this.frame();
   }
 
+  /** Etap 3D-1/3D-2: zdarzenia myszy dla narzędzi (te same, co z mapy 2D). */
+  readonly hooks: {
+    onClick?: (x: number, y: number) => void;
+    onDoubleClick?: (x: number, y: number) => void;
+    onRightClick?: (x: number, y: number) => void;
+    /** Narzędzie przejmuje przeciąganie lewym przyciskiem (true) – wtedy kamera stoi. */
+    onDragStart?: (x: number, y: number) => boolean;
+    onDragMove?: (x: number, y: number) => void;
+    onDragEnd?: (x: number, y: number) => void;
+  } = {};
+  /** Kursor nad płótnem 3D (piksele CSS) albo null. */
+  cursor: { xPx: number; yPx: number } | null = null;
+  /** Przelicznik ekran ↔ mapa dla narzędzi. */
+  readonly adapter = new Camera3DAdapter(
+    () => this.pickView(),
+    (x, z) => this.lookAt(x, z),
+  );
+
+  pickView(): PickView {
+    return {
+      camera: this.camera,
+      widthPx: this.canvas.clientWidth || window.innerWidth,
+      heightPx: this.canvas.clientHeight || window.innerHeight,
+      groundAt: (x, z) => this.terrain.groundAt(x, z),
+      targetX: this.rig.tx,
+      targetZ: this.rig.tz,
+    };
+  }
+
+  /**
+   * Klik w obiekt nad terenem (lina, podpora, stacja, budynek, znaczek): piksel ekranu punktu terenu
+   * pod trafionym miejscem – narzędzia 2D wybierają po położeniu na mapie. Null – nic nad terenem.
+   */
+  groundUnderObjectAt(xPx: number, yPx: number): { xPx: number; yPx: number } | null {
+    const v = this.pickView();
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2((xPx / v.widthPx) * 2 - 1, -(yPx / v.heightPx) * 2 + 1), this.camera);
+    ray.params.Line = { threshold: Math.max(0.5, this.rig.distanceM * 0.004) };
+    const terrainHit = this.adapter.pick(xPx, yPx);
+    const maxD = terrainHit ? terrainHit.distanceTo(this.camera.position) : Infinity;
+    const hits = ray.intersectObjects([this.objects.group, ...this.network.badgeSprites], true);
+    const h = hits.find((x) => x.distance < maxD - 0.5 && x.object.visible);
+    if (!h) return null;
+    return this.adapter.worldToScreen(h.point.x, h.point.z);
+  }
+
+  /** Przesunięcie celu kamery nad punkt mapy (odległość i kąty bez zmian). */
+  lookAt(x: number, z: number): void {
+    const g = this.terrain.groundAt(x, z);
+    this.rig = { ...this.rig, tx: x, tz: z, ty: Number.isFinite(g) ? g : this.rig.ty };
+  }
+
   private bindInput(): void {
     const c = this.canvas;
+    const local = (e: MouseEvent) => {
+      const r = c.getBoundingClientRect();
+      return { xPx: e.clientX - r.left, yPx: e.clientY - r.top };
+    };
+    let toolDrag = false;
+    let down = { x: 0, y: 0, button: 0 };
     c.addEventListener('contextmenu', (e) => e.preventDefault());
     c.addEventListener('pointerdown', (e) => {
-      this.drag = { button: e.button, x: e.clientX, y: e.clientY };
+      const p = local(e);
+      down = { x: e.clientX, y: e.clientY, button: e.button };
       c.setPointerCapture(e.pointerId);
+      toolDrag = e.button === 0 && (this.hooks.onDragStart?.(p.xPx, p.yPx) ?? false);
+      this.drag = toolDrag ? null : { button: e.button, x: e.clientX, y: e.clientY };
     });
-    c.addEventListener('pointerup', () => (this.drag = null));
+    c.addEventListener('pointerup', (e) => {
+      const p = local(e);
+      const small = Math.hypot(e.clientX - down.x, e.clientY - down.y) <= 5;
+      this.drag = null;
+      if (toolDrag) {
+        toolDrag = false;
+        this.hooks.onDragEnd?.(p.xPx, p.yPx);
+        return;
+      }
+      if (!small) return;
+      if (down.button === 0) this.hooks.onClick?.(p.xPx, p.yPx);
+      else if (down.button === 2) this.hooks.onRightClick?.(p.xPx, p.yPx);
+    });
+    c.addEventListener('dblclick', (e) => {
+      const p = local(e);
+      this.hooks.onDoubleClick?.(p.xPx, p.yPx);
+    });
+    c.addEventListener('pointerleave', () => {
+      if (!this.drag && !toolDrag) {
+        this.cursor = null;
+        this.adapter.cursor = null;
+      }
+    });
     c.addEventListener('pointermove', (e) => {
+      this.cursor = local(e);
+      this.adapter.cursor = this.cursor;
+      if (toolDrag) {
+        this.hooks.onDragMove?.(this.cursor.xPx, this.cursor.yPx);
+        return;
+      }
       if (!this.drag) return;
       const dx = e.clientX - this.drag.x;
       const dy = e.clientY - this.drag.y;
@@ -294,40 +418,20 @@ export class View3D {
       (e) => {
         e.preventDefault();
         const f = e.deltaY > 0 ? this.p.camera.zoomStep : 1 / this.p.camera.zoomStep;
-        const hit = this.pickGround(e.clientX, e.clientY);
+        const p = local(e);
+        const hit = this.adapter.pick(p.xPx, p.yPx);
         this.rig = hit ? zoomToward(this.rig, f, hit.x, hit.y, hit.z, this.p.camera) : { ...this.rig, distanceM: this.rig.distanceM * f };
       },
       { passive: false },
     );
     window.addEventListener('keydown', (e) => {
-      if (!this.running) return;
+      if (!this.running || e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
-      this.keys.add(e.code);
+      if (CAMERA_KEYS.has(e.code)) this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-  }
-
-  /** Punkt terenu pod kursorem (marsz promienia po terenie). */
-  private pickGround(cx: number, cy: number): THREE.Vector3 | null {
-    const r = this.canvas.getBoundingClientRect();
-    const ndc = new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
-    const ray = new THREE.Raycaster();
-    ray.setFromCamera(ndc, this.camera);
-    const o = ray.ray.origin;
-    const d = ray.ray.direction;
-    let t = 0;
-    let step = 10;
-    for (let k = 0; k < 2000 && t < 30000; k++) {
-      const x = o.x + d.x * t;
-      const y = o.y + d.y * t;
-      const z = o.z + d.z * t;
-      const g = this.terrain.groundAt(x, z);
-      if (Number.isFinite(g) && y <= g) return new THREE.Vector3(x, g, z);
-      step = Math.min(80, Math.max(5, (y - (Number.isFinite(g) ? g : 0)) * 0.5));
-      t += step;
-    }
-    return null;
+    window.addEventListener('blur', () => this.keys.clear());
   }
 
   private updateCamera(dt: number): void {
@@ -365,6 +469,7 @@ export class View3D {
     this.camera.lookAt(this.rig.tx, this.rig.ty, this.rig.tz);
     this.camera.near = Math.max(1, this.rig.distanceM * 0.01);
     this.camera.updateProjectionMatrix();
+    this.camera.updateMatrixWorld();
   }
 
   /** Słońce, niebo, mgła, noc. */
@@ -444,6 +549,12 @@ export class View3D {
       this.objects.setRoofSnow(Math.min(1, mean / 15));
     }
     this.terrain.setSeason(summer, night);
+    this.network.setSummer(summer);
+    this.network.update(this.src.drawState());
+    // Nakładka danych: na terenie; las wtedy schowany (dane pod koronami czytelne jak w 2D).
+    const ov = this.src.overlay();
+    this.terrain.setOverlay(ov);
+    if (this.forest) this.forest.group.visible = !ov;
   }
 
   private frame(): void {
@@ -460,6 +571,7 @@ export class View3D {
     const timeS = this.src.gameTimeS();
     this.objects.update(timeS, night, this.src.groomers(), this.src.plumes(), cam);
     this.people.update(this.src.frame(), timeS, (x, z) => this.terrain.groundAt(x, z), cam, Math.max(600, this.rig.distanceM * 1.5));
+    this.network.setFrame(this.pxScale, this.pxScale * this.rig.distanceM, this.scene.fog as THREE.FogExp2);
     this.csm?.update();
     this.renderer.info.reset();
     this.renderer.info.autoReset = false;
@@ -468,6 +580,20 @@ export class View3D {
     const t1 = performance.now();
     this.cpuSum += t1 - t0;
     this.frames++;
+    // Automatyczna płynność – co okno pomiaru (tylko w pętli klatek, nie przy zrzutach pojedynczych klatek).
+    this.govFrames++;
+    const gw = this.p.governor;
+    if (this.autoQuality && this.raf && t1 - this.govT > gw.windowS * 1000) {
+      const fps = (this.govFrames * 1000) / (t1 - this.govT);
+      const next = governStep(this.gov, fps, gw);
+      if (next.resolutionScale !== this.gov.resolutionScale || next.treeScale !== this.gov.treeScale) {
+        this.gov = next;
+        this.applyGovernor();
+        this.resize();
+      }
+      this.govT = t1;
+      this.govFrames = 0;
+    }
     if (t1 - this.fpsT > 1000) {
       this.stats.fps = (this.frames * 1000) / (t1 - this.fpsT);
       this.stats.frameMs = this.cpuSum / this.frames;

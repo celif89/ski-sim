@@ -78,6 +78,7 @@ import { DevMenu } from './render/devMenu';
 import { BuildController } from './render/buildController';
 import type { SnowWarning } from './render/buildController';
 import type { MapContextData, MapLabel } from './render/resortLayer';
+import { ROAD_WIDTH_M } from './render/resortLayer';
 import { parseLiftParams } from './sim/lifts';
 import type { PointM } from './sim/lifts';
 import { parsePisteParams } from './sim/pistes';
@@ -88,6 +89,8 @@ import { parseRidingParams, thinField } from './sim/snowRiding';
 import { GROUND_COLORS, SNOW_QUALITY_COLORS } from './render/colors';
 import type { SnowReadoutData } from './render/hud';
 import { Camera } from './render/camera';
+import type { ViewCamera } from './render/camera';
+import { CAMERA_KEYS } from './render3d/cameraRig';
 import { FieldOverlay, fieldScale } from './render/fieldOverlay';
 import type { FieldKind } from './render/fieldOverlay';
 import { Hud, describePoint } from './render/hud';
@@ -209,11 +212,14 @@ async function start(): Promise<void> {
     await app.init({
       resizeTo: root,
       background: '#3b4856',
+      // Etap 3D-1: płótno z kanałem przezroczystości (nad widokiem 3D tło znika); w 2D tło pełne.
+      backgroundAlpha: 0.999,
       antialias: false,
       autoDensity: true,
       resolution: window.devicePixelRatio || 1,
     });
     root.appendChild(app.canvas);
+    app.renderer.background.alpha = 1;
 
     const { grid, hillshade, contours, timingsMs } = await terrainPromise;
     // Pokrycie terenu (las) – do mapy bazowej i modelu śniegu.
@@ -289,6 +295,25 @@ async function start(): Promise<void> {
     const camera = new Camera(grid.widthM, grid.heightM, viewSettings.minMetersPerPixel, app.screen.width, app.screen.height);
     camera.rotated = viewSettings.rotatedByDefault;
     const input = new MapInput(app.canvas, camera, viewSettings);
+    // Etap 3D-1: narzędzia (budowa, wybór, profil, pierścień nachylenia, okienka) przeliczają ekran ↔ mapę
+    // przez ten pośrednik – w 2D kamera mapy, w widoku 3D promień z kamery na teren.
+    let cam3d: ViewCamera | null = null;
+    const curCam = (): ViewCamera => cam3d ?? camera;
+    const viewCam: ViewCamera = {
+      get centerXM() { return curCam().centerXM; },
+      get centerYM() { return curCam().centerYM; },
+      get metersPerPixel() { return curCam().metersPerPixel; },
+      get viewportWidthPx() { return curCam().viewportWidthPx; },
+      get viewportHeightPx() { return curCam().viewportHeightPx; },
+      get rotated() { return curCam().rotated; },
+      get viewKey() { return curCam().viewKey; },
+      screenToWorld: (x, y) => curCam().screenToWorld(x, y),
+      worldToScreen: (x, y) => curCam().worldToScreen(x, y),
+      centerOn: (x, y) => curCam().centerOn(x, y),
+    };
+    /** Kursor nad mapą 2D albo nad widokiem 3D. */
+    let cursor3d: () => { xPx: number; yPx: number } | null = () => null;
+    const cursorNow = () => (cam3d ? cursor3d() : input.cursor);
     // ---------------------------------------------------------------- interfejs (etap 7c)
     // Jedna warstwa #ui ze skalą; panele ciemne półprzezroczyste (zasady wyglądu w CLAUDE.md).
     const shell = new UiShell(parseScaleParams(uiJson));
@@ -340,10 +365,13 @@ async function start(): Promise<void> {
     dataViews.setTipActive(cursorTip.enabled);
     const notices = new Notifications(ui, noticeParams);
     dataViews.onLegendVisible = (v) => notices.setOffset(v);
-    notices.onJump = (at) => camera.centerOn(at.xM, at.yM);
+    notices.onJump = (at) => viewCam.centerOn(at.xM, at.yM);
 
     // ---------------------------------------------------------------- nakładki
     const staticTextures = new Map<OverlayKind, Texture>();
+    // Etap 3D-1: ta sama nakładka jako tekstura terenu 3D (płótno + numer zmiany).
+    const staticCanvases = new Map<OverlayKind, HTMLCanvasElement>();
+    let overlay3d: { canvas: HTMLCanvasElement; version: () => number } | null = null;
     const field = new FieldOverlay(grid);
     let overlay: OverlayKind = 'none';
     let lastState: EnvironmentStateMessage | null = null;
@@ -404,7 +432,7 @@ async function start(): Promise<void> {
       }
     }
     setGameSpeed(0);
-    const profile = new ProfileTool(screenLayer, ui, grid, camera, slopeClasses, (active) => {
+    const profile = new ProfileTool(screenLayer, ui, grid, viewCam, slopeClasses, (active) => {
       dataViews.setProfileActive(active);
       app.canvas.classList.toggle('tool-profile', active);
     });
@@ -438,6 +466,7 @@ async function start(): Promise<void> {
     const build = new BuildController({
       grid,
       camera,
+      view: viewCam,
       world,
       screenLayer,
       panelParent: slotObjects,
@@ -682,7 +711,7 @@ async function start(): Promise<void> {
         const n = notices.history[Number(h.dataset.h)];
         if (n?.at) {
           infoWindow.hide();
-          camera.centerOn(n.at.xM, n.at.yM);
+          viewCam.centerOn(n.at.xM, n.at.yM);
         }
       }
     });
@@ -696,7 +725,7 @@ async function start(): Promise<void> {
         { id: 'snow', icon: 'snow', label: 'Naśnieżanie i ratraki' },
         { id: 'tutorial', icon: 'info', label: 'Samouczek naśnieżania' },
         { id: 'milestones', icon: 'star', label: 'Kamienie milowe' },
-        { id: 'view3d', icon: 'terrain', label: 'Widok 3D (podgląd)', key: 'F3' },
+        { id: 'view3d', icon: 'terrain', label: 'Widok 3D', key: 'F3' },
         { id: 'objects', icon: 'layers', label: 'Obiekty ośrodka i plik układu' },
         { id: 'history', icon: 'bell', label: 'Historia powiadomień', sep: true },
         { id: 'save', icon: 'save', label: 'Zapisz grę do pliku', sep: true },
@@ -844,7 +873,9 @@ async function start(): Promise<void> {
       else if (overlaySprite.parent !== world) world.addChild(overlaySprite);
       if (kind === 'none' || kind === 'liftWait') {
         overlaySprite.visible = false;
+        overlay3d = null;
       } else if (isField(kind)) {
+        overlay3d = { canvas: field.canvasEl, version: () => field.version };
         overlaySprite.texture = field.texture;
         fitToMap(overlaySprite);
         overlaySprite.visible = true;
@@ -858,7 +889,10 @@ async function start(): Promise<void> {
               : createAspectOverlayCanvas(grid, style.flatSlopePercent, style.overlayMetersPerPixel);
           texture = textureFromCanvas(canvas);
           staticTextures.set(kind, texture);
+          staticCanvases.set(kind, canvas);
         }
+        const sc = staticCanvases.get(kind);
+        overlay3d = sc ? { canvas: sc, version: () => 0 } : null;
         overlaySprite.texture = texture;
         fitToMap(overlaySprite);
         overlaySprite.visible = true;
@@ -1182,7 +1216,7 @@ async function start(): Promise<void> {
         detail.ski(ax, ay, bx, by);
       } },
       screenLayer: guestOverlay,
-      camera,
+      camera: viewCam,
       panelParent: slotGuests,
       cardParent: ui,
       onReportRequest: () => reportWindow.show('day'),
@@ -1312,7 +1346,7 @@ async function start(): Promise<void> {
     dataViewParcels = () => setParcelsActive(!parcelsActive);
     parcelClick = (x, y) => {
       if (!parcelGrid || !(parcelsActive || game?.needsStartParcel) || build.currentTool !== 'select') return false;
-      const w = camera.screenToWorld(x, y);
+      const w = viewCam.screenToWorld(x, y);
       const p = parcelAt(parcelGrid, w.xM, w.yM);
       if (!p) {
         parcelCard.hide();
@@ -1324,7 +1358,7 @@ async function start(): Promise<void> {
     parcelFrame = () => {
       const choosing = !!game?.needsStartParcel;
       startBanner.classList.toggle('hidden', !choosing);
-      parcelLayer.update(camera, { active: parcelsActive, choosing, owned: game?.ownedParcels ?? null, missing: build.draftMissing, selected: parcelCard.currentId });
+      parcelLayer.update(viewCam, { active: parcelsActive, choosing, owned: game?.ownedParcels ?? null, missing: build.draftMissing, selected: parcelCard.currentId });
     };
     build.setStreams(streamNet.lines);
     build.setWater(waterCtx, (zz) => annualPrecipitationMm(climateProfile, zz));
@@ -1562,11 +1596,19 @@ async function start(): Promise<void> {
         bar3d.querySelector('[data-3d="quality"]')!.textContent = `Jakość: ${['niska', 'średnia', 'wysoka'][q]}`;
       }
     });
+    /** Klawisze działające w widoku 3D (etap 3D-1: nakładki, czas, profil, dymek, menu). */
+    const VIEW3D_KEYS = new Set(['Escape', 'Backquote', 'Space', 'KeyK', 'KeyM', 'KeyG', 'KeyI', 'KeyP', 'Delete']);
     async function toggle3D(): Promise<void> {
       if (view3d?.active) {
+        // Powrót do mapy: mapa 2D nad tym miejscem, na które patrzyła kamera 3D.
+        camera.centerOn(view3d.adapter.centerXM, view3d.adapter.centerYM);
         view3d.hide();
-        app.canvas.style.visibility = '';
-        app.stage.visible = true;
+        cam3d = null;
+        world.visible = worldOver.visible = true;
+        build.setMapLayerVisible(true);
+        app.renderer.background.color = 0x3b4856;
+        app.renderer.background.alpha = 1;
+        app.canvas.classList.remove('over-3d');
         bar3d.classList.add('hidden');
         document.body.classList.remove('view-3d');
         return;
@@ -1580,6 +1622,17 @@ async function start(): Promise<void> {
           const ctx3 = OSM_CONTEXTS[`../data/maps/${simSettings.mapName}/osm-context.json`] as MapContextData | undefined;
           const osmBuildings = (ctx3?.buildings ?? []).map((b) => b.points.map(([e, n]) => grid.puwg92ToLocal(e, n)).filter((q): q is PointM => q !== null)).filter((l) => l.length >= 3);
           const geo = grid.georef;
+          // Etap 3D-1: stałe linie z OSM i modelu terenu (jak na mapie 2D).
+          const loc = (e: number, n: number) => grid.puwg92ToLocal(e, n);
+          const onMapPt = (q: PointM | null): q is PointM => q !== null && !Number.isNaN(grid.sampleElevationM(q.xM, q.yM));
+          const network3d = {
+            roads: (ctx3?.roads ?? []).map((r) => ({ points: r.points.map(([e, n]) => loc(e, n)).filter(onMapPt), widthM: ROAD_WIDTH_M[r.kind] ?? 3, track: r.kind === 'track' })).filter((r) => r.points.length >= 2),
+            parkings: (ctx3?.parkings ?? []).map((pk) => pk.points.map(([e, n]) => loc(e, n)).filter(onMapPt)).filter((pk) => pk.length >= 3),
+            streams: streamNet.lines,
+            hiking: osmTrails,
+            border: borderLinesLocal.map((l) => l.map(([x, y]) => ({ xM: x, yM: y }))),
+            places: (ctx3?.places ?? []).map((pl) => ({ name: pl.kind === 'peak' && pl.ele ? `${pl.name} ${pl.ele} m` : pl.name, at: loc(pl.point[0], pl.point[1]), peak: pl.kind === 'peak' })).filter((pl) => onMapPt(pl.at)).map((pl) => ({ name: pl.name, xM: pl.at!.xM, yM: pl.at!.yM, peak: pl.peak })),
+          };
           view3d = new View3D(
             root,
             {
@@ -1606,6 +1659,9 @@ async function start(): Promise<void> {
               frame: () => movers.frame,
               groomers: () => movers.groomers,
               plumes: () => build.plumes,
+              drawState: () => build.drawState,
+              overlay: () => (overlay3d ? { canvas: overlay3d.canvas, version: overlay3d.version(), opacity: style.overlayOpacity } : null),
+              network: network3d,
             },
             parseRender3DParams((r3json as { default: unknown }).default),
           );
@@ -1622,8 +1678,29 @@ async function start(): Promise<void> {
       }
       build.setTool('select');
       buildBar.close();
-      app.canvas.style.visibility = 'hidden';
-      app.stage.visible = false;
+      // Etap 3D-1: płótno mapy 2D zostaje nad widokiem 3D – przezroczyste, bez świata mapy, tylko
+      // elementy ekranu (profil, pierścień nachylenia, okienko budowy, działki); mysz trafia do 3D,
+      // a kliknięcia i przeciągnięcia – do tych samych narzędzi co w 2D (przelicznik `viewCam`).
+      const v3 = view3d;
+      cam3d = v3.adapter;
+      cursor3d = () => v3.cursor;
+      v3.hooks.onClick = (x, y) => {
+        // Klik w linę, podporę, dach – wybór obiektu pod spodem (punkt mapy pod trafieniem).
+        const g = v3.groundUnderObjectAt(x, y);
+        input.onClick?.(g ? g.xPx : x, g ? g.yPx : y);
+      };
+      v3.hooks.onDoubleClick = (x, y) => input.onDoubleClick?.(x, y);
+      v3.hooks.onRightClick = (x, y) => input.onRightClick?.(x, y);
+      v3.hooks.onDragStart = (x, y) => input.onDragStart?.(x, y) ?? false;
+      v3.hooks.onDragMove = (x, y) => input.onDragMove?.(x, y);
+      v3.hooks.onDragEnd = (x, y) => input.onDragEnd?.(x, y);
+      v3.lookAt(camera.centerXM, camera.centerYM);
+      world.visible = worldOver.visible = false;
+      build.setMapLayerVisible(false);
+      // Czarne i przezroczyste (płótno z mnożeniem przez alfę – inaczej kolor tła rozjaśniałby obraz 3D).
+      app.renderer.background.color = 0x000000;
+      app.renderer.background.alpha = 0;
+      app.canvas.classList.add('over-3d');
       bar3d.classList.remove('hidden');
       document.body.classList.add('view-3d');
       // ?r3d=manual – bez pętli klatek (zrzuty w teście; klatka przez __view3d.renderOnce()).
@@ -1632,7 +1709,7 @@ async function start(): Promise<void> {
     setInterval(() => {
       if (!view3d?.active) return;
       const s3 = view3d.stats;
-      devInfo3d.innerHTML = `${s3.fps.toFixed(1)} kl./s · praca kodu ${s3.frameMs.toFixed(1)} ms/kl.<br>${s3.drawCalls} wywołań rysowania, ${(s3.triangles / 1e6).toFixed(2)} mln trójkątów<br>drzewa 3D ${s3.treesNear.toLocaleString('pl-PL')}, obrazki ${s3.treesFar.toLocaleString('pl-PL')}<br>postacie ${s3.people}, krzesełka ${s3.carriers}; jakość ${['niska', 'średnia', 'wysoka'][view3d.qualityLevel]}`;
+      devInfo3d.innerHTML = `${s3.fps.toFixed(1)} kl./s · praca kodu ${s3.frameMs.toFixed(1)} ms/kl.<br>${s3.drawCalls} wywołań rysowania, ${(s3.triangles / 1e6).toFixed(2)} mln trójkątów<br>drzewa 3D ${s3.treesNear.toLocaleString('pl-PL')}, obrazki ${s3.treesFar.toLocaleString('pl-PL')}<br>postacie ${s3.people}, krzesełka ${s3.carriers}; jakość ${['niska', 'średnia', 'wysoka'][view3d.qualityLevel]}<br>automatyczna płynność: rozdzielczość ×${view3d.governor.resolutionScale.toFixed(1)}, zasięg drzew ×${view3d.governor.treeScale.toFixed(1)}`;
     }, 500);
     // Etap 7e: pierścień nachylenia przy budowie (na ekranie, nad wszystkim) i suwaki rzeźby w menu Dev.
     const slopeRing = new SlopeRing(
@@ -1713,7 +1790,7 @@ async function start(): Promise<void> {
           const f = factsNow();
           const centerOn = (bid: string | null | undefined) => {
             const c = bid ? build.objectCenter('base', bid) : null;
-            if (c) camera.centerOn(c.xM, c.yM);
+            if (c) viewCam.centerOn(c.xM, c.yM);
           };
           if (id === 'showQueues') setOverlay('liftWait');
           else if (id === 'planLift') openBuild('lifts');
@@ -1834,7 +1911,7 @@ async function start(): Promise<void> {
 
     /** Etap 6b: treść dymku przy kursorze. */
     function tipContent(c: { xPx: number; yPx: number }): TipContent | null {
-      const w = camera.screenToWorld(c.xPx, c.yPx);
+      const w = viewCam.screenToWorld(c.xPx, c.yPx);
       const d = describePoint(grid, w.xM, w.yM, style.flatSlopePercent, lastSnow ? { ...lastSnow, ground: build.groundMap, riding: ridingParams } : null);
       if (!d.elevation) return null;
       const lines = [d.elevation, d.slope, d.aspect, d.snow];
@@ -1871,7 +1948,8 @@ async function start(): Promise<void> {
         void toggle3D();
         return true;
       }
-      if (view3d?.active && code !== 'Escape' && code !== 'Backquote') return true;
+      // W 3D: klawisze kamery (WASD, strzałki, Q E R F) obsługuje widok 3D; narzędzia budowy – od etapu 3D-2.
+      if (view3d?.active && (CAMERA_KEYS.has(code) || (!VIEW3D_KEYS.has(code) && !/^(Digit|Numpad)[1-9]$/.test(code)))) return true;
       if (code === 'Escape') {
         if (reportWindow.visible) return (reportWindow.hide(), true);
         if (infoWindow.visible) return (infoWindow.hide(), true);
@@ -1955,7 +2033,7 @@ async function start(): Promise<void> {
         const sel = cardSel;
         if (id === 'show') {
           const c = build.objectCenter(sel.kind as Parameters<typeof build.objectCenter>[0], sel.id);
-          if (c) camera.centerOn(c.xM, c.yM);
+          if (c) viewCam.centerOn(c.xM, c.yM);
         } else if (id === 'moreParking') {
           buildBar.toggleCategory('buildings');
           build.setBuildingType('parking');
@@ -2136,23 +2214,24 @@ async function start(): Promise<void> {
       guestCtl.update(camera, night, timePanel.hour * 3600, ticker.deltaMS / 1000);
       detailFrame(night);
       if (overlay === 'traffic') trafficTick(ticker.deltaMS / 1000);
-      profile.update(input.cursor);
+      profile.update(cursorNow());
       opsFrame();
       refreshSnowOps(false);
       // Etap 7f: w trakcie rysowania przy kursorze jest okienko budowy (długość, koszt) – bez dymka terenu.
       const sv = build.snapView;
-      cursorTip.update(sv && (sv.info.length || sv.warn.length) ? null : input.cursor, performance.now(), () => tipContent(input.cursor!));
+      const cur = cursorNow();
+      cursorTip.update(sv && (sv.info.length || sv.warn.length) ? null : cur, performance.now(), () => tipContent(cur!));
       contourLabels.update(camera);
-      slopeRing.update(camera, input.cursor, RING_TOOLS.has(build.currentTool));
-      build.update(input.cursor, guestCtl.gameTimeS ?? nowS);
-      snapOverlay.update(camera, input.cursor, build.snapView);
+      slopeRing.update(viewCam, cur, RING_TOOLS.has(build.currentTool));
+      build.update(cur, guestCtl.gameTimeS ?? nowS);
+      snapOverlay.update(viewCam, cur, build.snapView);
       parcelFrame();
       if (performance.now() - tutorialMs > 500) {
         tutorialMs = performance.now();
         if (buildBar.openCategory === 'snow') snowTutorial.offerOnce();
         snowTutorial.tick(tutorialMs);
       }
-      hud.update(camera, grid, input.cursor, lastSnow ? { ...lastSnow, ground: build.groundMap, riding: ridingParams } : null);
+      hud.update(viewCam, grid, cur, lastSnow ? { ...lastSnow, ground: build.groundMap, riding: ridingParams } : null);
       const wx = lastState?.top.now;
       weatherFx.update(ticker.deltaMS / 1000, camera.viewportWidthPx, camera.viewportHeightPx, wx && wx.precipitationMm > 0 ? Math.min(1, 0.25 + wx.precipitationMm / 2) : 0, wx?.phase === 'rain', lastState?.cloudFraction ?? 0, wx?.windMs ?? 0);
       devMenu.frame(performance.now() - frameStart, `kafle terenu: ${terrain.stats.visibleTiles} widocznych, ${terrain.stats.bakedTotal} policzonych · goście: ${movers.personCount} w ramce, ${movers.visibleCount} na ekranie`);

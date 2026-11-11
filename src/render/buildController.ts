@@ -33,9 +33,9 @@ import type { TerrainGrid } from '../sim/terrainGrid';
 import type { BuildTool, DrawMode } from './buildPanel';
 import { BuildPanel } from './buildPanel';
 import { BuildProfile } from './buildProfile';
-import type { Camera } from './camera';
+import type { Camera, ViewCamera } from './camera';
 import { ResortLayer } from './resortLayer';
-import type { EditHandle, HandleKind, MapContextData, MapLabel } from './resortLayer';
+import type { EditHandle, HandleKind, MapContextData, MapLabel, ResortDrawState } from './resortLayer';
 import type { LodThresholds } from './illustration';
 import type { BuildBarState } from './buildBar';
 import type { CtrlPt, LineParams } from './lineTools';
@@ -47,6 +47,8 @@ import { AutoSnowPanel } from './autoSnowPanel';
 export interface BuildControllerOptions {
   grid: TerrainGrid;
   camera: Camera;
+  /** Etap 3D-1: przelicznik ekran ↔ mapa dla narzędzi (2D albo 3D); bez niego – kamera mapy. */
+  view?: ViewCamera;
   world: Container;
   screenLayer: Container;
   panelParent: HTMLElement;
@@ -320,6 +322,11 @@ export class BuildController {
     this.layer.setHikingTrails(lines);
   }
 
+  /** Etap 3D-1: rysunek mapy 2D (w pikselach ekranu) – schowany w widoku 3D. */
+  setMapLayerVisible(on: boolean): void {
+    this.layer.setScreenVisible(on);
+  }
+
   setSummerLook(on: boolean): void {
     this.layer.setSummer(on);
   }
@@ -335,6 +342,17 @@ export class BuildController {
   }
 
   /** Układ ośrodka i jego analiza (dla innych warstw, np. sceny demonstracyjnej). */
+  /** Przelicznik ekran ↔ mapa narzędzi (2D albo 3D). */
+  private get view(): ViewCamera {
+    return this.o.view ?? this.o.camera;
+  }
+
+  /** Etap 3D-1: ostatni stan rysowania mapy 2D – ten sam rysuje widok 3D (linie, zaznaczenie, podglądy). */
+  private lastDrawState: ResortDrawState | null = null;
+  get drawState(): ResortDrawState | null {
+    return this.lastDrawState;
+  }
+
   get current(): { layout: ResortLayout; analysis: ResortAnalysis } {
     return { layout: this.layout, analysis: this.analysis };
   }
@@ -671,7 +689,7 @@ export class BuildController {
     // Etap 7f: prosty odcinek – łamana przez kliknięte punkty (gładkość 0); łuk i ręka – uproszczenie śladu, gładki łuk.
     const smooth = mode === 'straight' ? 0 : this.o.lines.defaultSmooth;
     const L = this.o.lines;
-    const ctrl = mode !== 'straight' && clean.length > 2 ? simplifyStroke(clean, { toleranceM: mode === 'arc' ? L.toleranceM : effectiveTolerance(L, this.o.camera.metersPerPixel), minSpacingM: mode === 'arc' ? L.sampleStepM * 2 : L.minSpacingM, cornerAngleDeg: L.cornerAngleDeg, smooth }) : clean;
+    const ctrl = mode !== 'straight' && clean.length > 2 ? simplifyStroke(clean, { toleranceM: mode === 'arc' ? L.toleranceM : effectiveTolerance(L, this.view.metersPerPixel), minSpacingM: mode === 'arc' ? L.sampleStepM * 2 : L.minSpacingM, cornerAngleDeg: L.cornerAngleDeg, smooth }) : clean;
     return { ctrl, smooth, points: this.densify(ctrl, smooth) };
   }
 
@@ -778,7 +796,7 @@ export class BuildController {
   }
 
   private world(xPx: number, yPx: number): PointM | null {
-    const p = this.o.camera.screenToWorld(xPx, yPx);
+    const p = this.view.screenToWorld(xPx, yPx);
     return this.o.grid.containsPointM(p.xM, p.yM) ? p : null;
   }
 
@@ -920,7 +938,7 @@ export class BuildController {
       const c = this.ctrlOf(lo);
       const { points, seg } = smoothPathWithSeg(c.ctrl, c.smooth, this.o.lines.sampleStepM);
       const near = nearestOnPolyline(p, points);
-      if (near.d / this.o.camera.metersPerPixel > SEGMENT_GRAB_PX) return false;
+      if (near.d / this.view.metersPerPixel > SEGMENT_GRAB_PX) return false;
       const before = this.clone();
       const i = seg[Math.min(seg.length - 1, near.index)] + 1;
       const a = c.ctrl[i - 1];
@@ -1284,7 +1302,7 @@ export class BuildController {
   private placeGun(xPx: number, yPx: number): void {
     const sp = this.o.snowmaking;
     if (!sp) return;
-    const cam = this.o.camera;
+    const cam = this.view;
     let best: (Hydrant & { gunId: string | null }) | null = null;
     let bd = 14;
     for (const h of this.hydrants()) {
@@ -1381,7 +1399,7 @@ export class BuildController {
   // ------------------------------------------------------------------ zaznaczanie i edycja
 
   private pick(xPx: number, yPx: number, p: PointM): { kind: SelKind; id: string } | null {
-    const cam = this.o.camera;
+    const cam = this.view;
     for (const b of [...this.layout.bases, ...(this.layout.buildings ?? [])]) {
       const s = cam.worldToScreen(b.xM, b.yM);
       if (Math.hypot(s.xPx - xPx, s.yPx - yPx) <= SELECT_RADIUS_PX) return { kind: 'base', id: b.id };
@@ -1459,7 +1477,7 @@ export class BuildController {
 
   /** Etap 6b: obiekt pod kursorem (do dymka): nazwa, status i najważniejsze dane. */
   describeAt(xPx: number, yPx: number): { title: string; lines: string[] } | null {
-    const p = this.o.camera.screenToWorld(xPx, yPx);
+    const p = this.view.screenToWorld(xPx, yPx);
     const hit = this.pick(xPx, yPx, p);
     if (!hit) return null;
     const f0 = (v: number) => Math.round(v).toLocaleString('pl-PL');
@@ -1741,7 +1759,7 @@ export class BuildController {
 
   /** Uchwyt pod kursorem (najpierw punkty i stacje, potem szerokość, na końcu „+”). */
   private hitHandle(xPx: number, yPx: number): EditHandle | null {
-    const cam = this.o.camera;
+    const cam = this.view;
     let best: EditHandle | null = null;
     let bestScore = Infinity;
     const rank: Record<HandleKind, number> = { pistePoint: 0, linePoint: 0, liftBottom: 0, liftTop: 0, liftBend: 0, pisteWidth: 1, pisteAdd: 2, liftAdd: 2 };
@@ -2105,7 +2123,7 @@ export class BuildController {
       const L = Math.hypot(b.xM - a.xM, b.yM - a.yM);
       if (L > 1e-6) prevDir = { xM: (b.xM - a.xM) / L, yM: (b.yM - a.yM) / L };
     }
-    const r = snapPoint(w, { ...this.snapBase(), anchor: this.handStroke ? null : anchor, prevDir, metersPerPixel: this.o.camera.metersPerPixel, shift: this.shiftDown }, this.o.snap);
+    const r = snapPoint(w, { ...this.snapBase(), anchor: this.handStroke ? null : anchor, prevDir, metersPerPixel: this.view.metersPerPixel, shift: this.shiftDown }, this.o.snap);
     if (this.handStroke) r.guide = null;
     this.snapRes = r;
     return this.o.grid.containsPointM(r.point.xM, r.point.yM) ? r.point : w;
@@ -2419,7 +2437,7 @@ export class BuildController {
     const m = this.moving;
     if (!m) return;
     if (m.kind === 'gun') {
-      const cam = this.o.camera;
+      const cam = this.view;
       let best: (Hydrant & { gunId: string | null }) | null = null;
       let bd = 14;
       for (const h of this.hydrants(m.before)) {
@@ -2473,7 +2491,7 @@ export class BuildController {
   private selDitchCache: { key: string; a: DitchAnalysis | null } | null = null;
 
   private drawOverlay(): void {
-    const cam = this.o.camera;
+    const cam = this.view;
     const sel = this.selection;
     let ditch: DitchAnalysis | null = null;
     if (this.tool === 'ditch') ditch = this.ditchDraft;
@@ -2485,7 +2503,7 @@ export class BuildController {
       }
       ditch = this.selDitchCache.a;
     }
-    const key = `${cam.centerXM}|${cam.centerYM}|${cam.metersPerPixel}|${cam.rotated}|${this.drawVersion}|${this.version}|${ditch ? ditch.catchment.cells.length : -1}|${this.autoPlan ? this.autoPlan.guns.length : -1}|${this.autoSel.join(',')}`;
+    const key = `${cam.centerXM}|${cam.centerYM}|${cam.metersPerPixel}|${cam.rotated}|${cam.viewKey ?? ''}|${this.drawVersion}|${this.version}|${ditch ? ditch.catchment.cells.length : -1}|${this.autoPlan ? this.autoPlan.guns.length : -1}|${this.autoSel.join(',')}`;
     if (key === this.overlayKey) return;
     this.overlayKey = key;
     const g = this.overlayG.clear();
@@ -2623,7 +2641,7 @@ export class BuildController {
 
   update(cursor: { xPx: number; yPx: number } | null, timeS = performance.now() / 1000): void {
     // Podgląd: wyciąg do kursora, oś trasy do kursora.
-    const key = cursor ? `${Math.round(cursor.xPx)}|${Math.round(cursor.yPx)}|${this.o.camera.centerXM}|${this.o.camera.centerYM}|${this.o.camera.metersPerPixel}` : '';
+    const key = cursor ? `${Math.round(cursor.xPx)}|${Math.round(cursor.yPx)}|${this.view.centerXM}|${this.view.centerYM}|${this.view.metersPerPixel}|${this.view.viewKey ?? ''}` : '';
     if (key !== this.lastCursorKey && cursor) {
       this.lastCursorKey = key;
       this.cursorWorld = this.world(cursor.xPx, cursor.yPx);
@@ -2648,7 +2666,7 @@ export class BuildController {
         }
       }
     }
-    this.layer.update({
+    this.lastDrawState = {
       layout: this.layout,
       analysis: this.analysis,
       selection: this.selection,
@@ -2669,7 +2687,8 @@ export class BuildController {
       version: this.version,
       drawVersion: this.drawVersion,
       timeS,
-    });
+    };
+    this.layer.update(this.lastDrawState);
     this.drawOverlay();
   }
 }
