@@ -125,8 +125,9 @@ export function snapPoint(cursor: PointM, ctx: SnapContext, p: SnapParams): Snap
   let bp: SnapPoint | null = null;
   let bd = r;
   for (const q of ctx.points) {
+    // Przy remisie wygrywa punkt podany wcześniej (np. pompownia przed końcem rury, który w niej leży).
     const d = Math.hypot(q.xM - cursor.xM, q.yM - cursor.yM);
-    if (d <= bd) {
+    if (d < bd - 1e-6 || (!bp && d <= bd)) {
       bd = d;
       bp = q;
     }

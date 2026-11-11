@@ -17,7 +17,7 @@ export interface AutoSnowView {
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const f0 = (v: number) => Math.round(v).toLocaleString('pl-PL');
-const money = (v: number) => (v >= 1e6 ? `${(v / 1e6).toLocaleString('pl-PL', { maximumFractionDigits: 2 })} mln zł` : `${f0(v / 1000)} tys. zł`);
+const money = (v: number) => (v >= 1e6 ? `${(v / 1e6).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} mln zł` : `${f0(v / 1000)} tys. zł`);
 
 export class AutoSnowPanel {
   readonly el: HTMLElement;

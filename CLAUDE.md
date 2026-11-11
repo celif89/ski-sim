@@ -641,6 +641,72 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
     mapy; wklęsłości; kreski tylko na terenie otwartym, stałe, zanik z przybliżeniem; opis warstwicy
     pod górę; pierścień – klasa i kierunek;
   - zrzuty przed / po: `docs/ui/rzezba/` (cała mapa, Hala Miziowa, zbliżenie na trasę, pierścień).
+- **Etap 7f – zrobiony** (listopad 2026): wygoda budowania (wzór: Cities: Skylines) i poprawki po testach.
+  - przyciąganie i linie pomocnicze (`src/render/snapping.ts`, parametry `data/ui.json` sekcja `snapping`):
+    punkty i odcinki tej samej sieci (rurociąg – pompownia, hydrant, armatka, rury; rura zasilająca – źródła,
+    zbiornik; droga – drogi, drogi publiczne, parkingi; trasa i nartostrada – stacje wyciągów, trasy; trasy
+    letnie – stacje, budynki; wyciąg – końce tras, parkingi, stacje; rów – zbiorniki) w promieniu 14 px,
+    potem linie pomocnicze w 9 px: kąt co 15° (w tym 90°) względem najbliższego obiektu (≤ 60 m od początku
+    odcinka; bez sąsiada – względem poprzedniego odcinka), przedłużenie odcinka (≤ 400 m), równoległa 5 m
+    od krawędzi trasy (rurociąg, droga, rów); Shift wyłącza; `BuildController.snapAt`, `snapBase`
+    (zapamiętane do zmiany układu); `SnapOverlay` (`render/snapOverlay.ts`) – znacznik, linia przerywana
+    z opisem, okienko przy kursorze: długość, koszt narastająco, nachylenie odcinka, ostrzeżenia na
+    czerwono (droga i nartostrada za stroma, tor, rurociąg niepołączony z pompownią, błędy analizy
+    wyciągu i trasy, rów pod górę); dymek terenu chowa się na czas rysowania;
+  - tryby rysowania (`DrawMode`: `straight` – łamana, gładkość 0; `arc` – Bézier 2. stopnia przez punkt
+    sterujący, `arcPoints`, potem uproszczenie jak ręka; `hand`), klawisz O po kolei, w palecie
+    „Prosto / Łuk / Ręką”; starszy zapis „click” → „straight”;
+  - ulepszanie (`src/sim/upgrades.ts`): `upgradeLift` (ten sam przebieg, podpory od nowa, zjazd i wieszaki
+    tylko gdy typ pozwala; `liftUpgradeCheck` – kąt załamania i stacja pośrednia), `upgradeGun`,
+    `widenPiste` (`pistes.json` `widenStepM` 5 m), `moveBuilding` (obrót co 90°, `BuildingDesign.rotDeg` –
+    tylko widok, poza podpisem kosztu); akcje w kartach (`CardAction` `upgrade` z listą wyboru, `widen`,
+    `move`), potwierdzenie z różnicą kosztu, dopłatą i czasem przebudowy (`GameController.changePreview`);
+    przesuwanie budynku: podgląd pod kursorem, R / prawy przycisk – obrót; przeniesienie budynku = przebudowa
+    (opłata `rebuildFeeShare`), armatki – bez kosztu; rozbiórka gotowego obiektu – zwrot
+    `demolishRefundShare` 15 % (`economy.json`, do kalibracji);
+  - „Naśnież trasę” (`src/sim/autoSnowmaking.ts`, `data/snowmaking.json` sekcja `autoPlan`): krawędź trasy
+    (oś przesunięta o pół szerokości + 3 m, strona i koniec bliżej sieci), dojście od pompowni albo rury
+    połączonej z pompownią najkrótszą drogą po terenie (Dijkstra na siatce 10 m, długość 3D × (1 + 1,5 ×
+    las) × (1 + 0,01 × nachylenie %)), Douglas–Peucker 4 m; odcinek dojściowy bez hydrantów
+    (`PipelineDesign.hydrantsFromM`); hydranty co 60 m, przy każdym armatka (`chooseGunType`: lanca przy
+    lesie ≥ 30 % w promieniu 25 m, szerokości < 30 m lub nachyleniu > 35 %; inaczej śmigłowa); koszt =
+    `pipelineCost` + ceny armatek (te same wzory co ekonomia); wydajność przy Twb −6 °C (ograniczona
+    pompownią), pierwsze zaśnieżenie 40 cm ubitego śniegu przy 20 h pracy na dobę; widok – narzędzie
+    `autoSnow` (klik trasy dodaje / zdejmuje), podgląd na mapie, okno `render/autoSnowPanel.ts`
+    („Zbuduj” / „Anuluj”, Enter / Esc);
+  - samouczek i lista kontrolna: `src/sim/snowChecklist.ts` (7 kroków: woda – źródło połączone ze
+    zbiornikiem, zbiornik, pompownia, przyłącze, armatki, plan naśnieżania zapisany, ratrak; dlaczego
+    i co zrobić), `render/ui/snowTutorial.ts` (proponowany raz przy pierwszym otwarciu kategorii
+    Naśnieżanie – `localStorage` `ski-sim:samouczek-nasniezanie`; menu ☰ i przycisk w panelu; „Pokaż
+    gdzie” podświetla kartę / przycisk pomarańczową obwódką, zrobiony krok – po 1,8 s następny); lista
+    „Czego brakuje do naśnieżania” w panelu, dopóki czegoś brakuje;
+  - ratraki bez garażu i używane (`snowmaking.json` `groomers.outdoor`, `groomers.used`, wszystko „do
+    kalibracji”): w garażu pierwsze `garageSlots` ratraki floty (`shelteredGroomers`); pod chmurką
+    rozgrzewanie 25 min (`GroomerUnit.warmupH` – później start nocy), awarie ×2,5 przy minimum nocy
+    ≤ −8 °C (`breakdownChance` z kontekstem; minimum 18–30 h na wysokości dolnej stacji), serwis ×1,35,
+    starzenie ×1,5 (`outdoorDays`, `groomerAgeYears`); zakup bez garażu; rynek używanych:
+    `usedGroomerOffers(seed, sezon)` – 3 oferty, wiek 4–14 lat, ok. 1/3 ceny nowego × stan, gorszy stan –
+    więcej awarii (`condition`), zakup raz (`ops.usedTaken`); panel: „w garażu” / „stoi pod chmurką”, wiek,
+    stan, oferty z przyciskiem;
+  - rowy zbierające jako linie (`DitchDesign`, `layout.ditches`; `water.ts`: `analyzeDitch` – koniec przy
+    zbiorniku ≤ 40 m, średni spadek ≥ 0,5 %, lokalnie nie pod górę > 1 % na odcinkach 20 m, zlewnia =
+    komórki, których spływ przecina rów (`upstreamCells`), przepustowość 30 ha, dopływ roczny = zlewnia ×
+    opad roczny na średniej wysokości × 0,5; `data/water.json` sekcja `ditches`, koszt 60 zł/m i tempo
+    w `snowmaking.json` `ditch`, wykop latem); źródło wody `catchment` w `waterSources`; narzędzie `ditch`
+    (karta „Rów zbierający”), nakładka zlewni (niebieskie pole) przy rysowaniu i po kliknięciu rowu, rów
+    na mapie (niebieska przerywana linia ze strzałką), karta obiektu; starsze zapisy:
+    `convertLegacyCatchments` – „budynek” rowów → rów dnem doliny powyżej zbiornika (`legacyDitchPoints`,
+    300 m, komórki niżej niż zbiornik odpadają), ten sam identyfikator i podpis kosztu (`legacySig`,
+    `legacyKey`) – bez opłaty; karta „rowy” zniknęła z palety;
+  - kompaktowe menu budowy (`BuildBar.setCompact`, `localStorage` `ski-sim:menu-kompaktowe`, domyślnie
+    przy szerokości okna < 1920 px – `data/ui.json` `buildBar`): ikony 40 px z podpowiedzią i skrótem,
+    karty: nazwa + cena (parametr w podpowiedzi), przycisk „−” zwija paletę; przełącznik w menu ☰;
+  - testy `tests/building7f.test.ts` (17): przyciąganie (hydrant, pompownia, odcinek, Shift), 90° i 45°,
+    przedłużenie, równoległa, łuk; „Naśnież trasę” (odstęp hydrantów, połączenie z pompownią, koszt =
+    suma, dobór armatek); ulepszenie wyciągu (linia, podpory, koszt różnicowy, czas przebudowy),
+    rozbiórka ze zwrotem, poszerzenie, zamiana armatki, przesunięcie z obrotem; ratrak bez garażu pracuje,
+    awarie pod chmurką > 1,5× w garażu (3000 nocy, te same losowania), rynek używanych; rów – zlewnia
+    powyżej rowu, rów pod górę odrzucony, rów z dawnego „budynku”; lista „czego brakuje”.
 - **Następny: etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja.**
 
 Uwagi techniczne:
@@ -752,6 +818,18 @@ Uwagi techniczne:
   garbów w układzie mapy (zaburzone szumem), nie wzdłuż linii spadku; sztruks nocą ledwie widoczny (światło
   reflektorów nie oświetla faktury); pył spod nart tylko w stanie „puch”; atlas rysowany wektorowo
   (styl prosty) – do wymiany na rysunki w stylu docelowym bez zmian w kodzie (`data/atlas.json`).
+- Budowanie (7f): przyciąganie tylko do końców i odcinków (bez przecięć dwóch linii pomocniczych naraz);
+  kąt liczony względem najbliższego odcinka w promieniu 60 m od początku rysowanego odcinka; łuk – jeden
+  punkt sterujący na odcinek (bez edycji punktu sterującego po postawieniu – potem jak zwykła linia);
+  „Naśnież trasę” prowadzi rurę jedną stroną trasy i podłącza do pierwszej pompowni najbliższej trasie
+  (bez wyboru pompowni, bez sprawdzania mocy przyłącza i pojemności zbiornika – tylko ostrzeżenie
+  o pompowni), dojście po terenie nie omija budynków ani innych tras; reguła śmigłowa / lanca i czas
+  pierwszego zaśnieżenia do kalibracji; ulepszenie wyciągu w trakcie przebudowy – wyciąg nie działa
+  (zmiana podpisu), ale bez osobnej opłaty za rozbiórkę starego; przeniesienie budynku kosztuje jak
+  przebudowa (10 % + czas); karty używanych ratraków bez zdjęć i historii; rów: zlewnia z modelu spływu
+  D8 (priorytetowe wypełnianie) – na równym stoku spływ bywa skośny, przez co zlewnia rowu jest
+  przesunięta w bok (do 20–30 % powierzchni); rów nie traci wody na wsiąkanie zimą; samouczek tylko
+  dla naśnieżania.
 - Rzeźba (7e): wartości cieniowania, kresek i warstwic „do wyczucia” – stroić suwakami w menu Dev
   na Macu i przenieść do pliku; opisy warstwic czasem do góry nogami (konwencja: góra pod górę) i bez
   przerwy w linii pod napisem; kreski z gradientu siatki 10 m (na krótkich stromiznach < 20 m słabo);

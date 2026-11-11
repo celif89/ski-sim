@@ -81,6 +81,29 @@ oglądane zegarem (×1, ×5, ×20) – **pełną symulacją gości**. W karierze
 
 ### Naśnieżanie i ratraki (etap 7)
 
+**Najprościej (etap 7f): „Naśnież trasę”** – dolne menu „Naśnieżanie” → pierwsza karta, kliknij trasę
+(kolejne kliknięcia dodają lub zdejmują trasy). Gra proponuje rurociąg wzdłuż krawędzi trasy (3 m za
+krawędzią), dojście od najbliższej pompowni najkrótszą drogą po terenie (las i strome zbocza liczą się
+jako „dłuższa droga”), hydranty co 60 m i armatki przy każdym: śmigłowe na szerokich (≥ 30 m)
+i łagodnych (≤ 35 %) odcinkach, lance na wąskich, stromych i przy lesie (reguły w `data/snowmaking.json`,
+sekcja `autoPlan`). W okienku: koszt (rury, hydranty, armatki), wydajność przy −6 °C temperatury
+mokrej, potrzebna woda (ostrzeżenie, gdy pompownia nie nadąży), czas pierwszego zaśnieżenia (40 cm
+ubitego śniegu na całej trasie) i czas budowy. „Zbuduj” albo „Anuluj”.
+
+**Samouczek naśnieżania** – proponowany przy pierwszym otwarciu kategorii „Naśnieżanie” (i w menu ☰,
+i w panelu naśnieżania): 7 kroków – źródło wody, zbiornik, pompownia, przyłącze prądu, „Naśnież trasę”,
+plan naśnieżania, ratrak. Każdy krok mówi, dlaczego jest potrzebny, „Pokaż gdzie” podświetla kartę
+albo przycisk, a gdy krok jest zrobiony – samouczek sam przechodzi dalej. Ta sama lista
+**„Czego brakuje do naśnieżania”** jest w panelu „Naśnieżanie i ratraki”, dopóki czegoś brakuje.
+
+**Ratraki bez garażu i używane (etap 7f).** Garaż nie jest konieczny. Ratrak „pod chmurką” dłużej się
+rozgrzewa (25 min), w mroźną noc (≤ −8 °C) psuje się 2,5× częściej, serwis jest o 35 % droższy, a maszyna
+starzeje się 1,5× szybciej (wartości „do kalibracji”). W panelu przy każdym ratraku: „w garażu” albo
+„stoi pod chmurką”. Co sezon są 3 oferty **używanych** ratraków (wiek 4–14 lat, ok. 1/3 ceny nowego, stan
+różny – gorszy stan to częstsze awarie).
+
+Ręcznie, krok po kroku:
+
 Jak zbudować system naśnieżania (najlepiej latem – wykopy pod rurociąg i zbiornik tylko od maja do
 października):
 
@@ -94,8 +117,11 @@ października):
      zakup włączasz i wyłączasz w panelu „Naśnieżanie i ratraki”;
    - **studnia głębinowa** 100 lub 200 m – wydajność poznasz dopiero po wierceniu (we fliszu zwykle
      1–10 m³/h, bywa prawie sucha); pompa zużywa energię;
-   - **rowy zbierające spływ** – przy zbiorniku; łapią deszcz i roztopy ze zlewni zbiornika (najwięcej
-     wiosną) – zbiornik może się napełnić bez potoku.
+   - **rów zbierający** (etap 7f) – linia rysowana od góry stoku w dół do zbiornika (koniec najwyżej
+     40 m od niego, spadek co najmniej 0,5 %; rów pod górę jest odrzucany); zbiera deszcz i roztopy
+     z obszaru powyżej siebie – zlewnię widać jako niebieskie pole przy rysowaniu i po kliknięciu rowu,
+     z szacowanym dopływem w roku przeciętnym. Starsze zapisy: dawny „budynek” rowów zamienia się sam
+     na rów wzdłuż dna doliny powyżej zbiornika (bez opłaty).
    Źródło łączy się ze zbiornikiem **rurą zasilającą** (klawisz `F`: klikaj od źródła do zbiornika,
    `Enter` – koniec; 250 zł/m, wykop latem) albo stoi przy nim (do 60 m). Pod górę woda jest pompowana.
 2. **Zbiornik** (20, 50 lub 100 tys. m³) – napełnia się ze źródeł; w panelu „Źródła wody” widać ilość
@@ -176,7 +202,10 @@ menu ☰ → „Obiekty ośrodka i plik układu”.
 |---|---|
 | Wyciąg | „Wyciągi” → karta typu (albo `L`); kliknij **dolną**, potem **górną** stację. W trakcie na dole profil terenu z liną, podporami i ostrzeżeniami. |
 | Trasa, droga, rurociąg, trasa letnia – **rysowanie ręką** | przeciągnij myszą wzdłuż przebiegu; po puszczeniu linia sama się upraszcza do kilku punktów kontrolnych (co ok. 40 m, gęściej na zakrętach) i prowadzi gładkim łukiem – odbiega od narysowanej najwyżej o kilka metrów |
-| … **rysowanie punktami** | przełącznik „Ręką / Punktami” w palecie albo klawisz `O`: klik = punkt, podwójny klik lub `Enter` = koniec, `Backspace` – cofnij punkt |
+| … **prosto / łukiem** (etap 7f) | przełącznik „Prosto / Łuk / Ręką” w palecie albo klawisz `O` (po kolei). Prosto: klik = punkt (łamana), podwójny klik lub `Enter` = koniec, `Backspace` – cofnij punkt. Łuk: klik – początek, klik – punkt sterujący (w którą stronę wygiąć), klik – koniec łuku; dalej następny łuk |
+| **Przyciąganie i linie pomocnicze** (etap 7f) | końce przyciągają się do obiektów tej samej sieci: rurociąg – do pompowni, hydrantu, armatki i innego rurociągu; droga – do drogi, drogi publicznej i parkingu; trasa – do stacji wyciągu i innej trasy; wyciąg – do końców tras i parkingów (pomarańczowe kółko – punkt, romb – odcinek). Linie pomocnicze (pomarańczowe, przerywane): kąt prosty i co 15° względem sąsiedniego obiektu, przedłużenie istniejącego odcinka, równoległa 5 m od krawędzi trasy (rurociąg, droga). **Shift** – bez przyciągania. Przy kursorze: długość, koszt narastająco, nachylenie odcinka; ostrzeżenia na czerwono (np. „za stromo”, „początek nie łączy się z pompownią”) |
+| **Ulepsz, przesuń, poszerz** (etap 7f) | karta obiektu: wyciąg – „Ulepsz” (inny typ na tej samej linii: podpory od nowa, różnica kosztu i opłata za przebudowę, w tym czasie nie działa); armatka – zamiana typu, „Przesuń na inny hydrant” (śmigłowa); trasa – „Poszerz” (+5 m); budynek – „Przesuń” (klik w nowe miejsce, `R` albo prawy przycisk – obrót o 90°) |
+| Menu kompaktowe (etap 7f) | menu ☰ → „Menu budowy: kompaktowe / pełne” (ikony 40 px, karty: nazwa + cena, parametr w podpowiedzi; „−” zwija paletę); domyślnie kompaktowe na ekranach węższych niż 1920 px |
 | Szerokość trasy, wyrównanie terenu | suwak i pole w palecie „Trasy”; klawisze `[` `]` |
 | Nartostrada, droga, rurociąg, rura zasilająca, armatka | `U`, `E`, `H`, `F`, `J` albo karty w paletach |
 | Budynek | „Budynki” / „Naśnieżanie” / „Lato” → karta, kliknij miejsce (`B`) |
@@ -184,7 +213,7 @@ menu ☰ → „Obiekty ośrodka i plik układu”.
 | Edycja wyciągu | zaznacz wyciąg: **prostokąty** – stacja dolna i górna (przeciągnij), **„+”** na linii – nowe załamanie, **romb** – załamanie (podwójne kliknięcie – stacja pośrednia; prawy przycisk – usuń) |
 | Otwarcie / zamknięcie | karta obiektu („Zamknij / Otwórz”) albo profil; cały ośrodek – pole „Sezon otwarty” w panelu Goście |
 | Podpory wyciągu | na wykresie profilu: przeciągnij podporę; podwójne kliknięcie – nowa; prawy przycisk – usuń; „Rozstaw podpory automatycznie” |
-| Rozbiórka | „Rozbiórka” i klik na obiekcie, `Delete` przy zaznaczonym albo karta → Ustawienia → Rozbierz |
+| Rozbiórka | „Rozbiórka” i klik na obiekcie, `Delete` przy zaznaczonym albo karta → Ustawienia → Rozbierz; gotowy obiekt – zwrot 15 % kosztu (`data/economy.json`, `demolishRefundShare`, do kalibracji), w budowie – 70 % (tego samego dnia 100 %) |
 | Cofnij / ponów | `Ctrl+Z` / `Ctrl+Y` (na Macu `Cmd`) albo strzałki w palecie |
 | Zapis | układ zapisuje się sam w przeglądarce; plik JSON – menu → „Obiekty ośrodka i plik układu” |
 
@@ -451,6 +480,14 @@ Co sprawdzają testy (katalog `tests/`):
   Hala Miziowa jako wypłaszczenie, zgodność z Geoportalem w punktach kontrolnych (±3 m),
 - **współrzędne:** PUWG 1992 ↔ stopnie zgodne z biblioteką PROJ (±1 cm),
 - z etapu 0: generator losowy, generator proceduralny terenu, kamera, zoom, podziałka,
+- **wygoda budowania (etap 7f):** koniec rurociągu w progu łączy się z hydrantem i pompownią, Shift
+  wyłącza przyciąganie, linia pomocnicza daje dokładnie 90° (i 45° co 15°), przedłużenie i równoległa;
+  „Naśnież trasę” – hydranty dokładnie co 60 m, wszystkie armatki podłączone do pompowni, koszt = suma
+  rur, hydrantów i armatek, śmigłowe na szerokich odcinkach, lance przy lesie; ulepszenie wyciągu
+  zachowuje stacje i załamania, podpory od nowa, koszt różnicowy + opłata za przebudowę; rozbiórka –
+  zwrot z pliku danych; ratrak bez garażu pracuje (dłużej się rozgrzewa), w mróz psuje się częściej niż
+  w garażu (te same warunki i ziarno); oferty używanych z ziarna; rów – zlewnia to obszar powyżej rowu,
+  rów pod górę do zbiornika odrzucony; lista „czego brakuje”,
 - pliki danych: każda liczba ma jednostkę i źródło,
 - architektura: część symulacyjna (`src/sim`) nie korzysta z grafiki ani z przeglądarki.
 

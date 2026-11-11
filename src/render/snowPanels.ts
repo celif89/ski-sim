@@ -194,7 +194,7 @@ export class SnowPanel {
         .map((o) => `<div class="build-row g-row"><span class="small">${v.sp.groomers.types.find((t) => t.id === o.typeId)?.name ?? o.typeId}, ${o.ageYears} lat, stan ${f0(o.condition * 100)} %: <b>${fmtPln(o.pricePln)}</b></span><button type="button" data-used="${o.id}">Kup używany</button></div>`)
         .join('');
       const outdoor = gr.length - inside.size;
-      parts.push(`<div class="build-section">Ratraki (garaż: ${Math.min(gr.length, inf.garageSlots)}/${inf.garageSlots} miejsc${outdoor > 0 ? `, ${outdoor} pod chmurką` : ''})</div>
+      parts.push(`<div class="build-section">Ratraki (${inf.garageSlots > 0 ? `garaż: ${Math.min(gr.length, inf.garageSlots)}/${inf.garageSlots} miejsc` : 'bez garażu'}${outdoor > 0 ? `, ${outdoor} pod chmurką` : ''})</div>
         ${fleet ? `<table class="build-list"><tbody>${fleet}</tbody></table>` : '<div class="muted small">brak ratraków – trasy nieratrakowane, pryzmy zostają</div>'}
         ${buy}
         ${used ? `<div class="small muted">Używane w tym sezonie (ok. 1/3 ceny nowego, częściej się psują):</div>${used}` : ''}

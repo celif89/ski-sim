@@ -1926,7 +1926,9 @@ async function start(): Promise<void> {
       profile.update(input.cursor);
       opsFrame();
       refreshSnowOps(false);
-      cursorTip.update(input.cursor, performance.now(), () => tipContent(input.cursor!));
+      // Etap 7f: w trakcie rysowania przy kursorze jest okienko budowy (długość, koszt) – bez dymka terenu.
+      const sv = build.snapView;
+      cursorTip.update(sv && (sv.info.length || sv.warn.length) ? null : input.cursor, performance.now(), () => tipContent(input.cursor!));
       contourLabels.update(camera);
       slopeRing.update(camera, input.cursor, RING_TOOLS.has(build.currentTool));
       build.update(input.cursor, guestCtl.gameTimeS ?? nowS);

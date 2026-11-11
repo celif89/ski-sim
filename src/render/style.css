@@ -2947,3 +2947,7 @@ tr.g-closed td {
 .u-fold {
   margin-left: 4px;
 }
+.u-autosnow .u-tile-val {
+  font-size: 19px;
+  white-space: nowrap;
+}
