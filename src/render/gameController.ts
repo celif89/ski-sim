@@ -38,7 +38,8 @@ import {
 import type { EconomyParams } from '../sim/economyParams';
 import type { DayOpsResult, Infra, OpsSnow } from '../sim/operations';
 import type { WaterContext } from '../sim/operations';
-import { acquireGroomer, blockedPistes, infraFacts, previewDayOperations, runDayOperations } from '../sim/operations';
+import { acquireGroomer, acquireUsedGroomer, blockedPistes, infraFacts, previewDayOperations, runDayOperations, usedGroomerOffers } from '../sim/operations';
+import type { UsedGroomerOffer } from '../sim/operations';
 import type { SnowOps } from '../sim/snowOps';
 import { encodeOps } from '../sim/gameSave';
 import { parseIsoDate } from '../sim/time';
@@ -388,6 +389,25 @@ export class GameController {
     return null;
   }
 
+  /**
+   * Etap 7f: ile kosztuje zmiana układu teraz (dopłata, opłata za przebudowę, zwrot za rozbiórkę) i ile dni
+   * potrwa budowa / przebudowa obiektu `id`. Piaskownica i brak gry – null.
+   */
+  changePreview(next: ResortLayout, analysis: ResortAnalysis, id: string | null): { chargePln: number; days: number | null } | null {
+    const s = this.state;
+    if (!s || s.mode !== 'career') return null;
+    const objs = objectCosts(next, analysis, this.o.ep);
+    const chargePln = constructionChargePreview(s, objs, this.o.ep);
+    let days: number | null = null;
+    const o = id ? objs.find((x) => x.id === id) : undefined;
+    if (o) {
+      const prev = s.paid[o.id];
+      if (!prev) days = o.buildDays;
+      else if (prev.signature !== o.signature) days = s.construction[o.id] ? Math.ceil(s.construction[o.id].leftDays) : Math.max(1, Math.round(o.buildDays * this.o.ep.costs.rebuildDaysShare));
+    }
+    return { chargePln, days };
+  }
+
   /** Po zmianie układu: opłaty i budowy, sieć gości bez obiektów w budowie. */
   onLayoutChange(layout: ResortLayout, analysis: ResortAnalysis): void {
     this.layout = layout;
@@ -722,6 +742,27 @@ export class GameController {
     if (!s || !sp) return;
     const err = acquireGroomer(s, typeId, leased, this.infra()?.garageSlots ?? 0, sp);
     this.o.toast(err ?? (leased ? 'Ratrak w leasingu – rata co miesiąc.' : 'Ratrak kupiony.'));
+    this.refreshPreview();
+    this.refreshPanel(true);
+  }
+
+  /** Etap 7f: oferty używanych ratraków w bieżącym sezonie (bez już kupionych). */
+  usedOffers(): UsedGroomerOffer[] {
+    const s = this.state;
+    const sp = this.o.ep.snowmaking;
+    if (!s || !sp) return [];
+    const season = s.date.month >= 5 ? s.date.year : s.date.year - 1;
+    const taken = new Set(s.ops?.usedTaken ?? []);
+    return usedGroomerOffers(s.seed, season, sp).filter((o) => !taken.has(o.id));
+  }
+
+  buyUsedGroomer(offerId: string): void {
+    const s = this.state;
+    const sp = this.o.ep.snowmaking;
+    const offer = this.usedOffers().find((o) => o.id === offerId);
+    if (!s || !sp || !offer) return;
+    const err = acquireUsedGroomer(s, offer, sp);
+    this.o.toast(err ?? `Kupiono używany ratrak (${offer.ageYears} lat).`);
     this.refreshPreview();
     this.refreshPanel(true);
   }

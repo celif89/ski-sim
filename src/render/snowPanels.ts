@@ -6,7 +6,9 @@
  */
 import type { GameState, OpsSummary } from '../sim/economy';
 import { fmtPln } from '../sim/economy';
-import type { DayOpsResult, Infra } from '../sim/operations';
+import type { DayOpsResult, Infra, UsedGroomerOffer } from '../sim/operations';
+import { groomerAgeYears, shelteredGroomers } from '../sim/operations';
+import type { ChecklistStep } from '../sim/snowChecklist';
 import type { SnowmakingParams } from '../sim/snowmakingParams';
 import { Modal } from './gamePanels';
 
@@ -26,17 +28,24 @@ export interface SnowPanelView {
   sp: SnowmakingParams;
   pisteName(id: string): string;
   blocked: ReadonlySet<string>;
+  /** Etap 7f: czego brakuje do naśnieżania; oferty używanych ratraków w tym sezonie. */
+  checklist: ChecklistStep[];
+  usedOffers: UsedGroomerOffer[];
 }
 
 export interface SnowPanelHandlers {
   onSnowPlan(): void;
   onNightPlan(): void;
   onGroomer(typeId: string, leased: boolean): void;
+  /** Etap 7f: zakup używanego ratraka z oferty. */
+  onUsedGroomer(offerId: string): void;
+  /** Etap 7f: samouczek naśnieżania. */
+  onTutorial(): void;
   /** Etap 6b: zakup wody z wodociągu. */
   onMains?(on: boolean): void;
 }
 
-const KIND_NAMES: Record<string, string> = { intake: 'potok', catchment: 'zlewnia (rowy)', well: 'studnia', mains: 'wodociąg' };
+const KIND_NAMES: Record<string, string> = { ditch: 'rów zbierający',  intake: 'potok', catchment: 'zlewnia (rowy)', well: 'studnia', mains: 'wodociąg' };
 
 /** Wykres mocy w ciągu doby: słupki (armatki, pompy, reszta) i linia limitu przyłącza. */
 function powerChart(sum: OpsSummary, hour: number): string {
@@ -90,6 +99,9 @@ export class SnowPanel {
     this.body.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-groomer]');
       if (b) h.onGroomer(b.dataset.groomer!, b.dataset.leased === '1');
+      const u = (e.target as HTMLElement).closest<HTMLElement>('[data-used]');
+      if (u) h.onUsedGroomer(u.dataset.used!);
+      if ((e.target as HTMLElement).closest('[data-tutorial]')) h.onTutorial();
       const m = (e.target as HTMLElement).closest<HTMLElement>('[data-mains]');
       if (m) h.onMains?.(m.dataset.mains === '1');
     });
@@ -110,11 +122,12 @@ export class SnowPanel {
     const inf = v.infra;
     const pv = v.preview?.summary ?? null;
     const parts: string[] = [];
-    if (!inf || (inf.reservoirCapacityM3 <= 0 && inf.guns.length === 0 && (ops?.groomers.length ?? 0) === 0 && inf.garageSlots === 0)) {
-      parts.push(`<div class="muted small">Brak systemu naśnieżania. Kolejność budowy (latem – wykopy tylko V–X):
-        1) <b>ujęcie wody</b>, <b>zbiornik</b> i <b>pompownia</b> (narzędzie „Budynek”, B),
-        2) <b>przyłącze energetyczne</b>, 3) <b>rurociąg</b> od pompowni wzdłuż trasy (H) – hydranty co ${f0(v.sp.pipe.hydrantSpacingM)} m,
-        4) <b>armatki</b> na hydrantach (J), 5) <b>garaż ratraków</b> i ratraki (tutaj), na stromych trasach – <b>punkt kotwienia</b> na górze stoku.</div>`);
+    // Etap 7f: lista „czego brakuje” (także poza samouczkiem).
+    const missing = v.checklist.filter((x) => !x.done);
+    if (missing.length) {
+      parts.push(`<div class="build-section">Czego brakuje do naśnieżania</div>
+        <ul class="sn-check">${v.checklist.map((x) => `<li class="${x.done ? 'ok' : 'no'}"><b>${x.done ? '✓' : '✗'} ${x.title}</b>${x.done ? '' : `<div class="muted small">${x.why} ${x.how}</div>`}</li>`).join('')}</ul>
+        <button type="button" data-tutorial="1">Samouczek naśnieżania</button>`);
     }
     if (inf) {
       // Zbiornik
@@ -161,22 +174,31 @@ export class SnowPanel {
         ${v.blocked.size ? `<div class="g-bad small">Pryzmy – trasy zamknięte do rozepchnięcia ratrakiem: ${[...v.blocked].map(v.pisteName).join(', ')}</div>` : ''}`);
       // Ratraki
       const gr = ops?.groomers ?? [];
+      const inside = ops ? shelteredGroomers(ops, inf.garageSlots) : new Set<string>();
       const fleet = gr
         .map((g) => {
           const t = v.sp.groomers.types.find((x) => x.id === g.typeId);
-          return `<tr><td><b>${g.id}</b></td><td>${t?.name ?? g.typeId}</td><td>${g.leased ? 'leasing' : 'własny'}</td><td>${g.brokenNights > 0 ? `<span class="g-bad">w naprawie (${g.brokenNights} n.)</span>` : 'sprawny'}</td></tr>`;
+          const age = groomerAgeYears(g, v.state.date, v.sp);
+          const where = inside.has(g.id) ? 'w garażu' : '<span class="g-warn" title="Bez garażu: dłuższe rozgrzewanie, więcej awarii w mróz, droższy serwis, szybsze zużycie">stoi pod chmurką</span>';
+          return `<tr><td><b>${g.id}</b></td><td>${t?.name ?? g.typeId}<div class="muted">${g.leased ? 'leasing' : 'własny'} · ${f0(age)} lat${g.condition !== undefined && g.condition < 0.95 ? ` · stan ${f0(g.condition * 100)} %` : ''}</div></td><td>${where}</td><td>${g.brokenNights > 0 ? `<span class="g-bad">w naprawie (${g.brokenNights} n.)</span>` : 'sprawny'}</td></tr>`;
         })
         .join('');
       const buy = v.sp.groomers.types
         .map(
           (t) => `<div class="build-row g-row"><span class="small">${t.name}: ${fmtPln(t.pricePln)}</span>
-            <button type="button" data-groomer="${t.id}" data-leased="0" ${gr.length >= inf.garageSlots ? 'disabled' : ''}>Kup</button>
-            <button type="button" data-groomer="${t.id}" data-leased="1" ${gr.length >= inf.garageSlots ? 'disabled' : ''} title="Rata ${fmtPln(t.pricePln * v.sp.groomers.leaseMonthlyShare)} miesięcznie">Leasing</button></div>`,
+            <button type="button" data-groomer="${t.id}" data-leased="0">Kup</button>
+            <button type="button" data-groomer="${t.id}" data-leased="1" title="Rata ${fmtPln(t.pricePln * v.sp.groomers.leaseMonthlyShare)} miesięcznie">Leasing</button></div>`,
         )
         .join('');
-      parts.push(`<div class="build-section">Ratraki (garaż: ${gr.length}/${inf.garageSlots} miejsc)</div>
+      const used = v.usedOffers
+        .map((o) => `<div class="build-row g-row"><span class="small">${v.sp.groomers.types.find((t) => t.id === o.typeId)?.name ?? o.typeId}, ${o.ageYears} lat, stan ${f0(o.condition * 100)} %: <b>${fmtPln(o.pricePln)}</b></span><button type="button" data-used="${o.id}">Kup używany</button></div>`)
+        .join('');
+      const outdoor = gr.length - inside.size;
+      parts.push(`<div class="build-section">Ratraki (garaż: ${Math.min(gr.length, inf.garageSlots)}/${inf.garageSlots} miejsc${outdoor > 0 ? `, ${outdoor} pod chmurką` : ''})</div>
         ${fleet ? `<table class="build-list"><tbody>${fleet}</tbody></table>` : '<div class="muted small">brak ratraków – trasy nieratrakowane, pryzmy zostają</div>'}
-        ${inf.garageSlots > 0 ? buy : '<div class="muted small">Najpierw zbuduj garaż ratraków (narzędzie „Budynek”).</div>'}`);
+        ${buy}
+        ${used ? `<div class="small muted">Używane w tym sezonie (ok. 1/3 ceny nowego, częściej się psują):</div>${used}` : ''}
+        ${outdoor > 0 ? '<div class="muted small">Bez garażu ratrak dłużej się rozgrzewa, częściej psuje w mróz, serwis jest droższy, a maszyna szybciej się zużywa.</div>' : ''}`);
       // Noc
       if (pv && pv.jobs.length + pv.unfinished.length > 0) {
         parts.push(`<div class="build-section">Najbliższa noc</div>

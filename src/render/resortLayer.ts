@@ -45,7 +45,7 @@ export interface MapLabel {
 export interface ResortDrawState {
   layout: ResortLayout;
   analysis: ResortAnalysis;
-  selection: { kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road' | 'trail'; id: string } | null;
+  selection: { kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road' | 'trail' | 'ditch'; id: string } | null;
   showNetwork: boolean;
   showReality: boolean;
   realLifts: OsmResort['lifts'] | null;
@@ -658,6 +658,13 @@ export class ResortLayer {
       // Widok z góry z cieniem w prawo w dół (styl A).
       g.roundRect(p.xPx - 8, p.yPx - 8, 20, 20, 5).fill({ color: 0x0f172a, alpha: 0.18 });
       g.roundRect(p.xPx - 10, p.yPx - 10, 20, 20, 5).fill({ color: style.color }).stroke({ width: sel ? 3 : 2, color: sel ? SELECT_COLOR : 0xffffff });
+      // Etap 7f: wejście budynku (obrót co 90°) – biała kreska na boku od strony frontu.
+      const rot = ((b as { rotDeg?: number }).rotDeg ?? 0) * (Math.PI / 180);
+      const f = toS(b.xM + Math.sin(rot), b.yM - Math.cos(rot));
+      const fl = Math.hypot(f.xPx - p.xPx, f.yPx - p.yPx) || 1;
+      const fx = (f.xPx - p.xPx) / fl;
+      const fy = (f.yPx - p.yPx) / fl;
+      g.moveTo(p.xPx + fx * 10 - fy * 5, p.yPx + fy * 10 + fx * 5).lineTo(p.xPx + fx * 10 + fy * 5, p.yPx + fy * 10 - fx * 5).stroke({ width: 3, color: 0xffffff, cap: 'round' });
       this.label(li++, style.letter, p.xPx, p.yPx, { size: 13, fill: 0xffffff, stroke: style.color });
     }
 
@@ -687,6 +694,24 @@ export class ResortLayer {
       }
       g.stroke({ width, color, cap: 'round' });
     };
+    // ---- etap 7f: rowy zbierające – niebieska przerywana linia ze strzałką do zbiornika
+    for (const d of st.layout.ditches ?? []) {
+      const pts = d.points.map((q) => toS(q.xM, q.yM));
+      if (pts.length < 2) continue;
+      const sel = st.selection?.kind === 'ditch' && st.selection.id === d.id;
+      if (sel) {
+        g.moveTo(pts[0].xPx, pts[0].yPx);
+        for (const q of pts) g.lineTo(q.xPx, q.yPx);
+        g.stroke({ width: 7, color: SELECT_COLOR, alpha: 0.6, cap: 'round', join: 'round' });
+      }
+      dashLine(pts, 7, 4, 3, 0x2563eb);
+      const a = pts[pts.length - 2];
+      const b = pts[pts.length - 1];
+      const L = Math.hypot(b.xPx - a.xPx, b.yPx - a.yPx) || 1;
+      const ux = (b.xPx - a.xPx) / L;
+      const uy = (b.yPx - a.yPx) / L;
+      g.poly([b.xPx, b.yPx, b.xPx - ux * 9 - uy * 5, b.yPx - uy * 9 + ux * 5, b.xPx - ux * 9 + uy * 5, b.yPx - uy * 9 - ux * 5]).fill({ color: 0x2563eb }).stroke({ width: 1.5, color: 0xffffff });
+    }
     const BIKE_COLORS = [0x2f9e44, 0x1c7ed6, 0xe03131, 0x212529];
     for (const t of st.layout.trails ?? []) {
       const a = st.analysis.trails?.get(t.id);

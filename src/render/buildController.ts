@@ -3,6 +3,7 @@
  * podgląd na żywo z profilem i ostrzeżeniami, zatwierdzanie z historią (cofnij/ponów), zaznaczanie,
  * usuwanie, zapis w przeglądarce i do pliku, wycinka → nowe pokrycie dla modelu śniegu.
  */
+import { Graphics } from 'pixi.js';
 import type { Container } from 'pixi.js';
 import type { LiftAnalysis, LiftDesign, LiftParams, PointM, Tower } from '../sim/lifts';
 import { analyzeLift, designLift, liftPath, liftTypeById, pointAlongPath, retowerLift } from '../sim/lifts';
@@ -11,7 +12,13 @@ import type { Hydrant } from '../sim/snowmaking';
 import { pipelineCost, pipelineHydrants } from '../sim/snowmaking';
 import type { WaterContext } from '../sim/operations';
 import type { SummerParams } from '../sim/summerParams';
-import { reservoirCatchment, streamAt, villageCoverage } from '../sim/water';
+import { analyzeDitch, reservoirCatchment, streamAt, villageCoverage } from '../sim/water';
+import type { DitchAnalysis } from '../sim/water';
+import { convertLegacyCatchments } from '../sim/operations';
+import type { AutoSnowPlan } from '../sim/autoSnowmaking';
+import { pisteEdgeLine, planPisteSnowmaking, simplifyPolyline } from '../sim/autoSnowmaking';
+import { canWiden, liftUpgradeCheck, moveBuilding, upgradeGun, upgradeLift, widenPiste } from '../sim/upgrades';
+import { connectPipelines } from '../sim/snowmaking';
 import { BIKE_CLASS_NAMES, TRAIL_KIND_NAMES, analyzeTrail } from '../sim/summer';
 import type { RoadParams } from '../sim/resort';
 import { analyzeRoads } from '../sim/resort';
@@ -23,7 +30,7 @@ import { analyzePiste, orientDownhill } from '../sim/pistes';
 import type { ClearingCost, OsmResort, RealPisteComparison, ResortAnalysis, ResortLayout } from '../sim/resort';
 import { LayoutHistory, analyzeResort, applyClearing, compareRealPistes, emptyLayout, parseLayout, serializeLayout } from '../sim/resort';
 import type { TerrainGrid } from '../sim/terrainGrid';
-import type { BuildTool } from './buildPanel';
+import type { BuildTool, DrawMode } from './buildPanel';
 import { BuildPanel } from './buildPanel';
 import { BuildProfile } from './buildProfile';
 import type { Camera } from './camera';
@@ -33,6 +40,9 @@ import type { LodThresholds } from './illustration';
 import type { BuildBarState } from './buildBar';
 import type { CtrlPt, LineParams } from './lineTools';
 import { ctrlFromPoints, effectiveTolerance, nearestOnPolyline, simplifyStroke, smoothPath, smoothPathWithSeg } from './lineTools';
+import type { SnapContext, SnapParams, SnapPoint, SnapResult, SnapSegment } from './snapping';
+import { arcPoints, polylineSegments, snapPoint } from './snapping';
+import { AutoSnowPanel } from './autoSnowPanel';
 
 export interface BuildControllerOptions {
   grid: TerrainGrid;
@@ -84,9 +94,24 @@ export interface BuildControllerOptions {
   onMessage?: (text: string) => void;
   /** Etap 7c: zmiana stanu narzędzi (paleta budowy). */
   onState?: () => void;
+  /** Etap 7f: przyciąganie i linie pomocnicze (data/ui.json). */
+  snap: SnapParams;
+  /** Etap 7f: opad roczny na wysokości z – szacowany dopływ z rowów. */
+  annualPrecipMm?(zM: number): number;
+  /** Etap 7f: podgląd kosztu zmiany (dopłata, czas przebudowy obiektu `id`) – kariera; null bez gry. */
+  changePreview?(next: ResortLayout, analysis: ResortAnalysis, id: string | null): { chargePln: number; days: number | null } | null;
 }
 
-export type SelKind = 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road' | 'trail';
+/** Etap 7f: to, co rysuje SnapOverlay przy kursorze (znacznik przyciągnięcia, linia pomocnicza, opis). */
+export interface SnapView {
+  point: PointM;
+  hit: SnapResult['hit'];
+  guide: SnapResult['guide'];
+  info: string[];
+  warn: string[];
+}
+
+export type SelKind = 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road' | 'trail' | 'ditch';
 
 export interface SnowWarning {
   pisteId: string;
@@ -99,7 +124,9 @@ const HANDLE_RADIUS_PX = 10;
 /** Etap 7c: odległość od linii zaznaczonego obiektu, przy której przeciągnięcie wstawia punkt [px]. */
 const SEGMENT_GRAB_PX = 9;
 const DRAW_MODE_KEY = 'ski-sim:rysowanie';
-const LINE_TOOLS: BuildTool[] = ['pisteBrush', 'pisteAxis', 'catwalk', 'road', 'pipeline', 'supply', 'bikeTrail', 'walkTrail', 'toboggan'];
+const LINE_TOOLS: BuildTool[] = ['pisteBrush', 'pisteAxis', 'catwalk', 'road', 'pipeline', 'supply', 'bikeTrail', 'walkTrail', 'toboggan', 'ditch'];
+/** Etap 7f: narzędzia z przyciąganiem (linie i stacje wyciągu). */
+const SNAP_TOOLS: BuildTool[] = [...LINE_TOOLS, 'lift'];
 
 
 export class BuildController {
@@ -144,7 +171,28 @@ export class BuildController {
   private trailPoints: PointM[] = [];
   private gunTypeId = 'fan';
   /** Etap 7c: rysowanie linii ręką (przeciągnięcie, potem uproszczenie) albo klikaniem punktów. */
-  private drawModeValue: 'hand' | 'click' = 'hand';
+  private drawModeValue: DrawMode = 'hand';
+  /** Etap 7f: łuk – punkt sterujący czekający na koniec łuku. */
+  private arcCtrl: PointM | null = null;
+  private shiftDown = false;
+  private snapRes: SnapResult | null = null;
+  private snapCache: { key: string; ctx: Omit<SnapContext, 'anchor' | 'prevDir' | 'metersPerPixel' | 'shift'> } | null = null;
+  private cursorWorld: PointM | null = null;
+  private infoLines: string[] = [];
+  private warnLines: string[] = [];
+  /** Etap 7f: rów w trakcie rysowania i jego analiza (zlewnia). */
+  private ditchPoints: PointM[] = [];
+  private ditchDraft: DitchAnalysis | null = null;
+  private annualPrecip: ((zM: number) => number) | null = null;
+  /** Etap 7f: nakładka w świecie – zlewnia rowu, podgląd „Naśnież trasę”, przesuwany budynek. */
+  private readonly overlayG = new Graphics();
+  private overlayKey = '';
+  /** Etap 7f: „Naśnież trasę” – zaznaczone trasy i propozycja. */
+  private autoSel: string[] = [];
+  private autoPlan: AutoSnowPlan | null = null;
+  private autoPanel: AutoSnowPanel;
+  /** Etap 7f: przesuwanie budynku (z obrotem) albo armatki. */
+  private moving: { kind: 'base' | 'gun'; id: string; before: ResortLayout; rotDeg: number } | null = null;
   /** Linia rysowana teraz ręką (przeciąganie). */
   private handStroke = false;
   private strokeSinceAnalysis = 0;
@@ -158,11 +206,20 @@ export class BuildController {
     this.widthM = o.pisteParams.defaultWidthM;
     this.layout = this.loadSaved();
     try {
-      if (window.localStorage.getItem(DRAW_MODE_KEY) === 'click') this.drawModeValue = 'click';
+      const m = window.localStorage.getItem(DRAW_MODE_KEY);
+      if (m === 'click' || m === 'straight') this.drawModeValue = 'straight';
+      else if (m === 'arc') this.drawModeValue = 'arc';
     } catch {
       /* bez pamięci przeglądarki */
     }
     this.layer = new ResortLayer(o.world, o.screenLayer, o.grid, o.camera, o.pisteParams, o.lod, o.context, o.labels, o.borderLinesLocal);
+    this.overlayG.eventMode = 'none';
+    o.screenLayer.addChild(this.overlayG);
+    this.annualPrecip = o.annualPrecipMm ?? null;
+    this.autoPanel = new AutoSnowPanel(o.profileParent, {
+      onBuild: () => this.buildAutoPlan(),
+      onCancel: () => this.setTool('select'),
+    });
     this.panel = new BuildPanel(o.panelParent, o.liftParams, o.pisteParams, {
       onTool: (t) => this.setTool(t),
       onLiftType: (id) => {
@@ -211,7 +268,17 @@ export class BuildController {
       onToggleDownhill: () => this.toggleLiftDownhill(),
       onToggleGraded: () => this.toggleGraded(),
     });
+    // Etap 7f: Shift wyłącza przyciąganie.
+    const shift = (e: KeyboardEvent) => {
+      if (e.shiftKey !== this.shiftDown) {
+        this.shiftDown = e.shiftKey;
+        this.lastCursorKey = '';
+      }
+    };
+    window.addEventListener('keyup', shift);
+    window.addEventListener('blur', () => (this.shiftDown = false));
     window.addEventListener('keydown', (e) => {
+      shift(e);
       if (!(e.ctrlKey || e.metaKey) || isTyping(e)) return;
       if (e.code === 'KeyZ' && !e.shiftKey) this.undo();
       else if (e.code === 'KeyY' || (e.code === 'KeyZ' && e.shiftKey)) this.redo();
@@ -229,8 +296,19 @@ export class BuildController {
   }
 
   /** Etap 6b: model wody – sprawdzanie miejsca ujęcia, wodociągu, rowów. */
-  setWater(w: WaterContext): void {
+  setWater(w: WaterContext, annualPrecipMm?: (zM: number) => number): void {
     this.water = w;
+    if (annualPrecipMm) this.annualPrecip = annualPrecipMm;
+    // Etap 7f: starszy zapis – „budynek” rowów przy zbiorniku zamieniany na rów dnem doliny (bez opłaty).
+    if (this.o.snowmaking) {
+      const conv = convertLegacyCatchments(this.layout, this.o.snowmaking, w);
+      if (conv) {
+        this.layout = conv;
+        this.message = 'Rowy przy zbiorniku są teraz linią wzdłuż dna doliny (rów zbierający) – bez opłaty.';
+        this.reanalyze();
+        this.save();
+      }
+    }
   }
 
   /** Etap 7b: szlaki PTTK (lato) i wygląd lata. */
@@ -400,8 +478,14 @@ export class BuildController {
 
   setTool(tool: BuildTool): void {
     // Etap 7c: trasa – jedno narzędzie, sposób rysowania wg trybu (ręką / punktami).
-    if (tool === 'pisteAxis') this.drawModeValue = 'click';
-    if (tool === 'pisteBrush' && this.drawModeValue === 'click') tool = 'pisteAxis';
+    if (tool === 'pisteAxis' && this.drawModeValue === 'hand') this.drawModeValue = 'straight';
+    if (tool === 'pisteBrush' && this.drawModeValue !== 'hand') tool = 'pisteAxis';
+    if (this.moving && tool !== 'move') this.cancelMove();
+    if (tool !== 'autoSnow') {
+      this.autoSel = [];
+      this.autoPlan = null;
+      this.autoPanel.hide();
+    }
     // Narzędzie budowy: zdejmujemy zaznaczenie, żeby panel profilu nie zasłaniał mapy.
     if (tool !== 'select' && this.selection) {
       this.selection = null;
@@ -431,31 +515,38 @@ export class BuildController {
             : tool === 'supply'
               ? `Rura zasilająca: klikaj punkty od źródła wody (ujęcie, studnia, wodociąg) do zbiornika; Enter – koniec. ${Math.round(this.o.snowmaking?.pipe.supplyCostPlnPerM ?? 0)} zł/m; pod górę woda jest pompowana (energia).`
             : tool === 'pipeline'
-              ? 'Rurociąg: klikaj punkty od pompowni (albo od innego rurociągu) wzdłuż trasy; Enter lub podwójne kliknięcie – koniec. Hydranty stawiają się same co kilkadziesiąt metrów.'
+              ? 'Rurociąg: klikaj punkty od pompowni (albo od innego rurociągu) wzdłuż trasy; Enter lub podwójne kliknięcie – koniec. Hydranty stawiają się same co kilkadziesiąt metrów. Końce przyciągają się do pompowni, hydrantów i rur (Shift – bez przyciągania).'
+            : tool === 'ditch'
+              ? `Rów zbierający: rysuj od góry stoku w dół do zbiornika (koniec najwyżej ${this.water?.wp.ditches.reservoirRadiusM ?? 40} m od niego), ze spadkiem co najmniej ${this.water?.wp.ditches.minSlopePercent ?? 0.5} %. Zbiera wodę z obszaru powyżej rowu (niebieskie pole). ${Math.round(this.o.snowmaking?.ditch.costPlnPerM ?? 0)} zł/m.`
+            : tool === 'autoSnow'
+              ? 'Naśnież trasę: kliknij trasę (albo kilka) – gra zaproponuje rurociąg wzdłuż krawędzi, hydranty, armatki i połączenie z pompownią. Potem „Zbuduj” albo „Anuluj”.'
+            : tool === 'move'
+              ? 'Przesuń: kliknij nowe miejsce; R albo prawy przycisk – obrót o 90°; Esc – anuluj.'
               : tool === 'gun'
                 ? `Armatka: kliknij hydrant (kropka na rurociągu) – ${this.o.snowmaking?.guns.find((g) => g.id === this.gunTypeId)?.name ?? ''}. Zaznaczoną armatkę śmigłową przestawisz, klikając wolny hydrant.`
                 : tool === 'base'
               ? `Budynek: kliknij miejsce (${this.o.buildingTypes?.find((t) => t.id === this.buildingTypeId)?.name ?? 'baza'}).`
               : '';
-    if (this.drawModeValue === 'hand' && LINE_TOOLS.includes(tool) && tool !== 'pisteBrush') this.message += ' Rysujesz ręką: przeciągnij myszą (O – punktami).';
+    if (LINE_TOOLS.includes(tool) && tool !== 'pisteBrush') this.message += this.drawModeValue === 'hand' ? ' Rysujesz ręką: przeciągnij myszą (O – zmiana sposobu).' : this.drawModeValue === 'arc' ? ' Łuk: klik – początek, klik – punkt sterujący, klik – koniec (O – zmiana sposobu).' : ' Prosto: klikaj punkty (O – zmiana sposobu).';
     this.o.onToolChange(tool);
     this.refreshPanel();
   }
 
   // ------------------------------------------------------------------ etap 7c: stan dla palety budowy
 
-  get drawMode(): 'hand' | 'click' {
+  get drawMode(): DrawMode {
     return this.drawModeValue;
   }
 
-  setDrawMode(mode: 'hand' | 'click'): void {
+  setDrawMode(mode: DrawMode): void {
+    this.arcCtrl = null;
     this.drawModeValue = mode;
     try {
       window.localStorage.setItem(DRAW_MODE_KEY, mode);
     } catch {
       /* bez pamięci przeglądarki */
     }
-    if (this.tool === 'pisteBrush' || this.tool === 'pisteAxis') this.setTool(mode === 'click' ? 'pisteAxis' : 'pisteBrush');
+    if (this.tool === 'pisteBrush' || this.tool === 'pisteAxis') this.setTool(mode !== 'hand' ? 'pisteAxis' : 'pisteBrush');
     else if (LINE_TOOLS.includes(this.tool)) this.setTool(this.tool);
     else this.refreshPanel();
   }
@@ -521,6 +612,7 @@ export class BuildController {
     if (kind === 'road') return mid((l.roads ?? []).find((o) => o.id === id)?.points ?? []);
     if (kind === 'trail') return mid((l.trails ?? []).find((o) => o.id === id)?.points ?? []);
     if (kind === 'pipeline') return mid((l.pipelines ?? []).find((o) => o.id === id)?.points ?? []);
+    if (kind === 'ditch') return mid((l.ditches ?? []).find((o) => o.id === id)?.points ?? []);
     if (kind === 'gun') {
       const g = (l.snowGuns ?? []).find((o) => o.id === id);
       const h = g ? this.hydrants().find((x) => x.pipelineId === g.pipelineId && x.index === g.hydrant) : null;
@@ -553,6 +645,7 @@ export class BuildController {
     if (kind === 'road') return (layout.roads ?? []).find((o) => o.id === id) ?? null;
     if (kind === 'trail') return (layout.trails ?? []).find((o) => o.id === id) ?? null;
     if (kind === 'pipeline') return (layout.pipelines ?? []).find((o) => o.id === id) ?? null;
+    if (kind === 'ditch') return (layout.ditches ?? []).find((o) => o.id === id) ?? null;
     return null;
   }
 
@@ -570,10 +663,56 @@ export class BuildController {
   /** Narysowane punkty → punkty kontrolne (ręką – upraszczanie) i gęsty przebieg. */
   private lineFromDrawn<T extends CtrlPt>(drawn: T[], hand: boolean): { ctrl: T[]; smooth: number; points: T[] } {
     const clean = drawn.filter((q, i, a) => i === 0 || Math.hypot(q.xM - a[i - 1].xM, q.yM - a[i - 1].yM) > 1);
-    const smooth = this.o.lines.defaultSmooth;
+    const mode: DrawMode = hand ? 'hand' : this.drawModeValue;
+    // Etap 7f: prosty odcinek – łamana przez kliknięte punkty (gładkość 0); łuk i ręka – uproszczenie śladu, gładki łuk.
+    const smooth = mode === 'straight' ? 0 : this.o.lines.defaultSmooth;
     const L = this.o.lines;
-    const ctrl = hand && clean.length > 2 ? simplifyStroke(clean, { toleranceM: effectiveTolerance(L, this.o.camera.metersPerPixel), minSpacingM: L.minSpacingM, cornerAngleDeg: L.cornerAngleDeg, smooth }) : clean;
+    const ctrl = mode !== 'straight' && clean.length > 2 ? simplifyStroke(clean, { toleranceM: mode === 'arc' ? L.toleranceM : effectiveTolerance(L, this.o.camera.metersPerPixel), minSpacingM: mode === 'arc' ? L.sampleStepM * 2 : L.minSpacingM, cornerAngleDeg: L.cornerAngleDeg, smooth }) : clean;
     return { ctrl, smooth, points: this.densify(ctrl, smooth) };
+  }
+
+  /** Etap 7f: łuk – niedokończony (bez końca) kończy się prosto w punkcie sterującym. */
+  private flushArc(): void {
+    if (!this.arcCtrl) return;
+    const q = this.arcCtrl;
+    this.arcCtrl = null;
+    const arr = this.drawArr();
+    if (!arr) return;
+    if (this.tool === 'pisteAxis' || this.tool === 'catwalk') this.axisPoints.push({ xM: q.xM, yM: q.yM, widthM: this.axisPoints[this.axisPoints.length - 1]?.widthM ?? this.widthM });
+    else arr.push({ xM: q.xM, yM: q.yM });
+  }
+
+  /** Punkty rysowanej teraz linii (null – narzędzie nie rysuje linii). */
+  private drawArr(): PointM[] | null {
+    if (this.tool === 'pisteAxis' || this.tool === 'pisteBrush' || this.tool === 'catwalk') return this.axisPoints;
+    if (this.tool === 'road') return this.roadPoints;
+    if (this.tool === 'pipeline' || this.tool === 'supply') return this.pipePoints;
+    if (this.tool === 'ditch') return this.ditchPoints;
+    if (this.tool === 'bikeTrail' || this.tool === 'walkTrail' || this.tool === 'toboggan') return this.trailPoints;
+    return null;
+  }
+
+  /** Etap 7f: nowy punkt linii klikaniem – prosto albo łukiem (punkt sterujący, potem koniec). */
+  private addClickPoint(q: PointM): void {
+    const arr = this.drawArr();
+    if (!arr) return;
+    const axis = this.tool === 'pisteAxis' || this.tool === 'catwalk';
+    const w = this.tool === 'catwalk' ? this.o.pisteParams.catwalkWidthM : this.widthM;
+    const mk = (p: PointM) => (axis ? { xM: p.xM, yM: p.yM, widthM: w } : { xM: p.xM, yM: p.yM });
+    if (this.drawModeValue === 'arc' && arr.length) {
+      if (!this.arcCtrl) {
+        this.arcCtrl = q;
+        this.message = 'Łuk: teraz kliknij koniec łuku (Enter – koniec prosto w tym punkcie).';
+        this.refreshPanel();
+        this.drawVersion++;
+        return;
+      }
+      for (const p of arcPoints(arr[arr.length - 1], this.arcCtrl, q, this.o.lines.sampleStepM)) arr.push(mk(p) as never);
+      this.arcCtrl = null;
+    } else arr.push(mk(q) as never);
+    if (axis) this.updateDraftPiste(this.axisPoints, q);
+    else this.drawVersion++;
+    if (this.tool === 'ditch') this.updateDitchDraft(null);
   }
 
   /** Gładkość zaznaczonej linii (suwak w karcie) – null, gdy zaznaczenie nie jest linią. */
@@ -594,6 +733,9 @@ export class BuildController {
   }
 
   private cancelDraft(): void {
+    this.arcCtrl = null;
+    this.ditchPoints = [];
+    this.ditchDraft = null;
     this.pipePoints = [];
     this.roadPoints = [];
     this.trailPoints = [];
@@ -638,7 +780,16 @@ export class BuildController {
 
   /** Kliknięcie w mapę. Zwraca true, jeśli obsłużone. */
   handleClick(xPx: number, yPx: number): boolean {
-    const p = this.world(xPx, yPx);
+    // Etap 7f: końce linii i stacje wyciągu przyciągają się do obiektów tej samej sieci.
+    const p = SNAP_TOOLS.includes(this.tool) ? this.snapAt(xPx, yPx) : this.world(xPx, yPx);
+    if (this.tool === 'move') {
+      if (p) this.placeMoving(xPx, yPx, p);
+      return true;
+    }
+    if (this.tool === 'autoSnow') {
+      if (p) this.toggleAutoPiste(xPx, yPx, p);
+      return true;
+    }
     if (this.tool === 'select') {
       const h = this.hitHandle(xPx, yPx);
       if (h && (h.kind === 'pisteAdd' || h.kind === 'liftAdd')) {
@@ -686,29 +837,8 @@ export class BuildController {
       this.select({ kind: 'lift', id: d.design.id });
       return true;
     }
-    if (this.tool === 'pisteAxis') {
-      this.axisPoints.push({ xM: p.xM, yM: p.yM, widthM: this.widthM });
-      this.updateDraftPiste(this.axisPoints, p);
-      return true;
-    }
-    if (this.tool === 'pipeline' || this.tool === 'supply') {
-      this.pipePoints.push({ xM: p.xM, yM: p.yM });
-      this.drawVersion++;
-      return true;
-    }
-    if (this.tool === 'bikeTrail' || this.tool === 'walkTrail' || this.tool === 'toboggan') {
-      this.trailPoints.push({ xM: p.xM, yM: p.yM });
-      this.drawVersion++;
-      return true;
-    }
-    if (this.tool === 'road') {
-      this.roadPoints.push({ xM: p.xM, yM: p.yM });
-      this.drawVersion++;
-      return true;
-    }
-    if (this.tool === 'catwalk') {
-      this.axisPoints.push({ xM: p.xM, yM: p.yM, widthM: this.o.pisteParams.catwalkWidthM });
-      this.updateDraftPiste(this.axisPoints, p);
+    if (LINE_TOOLS.includes(this.tool) && this.tool !== 'pisteBrush') {
+      this.addClickPoint(p);
       return true;
     }
     if (this.tool === 'gun') {
@@ -744,7 +874,8 @@ export class BuildController {
   }
 
   handleDoubleClick(): void {
-    if (this.tool === 'pipeline' || this.tool === 'supply') this.finishPipeline();
+    if (this.tool === 'ditch') this.finishDitch();
+    else if (this.tool === 'pipeline' || this.tool === 'supply') this.finishPipeline();
     else if (this.tool === 'road') this.finishRoad();
     else if (this.tool === 'bikeTrail' || this.tool === 'walkTrail' || this.tool === 'toboggan') this.finishTrail();
     else if (this.tool === 'pisteAxis' || this.tool === 'catwalk') this.finishAxis();
@@ -752,6 +883,7 @@ export class BuildController {
   }
 
   handleRightClick(): void {
+    if (this.tool === 'move') return this.rotateMoving();
     if (this.tool === 'select' && this.hoverHandle && this.removeAt(this.hoverHandle)) return;
     if (this.tool === 'pisteAxis' && this.axisPoints.length) {
       this.axisPoints.pop();
@@ -798,7 +930,7 @@ export class BuildController {
       return true;
     }
     if (this.drawModeValue !== 'hand' || !LINE_TOOLS.includes(this.tool) || this.tool === 'pisteAxis') return false;
-    const p = this.world(xPx, yPx);
+    const p = this.snapAt(xPx, yPx);
     if (!p) return false;
     this.handStroke = true;
     if (this.tool === 'pisteBrush' || this.tool === 'catwalk') {
@@ -814,12 +946,13 @@ export class BuildController {
   private strokeArray(): PointM[] {
     if (this.tool === 'road') return this.roadPoints;
     if (this.tool === 'pipeline' || this.tool === 'supply') return this.pipePoints;
+    if (this.tool === 'ditch') return this.ditchPoints;
     return this.trailPoints;
   }
 
   private nameOf(kind: SelKind, id: string): string {
     const l = this.layout;
-    const all: { id: string; name?: string }[] = [...l.lifts, ...l.pistes, ...l.bases, ...(l.buildings ?? []), ...(l.pipelines ?? []), ...(l.roads ?? []), ...(l.trails ?? [])];
+    const all: { id: string; name?: string }[] = [...l.lifts, ...l.pistes, ...l.bases, ...(l.buildings ?? []), ...(l.pipelines ?? []), ...(l.roads ?? []), ...(l.trails ?? []), ...(l.ditches ?? [])];
     return all.find((o) => o.id === id)?.name ?? (kind === 'gun' ? `armatka ${id}` : id);
   }
 
@@ -875,7 +1008,14 @@ export class BuildController {
     }
     if (!this.handStroke) return;
     this.brushing = false;
+    // Etap 7f: koniec śladu ręki przyciągnięty do obiektu sieci (jeśli kursor był w progu).
+    if (this.snapRes?.hit && this.cursorWorld) {
+      const q = this.snapRes.point;
+      if (this.brushing || this.tool === 'pisteBrush' || this.tool === 'catwalk') this.axisPoints.push({ xM: q.xM, yM: q.yM, widthM: this.axisPoints[this.axisPoints.length - 1]?.widthM ?? this.widthM });
+      else this.strokeArray().push({ xM: q.xM, yM: q.yM });
+    }
     if (this.tool === 'pisteBrush' || this.tool === 'catwalk') this.finishAxis(true);
+    else if (this.tool === 'ditch') this.finishDitch(true);
     else if (this.tool === 'road') this.finishRoad(true);
     else if (this.tool === 'pipeline' || this.tool === 'supply') this.finishPipeline(true);
     else this.finishTrail(true);
@@ -895,9 +1035,9 @@ export class BuildController {
         this.setTool('pisteBrush');
         return true;
       case 'KeyO':
-        // Etap 7c: przełącznik sposobu rysowania linii (ręką ↔ punktami).
-        this.setDrawMode(this.drawModeValue === 'hand' ? 'click' : 'hand');
-        this.message = this.drawModeValue === 'hand' ? 'Rysowanie ręką: przeciągnij myszą – linia sama się uprości i wygładzi.' : 'Rysowanie punktami: klik = punkt, podwójny klik lub Enter = koniec.';
+        // Etap 7f: sposób rysowania linii po kolei: prosto → łuk → ręką.
+        this.setDrawMode(this.drawModeValue === 'straight' ? 'arc' : this.drawModeValue === 'arc' ? 'hand' : 'straight');
+        this.message = this.drawModeValue === 'hand' ? 'Rysowanie ręką: przeciągnij myszą – linia sama się uprości i wygładzi.' : this.drawModeValue === 'arc' ? 'Łuk: klik – początek, klik – punkt sterujący (kierunek łuku), klik – koniec.' : 'Prosto: klik = punkt, podwójny klik lub Enter = koniec.';
         this.refreshPanel();
         return true;
       case 'KeyB':
@@ -907,9 +1047,15 @@ export class BuildController {
         this.toggleNetwork();
         return true;
       case 'KeyR':
+        if (this.tool === 'move') {
+          this.rotateMoving();
+          return true;
+        }
         this.toggleReality();
         return true;
       case 'Enter':
+        if (this.tool === 'autoSnow' && this.autoPlan) this.buildAutoPlan();
+        if (this.tool === 'ditch') this.finishDitch();
         if (this.tool === 'pisteAxis' || this.tool === 'catwalk') this.finishAxis();
         if (this.tool === 'pipeline' || this.tool === 'supply') this.finishPipeline();
         if (this.tool === 'road') this.finishRoad();
@@ -947,6 +1093,11 @@ export class BuildController {
         this.setTool('gun');
         return true;
       case 'Backspace':
+        if (this.arcCtrl) {
+          this.arcCtrl = null;
+          this.drawVersion++;
+          return true;
+        }
         if ((this.tool === 'pisteAxis' || this.tool === 'catwalk') && this.axisPoints.length) {
           this.axisPoints.pop();
           this.updateDraftPiste(this.axisPoints, null);
@@ -971,7 +1122,10 @@ export class BuildController {
         return true;
       }
       case 'Escape':
-        if (this.liftBottom || this.axisPoints.length || this.pipePoints.length || this.roadPoints.length || this.trailPoints.length) this.cancelDraft();
+        if (this.tool === 'move') {
+          this.cancelMove();
+          this.setTool('select');
+        } else if (this.liftBottom || this.axisPoints.length || this.pipePoints.length || this.roadPoints.length || this.trailPoints.length || this.ditchPoints.length) this.cancelDraft();
         else if (this.selection) this.select(null);
         else this.setTool('select');
         return true;
@@ -1031,6 +1185,7 @@ export class BuildController {
   }
 
   private finishPipeline(hand = false): void {
+    if (!hand) this.flushArc();
     const supply = this.tool === 'supply';
     const line = this.lineFromDrawn(this.pipePoints, hand);
     const pts = line.points;
@@ -1058,6 +1213,7 @@ export class BuildController {
 
   /** Etap 7b: trasa letnia (rower, ścieżka, tor) z narysowanych punktów. */
   private finishTrail(hand = false): void {
+    if (!hand) this.flushArc();
     const kind = this.tool === 'bikeTrail' ? 'bike' : this.tool === 'walkTrail' ? 'walk' : 'toboggan';
     const line = this.lineFromDrawn(this.trailPoints, hand);
     const pts = line.points;
@@ -1085,6 +1241,7 @@ export class BuildController {
   }
 
   private finishRoad(hand = false): void {
+    if (!hand) this.flushArc();
     const line = this.lineFromDrawn(this.roadPoints, hand);
     const pts = line.points;
     this.roadPoints = [];
@@ -1164,6 +1321,7 @@ export class BuildController {
   }
 
   private finishAxis(hand = false): void {
+    if (!hand) this.flushArc();
     const pts = this.axisPoints;
     this.axisPoints = [];
     this.draftPiste = null;
@@ -1206,10 +1364,10 @@ export class BuildController {
   }
 
   private updateDraftPiste(points: AxisPoint[], cursor: PointM | null): void {
-    const pts = cursor && (this.tool === 'pisteAxis' || this.tool === 'catwalk') ? [...points, { xM: cursor.xM, yM: cursor.yM, widthM: points[points.length - 1]?.widthM ?? this.widthM }] : points;
-    let clean = pts.filter((q, i) => i === 0 || Math.hypot(q.xM - pts[i - 1].xM, q.yM - pts[i - 1].yM) > 1);
-    // Rysowanie punktami: podgląd od razu jako gładki łuk.
-    if (!this.handStroke && clean.length >= 3) clean = this.densify(clean, this.o.lines.defaultSmooth);
+    const lastW = points[points.length - 1]?.widthM ?? this.widthM;
+    const tail = cursor && points.length && this.arcCtrl ? arcPoints(points[points.length - 1], this.arcCtrl, cursor, this.o.lines.sampleStepM) : cursor ? [cursor] : [];
+    const pts = cursor && (this.tool === 'pisteAxis' || this.tool === 'catwalk') ? [...points, ...tail.map((q) => ({ xM: q.xM, yM: q.yM, widthM: lastW }))] : points;
+    const clean = pts.filter((q, i) => i === 0 || Math.hypot(q.xM - pts[i - 1].xM, q.yM - pts[i - 1].yM) > 1);
     const analysis = clean.length >= 2 ? analyzePiste({ id: 'draft', name: '', points: clean }, { grid: this.o.grid, params: this.o.pisteParams, forest: this.o.forest, shrub: this.o.shrub, clearingCost: this.o.clearing }) : null;
     this.draftPiste = { points: this.handStroke ? pts : clean, analysis };
     this.drawVersion++;
@@ -1263,6 +1421,17 @@ export class BuildController {
         const dy = b.yPx - a.yPx;
         const t = Math.min(1, Math.max(0, ((xPx - a.xPx) * dx + (yPx - a.yPx) * dy) / (dx * dx + dy * dy || 1)));
         if (Math.hypot(xPx - a.xPx - t * dx, yPx - a.yPx - t * dy) <= 6) return { kind: 'road', id: road.id };
+      }
+    }
+    for (const d of this.layout.ditches ?? []) {
+      const path = d.points.map((q) => cam.worldToScreen(q.xM, q.yM));
+      for (let i = 0; i < path.length - 1; i++) {
+        const a = path[i];
+        const b = path[i + 1];
+        const dx = b.xPx - a.xPx;
+        const dy = b.yPx - a.yPx;
+        const t = Math.min(1, Math.max(0, ((xPx - a.xPx) * dx + (yPx - a.yPx) * dy) / (dx * dx + dy * dy || 1)));
+        if (Math.hypot(xPx - a.xPx - t * dx, yPx - a.yPx - t * dy) <= 6) return { kind: 'ditch', id: d.id };
       }
     }
     for (const pipe of this.layout.pipelines ?? []) {
@@ -1346,6 +1515,15 @@ export class BuildController {
       if (pipe.supply) return { title: pipe.name, lines: [`rura zasilająca (źródło → zbiornik) · ${Math.round(pipelineCost(pipe, this.o.snowmaking).lengthM)} m`, `status: ${building !== undefined ? `w budowie (${Math.round(building * 100)} %)` : 'gotowa'}`] };
       return { title: pipe.name, lines: [`rurociąg naśnieżania · ${n} hydrantów, ${guns} armatek`, `status: ${building !== undefined ? `w budowie (${Math.round(building * 100)} %)` : 'gotowy'}`] };
     }
+    if (hit.kind === 'ditch') {
+      const d = (this.layout.ditches ?? []).find((x) => x.id === hit.id);
+      if (!d) return null;
+      const a = this.analyzeDitchPts(d.points);
+      const lines = [`rów zbierający · ${f0(a?.lengthM ?? 0)} m, spadek ${(a?.slopePercent ?? 0).toFixed(1)} %`, `status: ${building !== undefined ? `w budowie (${Math.round(building * 100)} %)` : 'gotowy'}`];
+      if (a) lines.push(`zlewnia ${(a.effectiveAreaM2 / 1e4).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} ha${a.annualInflowM3 ? `, ok. ${f0(a.annualInflowM3)} m³ w przeciętnym roku` : ''}`);
+      if (a && !a.ok) lines.push(a.issues.join('; '));
+      return { title: d.name, lines };
+    }
     if (hit.kind === 'gun') {
       const g = (this.layout.snowGuns ?? []).find((x) => x.id === hit.id);
       const t = this.o.snowmaking?.guns.find((x) => x.id === g?.typeId);
@@ -1363,6 +1541,7 @@ export class BuildController {
     if (s.kind === 'road') return (this.layout.roads ?? []).find((p) => p.id === s.id) ?? null;
     if (s.kind === 'trail') return (this.layout.trails ?? []).find((p) => p.id === s.id) ?? null;
     if (s.kind === 'gun') return (this.layout.snowGuns ?? []).find((g) => g.id === s.id) ?? null;
+    if (s.kind === 'ditch') return (this.layout.ditches ?? []).find((g) => g.id === s.id) ?? null;
     return this.layout.bases.find((b) => b.id === s.id) ?? this.layout.buildings?.find((b) => b.id === s.id) ?? null;
   }
 
@@ -1397,6 +1576,11 @@ export class BuildController {
 
   private select(sel: { kind: SelKind; id: string } | null): void {
     this.selection = sel;
+    if (sel?.kind === 'ditch') {
+      const d = (this.layout.ditches ?? []).find((x) => x.id === sel.id);
+      const a = d ? this.analyzeDitchPts(d.points) : null;
+      if (a) this.message = `${d!.name}: zlewnia ${(a.effectiveAreaM2 / 1e4).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} ha (niebieskie pole) – ok. ${Math.round(a.annualInflowM3).toLocaleString('pl-PL')} m³ wody w przeciętnym roku${a.ok ? '' : `; ${a.issues.join('; ')}`}.`;
+    }
     this.o.onSelect?.(sel);
     this.drawVersion++;
     this.refreshProfile();
@@ -1431,6 +1615,7 @@ export class BuildController {
       next.pipelines = (next.pipelines ?? []).filter((p) => p.id !== s.id);
       next.snowGuns = (next.snowGuns ?? []).filter((g) => g.pipelineId !== s.id);
     } else if (s.kind === 'gun') next.snowGuns = (next.snowGuns ?? []).filter((g) => g.id !== s.id);
+    else if (s.kind === 'ditch') next.ditches = (next.ditches ?? []).filter((g) => g.id !== s.id);
     else {
       next.bases = next.bases.filter((b) => b.id !== s.id);
       if (next.buildings) next.buildings = next.buildings.filter((b) => b.id !== s.id);
@@ -1692,7 +1877,9 @@ export class BuildController {
   }
 
   /** Etap 7b – akcje z karty obiektu: otwórz/zamknij, kolej latem, wieszaki, rozbiórka. */
-  cardAction(kind: SelKind, id: string, action: 'toggleOpen' | 'toggleSummer' | 'toggleRacks' | 'demolish'): void {
+  cardAction(kind: SelKind, id: string, action: 'toggleOpen' | 'toggleSummer' | 'toggleRacks' | 'demolish' | 'upgrade' | 'widen' | 'move', value: string | null = null): void {
+    if (action === 'upgrade' || action === 'widen') return this.upgradeObject(kind, id, value);
+    if (action === 'move') return this.startMove(kind, id);
     if (action === 'demolish') {
       this.selection = { kind, id };
       this.deleteSelected();
@@ -1794,6 +1981,565 @@ export class BuildController {
     this.o.onSnowWarnings?.(out);
   }
 
+
+  // ------------------------------------------------------------------ etap 7f: przyciąganie i informacje przy kursorze
+
+  private analyzeLayout(next: ResortLayout): ResortAnalysis {
+    return analyzeResort(next, { grid: this.o.grid, lifts: this.o.liftParams, pistes: this.o.pisteParams, clearing: this.o.clearing, forest: this.o.forest, shrub: this.o.shrub, ground: this.o.ground, roads: this.o.roads, publicRoads: this.o.publicRoads, summer: this.o.summer ?? null });
+  }
+
+  private kindOf(typeId: string): string | undefined {
+    return this.o.snowmaking?.buildings.find((x) => x.id === typeId)?.kind;
+  }
+
+  /** Punkty, odcinki, odniesienia i równoległe dla bieżącego narzędzia (zapamiętane do zmiany układu). */
+  private snapBase(): Omit<SnapContext, 'anchor' | 'prevDir' | 'metersPerPixel' | 'shift'> {
+    const key = `${this.tool}|${this.version}`;
+    if (this.snapCache?.key === key) return this.snapCache.ctx;
+    const L = this.layout;
+    const t = this.tool;
+    const points: SnapPoint[] = [];
+    const segments: SnapSegment[] = [];
+    const refs: SnapSegment[] = [];
+    const parallels: SnapSegment[] = [];
+    const ctrlPts = (o: { points: PointM[]; ctrl?: PointM[] }) => (o.ctrl && o.ctrl.length >= 2 ? o.ctrl : simplifyPolyline(o.points, 2));
+    const ends = (pts: PointM[], label: string) => {
+      if (pts.length < 2) return;
+      points.push({ xM: pts[0].xM, yM: pts[0].yM, label }, { xM: pts[pts.length - 1].xM, yM: pts[pts.length - 1].yM, label });
+    };
+    const liftStations = () => {
+      for (const l of L.lifts) {
+        points.push({ xM: l.bottom.xM, yM: l.bottom.yM, label: `${l.name}: dolna stacja` }, { xM: l.top.xM, yM: l.top.yM, label: `${l.name}: górna stacja` });
+        for (const b of l.bends ?? []) if (b.mid) points.push({ xM: b.xM, yM: b.yM, label: `${l.name}: stacja pośrednia` });
+      }
+    };
+    if (t === 'pipeline') {
+      for (const b of L.buildings ?? []) if (this.kindOf(b.typeId) === 'pump') points.push({ xM: b.xM, yM: b.yM, label: b.name });
+      for (const h of this.hydrants()) points.push({ xM: h.xM, yM: h.yM, label: h.gunId ? 'armatka' : 'hydrant' });
+      for (const p of L.pipelines ?? []) {
+        if (p.supply) continue;
+        ends(p.points, p.name);
+        segments.push(...polylineSegments(p.points, p.name));
+      }
+    } else if (t === 'supply') {
+      for (const b of L.buildings ?? []) {
+        const k = this.kindOf(b.typeId);
+        if (k === 'intake' || k === 'well' || k === 'mains' || k === 'reservoir') points.push({ xM: b.xM, yM: b.yM, label: b.name });
+      }
+      for (const p of L.pipelines ?? []) {
+        if (!p.supply) continue;
+        ends(p.points, p.name);
+        segments.push(...polylineSegments(p.points, p.name));
+      }
+    } else if (t === 'road') {
+      for (const b of L.bases) points.push({ xM: b.xM, yM: b.yM, label: b.name });
+      for (const r of L.roads ?? []) {
+        ends(r.points, r.name);
+        segments.push(...polylineSegments(r.points, r.name));
+      }
+      for (const r of this.o.publicRoads ?? []) segments.push(...polylineSegments(r, 'droga publiczna'));
+    } else if (t === 'pisteAxis' || t === 'pisteBrush' || t === 'catwalk') {
+      liftStations();
+      for (const p of L.pistes) {
+        ends(p.points, `trasa ${p.name}`);
+        segments.push(...polylineSegments(p.points, `trasa ${p.name}`));
+      }
+    } else if (t === 'bikeTrail' || t === 'walkTrail' || t === 'toboggan') {
+      liftStations();
+      for (const b of [...L.bases, ...(L.buildings ?? [])]) points.push({ xM: b.xM, yM: b.yM, label: b.name });
+      for (const tr of L.trails ?? []) {
+        ends(tr.points, tr.name);
+        segments.push(...polylineSegments(tr.points, tr.name));
+      }
+    } else if (t === 'lift') {
+      for (const p of L.pistes) ends(p.points, `trasa ${p.name}`);
+      for (const b of L.bases) points.push({ xM: b.xM, yM: b.yM, label: b.name });
+      liftStations();
+    } else if (t === 'ditch') {
+      for (const b of L.buildings ?? []) if (this.kindOf(b.typeId) === 'reservoir') points.push({ xM: b.xM, yM: b.yM, label: b.name });
+      for (const d of L.ditches ?? []) ends(d.points, d.name);
+    }
+    // Odniesienia kąta i przedłużenia: osie tras, drogi, rurociągi, wyciągi, rowy.
+    for (const p of L.pistes) refs.push(...polylineSegments(ctrlPts(p), `trasa ${p.name}`));
+    for (const r of L.roads ?? []) refs.push(...polylineSegments(ctrlPts(r), r.name));
+    for (const p of L.pipelines ?? []) refs.push(...polylineSegments(ctrlPts(p), p.name));
+    for (const d of L.ditches ?? []) refs.push(...polylineSegments(ctrlPts(d), d.name));
+    for (const l of L.lifts) refs.push(...polylineSegments(liftPath(l), l.name));
+    // Rurociąg i droga wzdłuż trasy w stałej odległości od krawędzi.
+    if (t === 'pipeline' || t === 'road' || t === 'ditch') {
+      for (const p of L.pistes) {
+        for (const side of [1, -1] as const) parallels.push(...polylineSegments(simplifyPolyline(pisteEdgeLine(p, side, this.o.snap.parallelOffsetM, 10, this.o.grid), 1), `wzdłuż trasy ${p.name}`));
+      }
+    }
+    const ctx = { points, segments, refs, parallels };
+    this.snapCache = { key, ctx };
+    return ctx;
+  }
+
+  /** Punkt kliknięcia po przyciągnięciu (Shift – bez); null poza mapą. */
+  private snapAt(xPx: number, yPx: number): PointM | null {
+    const w = this.world(xPx, yPx);
+    if (!w) return null;
+    if (!SNAP_TOOLS.includes(this.tool)) return w;
+    const arr = this.drawArr();
+    const anchor = this.tool === 'lift' ? this.liftBottom : arr && arr.length ? arr[arr.length - 1] : null;
+    let prevDir: PointM | null = null;
+    if (arr && arr.length >= 2) {
+      const a = arr[arr.length - 2];
+      const b = arr[arr.length - 1];
+      const L = Math.hypot(b.xM - a.xM, b.yM - a.yM);
+      if (L > 1e-6) prevDir = { xM: (b.xM - a.xM) / L, yM: (b.yM - a.yM) / L };
+    }
+    const r = snapPoint(w, { ...this.snapBase(), anchor: this.handStroke ? null : anchor, prevDir, metersPerPixel: this.o.camera.metersPerPixel, shift: this.shiftDown }, this.o.snap);
+    if (this.handStroke) r.guide = null;
+    this.snapRes = r;
+    return this.o.grid.containsPointM(r.point.xM, r.point.yM) ? r.point : w;
+  }
+
+  /** Etap 7f: dane dla nakładki przy kursorze (null – nic do pokazania). */
+  get snapView(): SnapView | null {
+    if (!SNAP_TOOLS.includes(this.tool) || !this.snapRes || !this.cursorWorld) return null;
+    return { point: this.snapRes.point, hit: this.snapRes.hit, guide: this.snapRes.guide, info: this.infoLines, warn: this.warnLines };
+  }
+
+  /** Długość, koszt narastająco, nachylenie odcinka i ostrzeżenia rysowanej linii (przy kursorze). */
+  private computeInfo(q: PointM): void {
+    const info: string[] = [];
+    const warn: string[] = [];
+    const f0 = (v: number) => Math.round(v).toLocaleString('pl-PL');
+    const money = (v: number) => (v >= 1e6 ? `${(v / 1e6).toLocaleString('pl-PL', { maximumFractionDigits: 2 })} mln zł` : `${f0(v / 1000)} tys. zł`);
+    const z = (p: PointM) => this.o.grid.sampleElevationM(p.xM, p.yM);
+    const t = this.tool;
+    this.infoLines = info;
+    this.warnLines = warn;
+    if (t === 'lift') {
+      const d = this.draftLift;
+      if (!d) return;
+      const a = d.analysis;
+      info.push(`${f0(a.slopeLengthM)} m, przewyższenie ${f0(a.riseM)} m · ${money(a.cost.totalPln)}`);
+      for (const i of a.issues) (i.severity === 'error' ? warn : info).push(i.message);
+      return;
+    }
+    const arr = this.drawArr();
+    if (!arr || !arr.length) return;
+    const last = arr[arr.length - 1];
+    const tail = this.arcCtrl ? arcPoints(last, this.arcCtrl, q, this.o.lines.sampleStepM) : this.handStroke ? [] : [q];
+    const pts: PointM[] = [...arr, ...tail];
+    let L = 0;
+    for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i].xM - pts[i - 1].xM, pts[i].yM - pts[i - 1].yM);
+    const end = pts[pts.length - 1];
+    const segFrom = this.handStroke ? arr[Math.max(0, arr.length - 6)] : last;
+    const run = Math.hypot(end.xM - segFrom.xM, end.yM - segFrom.yM);
+    const slope = run > 1 ? ((z(end) - z(segFrom)) / run) * 100 : 0;
+    const sp = this.o.snowmaking;
+    let cost: number | null = null;
+    let extra = '';
+    if ((t === 'pipeline' || t === 'supply') && sp) {
+      const c = pipelineCost({ id: 'x', name: '', points: pts, ...(t === 'supply' ? { supply: true } : {}) }, sp);
+      cost = c.costPln;
+      if (t === 'pipeline') extra = ` · ${c.hydrants} hydrantów`;
+      if (t === 'pipeline') {
+        const pumps = (this.layout.buildings ?? []).filter((b) => this.kindOf(b.typeId) === 'pump');
+        const pump = pumps[0] ?? null;
+        const conn = connectPipelines([...(this.layout.pipelines ?? []), { id: '__draft', name: '', points: pts }], pump ? { xM: pump.xM, yM: pump.yM } : null, sp);
+        if (!conn.has('__draft')) warn.push(pump ? 'początek nie łączy się z pompownią ani z rurociągiem' : 'brak pompowni – rurociąg nie dostanie wody');
+      }
+    } else if (t === 'road' && this.o.roads) {
+      cost = L * this.o.roads.costPlnPerM;
+      if (Math.abs(slope) > this.o.roads.maxSlopePercent) warn.push(`za stromo: ${f0(Math.abs(slope))} % (droga do ${this.o.roads.maxSlopePercent} %)`);
+    } else if (t === 'ditch' && sp) {
+      cost = L * sp.ditch.costPlnPerM;
+      const d = this.ditchDraft;
+      if (d && d.catchment.areaM2 > 0) extra = ` · zlewnia ${(d.effectiveAreaM2 / 1e4).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} ha${d.annualInflowM3 ? `, ok. ${f0(d.annualInflowM3)} m³/rok` : ''}`;
+      if (L > 20 && z(end) > z(pts[0]) + 0.5) warn.push('rów idzie pod górę – rysuj od góry stoku w dół do zbiornika');
+      else if (d && !d.reservoirId && d.lengthM > 20) info.push(`koniec przy zbiorniku (do ${this.water?.wp.ditches.reservoirRadiusM ?? 40} m)`);
+    } else if ((t === 'bikeTrail' || t === 'walkTrail' || t === 'toboggan') && this.o.summer) {
+      const su = this.o.summer;
+      cost = t === 'bikeTrail' ? L * su.bike.buildPlnPerM : t === 'walkTrail' ? L * su.walk.buildPlnPerM : su.toboggan.fixedCostPln + L * su.toboggan.costPlnPerM;
+      if (t === 'toboggan' && run > 1 && (Math.abs(slope) < su.toboggan.minSlopePercent || Math.abs(slope) > su.toboggan.maxSlopePercent)) warn.push(`tor: nachylenie ${su.toboggan.minSlopePercent}–${su.toboggan.maxSlopePercent} %`);
+      if (t === 'toboggan' && L > su.toboggan.maxLengthM) warn.push(`tor za długi (do ${f0(su.toboggan.maxLengthM)} m)`);
+    } else if (t === 'pisteAxis' || t === 'pisteBrush' || t === 'catwalk') {
+      const a = this.draftPiste?.analysis;
+      if (a) {
+        cost = a.cost.totalPln;
+        extra = ` · ${this.o.pisteParams.classes[a.classIndex]?.name ?? ''}`;
+        for (const i of a.issues) (i.severity === 'error' ? warn : info).push(i.message);
+      }
+      if (t === 'catwalk' && Math.abs(slope) > this.o.pisteParams.catwalkMaxSlopePercent) warn.push(`za stromo na nartostradę (do ${this.o.pisteParams.catwalkMaxSlopePercent} %)`);
+    }
+    info.unshift(`${f0(L)} m${cost !== null ? ` · ${money(cost)}` : ''}${extra}`, `odcinek: ${slope >= 0 ? '+' : '−'}${f0(Math.abs(slope))} %`);
+  }
+
+  // ------------------------------------------------------------------ etap 7f: rowy zbierające
+
+  private reservoirs(): { id: string; xM: number; yM: number }[] {
+    return (this.layout.buildings ?? []).filter((b) => this.kindOf(b.typeId) === 'reservoir').map((b) => ({ id: b.id, xM: b.xM, yM: b.yM }));
+  }
+
+  private analyzeDitchPts(pts: PointM[]): DitchAnalysis | null {
+    const w = this.water;
+    const sp = this.o.snowmaking;
+    if (!w || !sp || pts.length < 2) return null;
+    return analyzeDitch(pts, w.net, w.elevationM, this.reservoirs(), w.wp, this.annualPrecip ?? undefined, sp.ditch);
+  }
+
+  private updateDitchDraft(cursor: PointM | null): void {
+    const pts = cursor ? [...this.ditchPoints, cursor] : this.ditchPoints;
+    this.ditchDraft = this.analyzeDitchPts(pts);
+    this.drawVersion++;
+  }
+
+  private finishDitch(hand = false): void {
+    if (!hand) this.flushArc();
+    const line = this.lineFromDrawn(this.ditchPoints, hand);
+    this.ditchPoints = [];
+    this.ditchDraft = null;
+    this.drawVersion++;
+    if (!this.water) {
+      this.message = 'Model wody jeszcze się liczy – spróbuj za chwilę.';
+      this.refreshPanel();
+      return;
+    }
+    const a = this.analyzeDitchPts(line.points);
+    if (!a) {
+      this.message = 'Rów potrzebuje co najmniej dwóch punktów.';
+      this.refreshPanel();
+      return;
+    }
+    if (!a.ok) {
+      this.message = `Rów odrzucony: ${a.issues.join('; ')}.`;
+      this.refreshPanel();
+      return;
+    }
+    const rev = a.oriented[0] !== line.points[0];
+    const next = this.clone();
+    const id = `K${next.nextId++}`;
+    const n = (next.ditches ?? []).length + 1;
+    const r1 = (q: PointM) => ({ xM: Math.round(q.xM * 10) / 10, yM: Math.round(q.yM * 10) / 10 });
+    (next.ditches ??= []).push({ id, name: `Rów zbierający ${n}`, points: a.oriented.map(r1), ctrl: (rev ? [...line.ctrl].reverse() : line.ctrl).map(r1), smooth: line.smooth });
+    const ha = (a.effectiveAreaM2 / 1e4).toLocaleString('pl-PL', { maximumFractionDigits: 1 });
+    if (this.commit(next, `Rów zbierający ${n}: ${Math.round(a.lengthM)} m, spadek ${a.slopePercent.toFixed(1)} %, zlewnia ${ha} ha – ok. ${Math.round(a.annualInflowM3).toLocaleString('pl-PL')} m³ wody w przeciętnym roku. Wykop tylko latem (V–X).`)) this.select({ kind: 'ditch', id });
+  }
+
+  // ------------------------------------------------------------------ etap 7f: „Naśnież trasę”
+
+  private toggleAutoPiste(xPx: number, yPx: number, p: PointM): void {
+    const hit = this.pick(xPx, yPx, p);
+    if (hit?.kind !== 'piste') {
+      this.message = 'Kliknij trasę, którą chcesz naśnieżać (kolejne kliknięcia dodają trasy).';
+      this.refreshPanel();
+      return;
+    }
+    this.autoSel = this.autoSel.includes(hit.id) ? this.autoSel.filter((x) => x !== hit.id) : [...this.autoSel, hit.id];
+    this.recomputeAutoPlan();
+  }
+
+  private autoNextId = 0;
+
+  private recomputeAutoPlan(): void {
+    const sp = this.o.snowmaking;
+    const pistes = this.autoSel.map((id) => this.layout.pistes.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => !!p);
+    this.drawVersion++;
+    if (!sp || !pistes.length) {
+      this.autoPlan = null;
+      this.autoPanel.hide();
+      return;
+    }
+    // Pompownia najbliżej pierwszej zaznaczonej trasy.
+    const c0 = pistes[0].points[Math.floor(pistes[0].points.length / 2)];
+    let pump: { xM: number; yM: number; cap: number } | null = null;
+    let bd = Infinity;
+    for (const b of this.layout.buildings ?? []) {
+      const t = sp.buildings.find((x) => x.id === b.typeId);
+      if (t?.kind !== 'pump') continue;
+      const d = Math.hypot(b.xM - c0.xM, b.yM - c0.yM);
+      if (d < bd) {
+        bd = d;
+        pump = { xM: b.xM, yM: b.yM, cap: t.capacity };
+      }
+    }
+    let n = this.layout.nextId;
+    const plan = planPisteSnowmaking({ grid: this.o.grid, forest: this.o.forest, pistes, pipelines: this.layout.pipelines ?? [], pump: pump ? { xM: pump.xM, yM: pump.yM } : null, ...(pump ? { pumpCapacityM3h: pump.cap } : {}), newId: (pf) => `${pf}${n++}` }, sp);
+    this.autoNextId = n;
+    this.autoPlan = plan;
+    const next = this.layoutWithPlan(plan);
+    const prev = this.o.changePreview?.(next, this.analyzeLayout(next), null) ?? null;
+    this.autoPanel.show({ pistes: pistes.map((p) => p.name), plan, chargePln: prev?.chargePln ?? null, gunNames: Object.fromEntries(sp.guns.map((g) => [g.id, g.name])) });
+  }
+
+  private layoutWithPlan(plan: AutoSnowPlan): ResortLayout {
+    const next = this.clone();
+    (next.pipelines ??= []).push(...plan.pipelines.map((p) => ({ ...p, points: p.points.map((q) => ({ ...q })) })));
+    (next.snowGuns ??= []).push(...plan.guns.map((g) => ({ ...g })));
+    next.nextId = Math.max(next.nextId, this.autoNextId);
+    return next;
+  }
+
+  private buildAutoPlan(): void {
+    const plan = this.autoPlan;
+    if (!plan || !plan.pipelines.length) return;
+    const next = this.layoutWithPlan(plan);
+    const msg = `Naśnieżanie: ${plan.pipelines.length} ${plan.pipelines.length === 1 ? 'rurociąg' : 'rurociągi'}, ${plan.guns.length} armatek. Wykop tylko latem (V–X) – potem plan naśnieżania w panelu „Naśnieżanie”.`;
+    if (this.commit(next, msg)) {
+      this.autoSel = [];
+      this.autoPlan = null;
+      this.autoPanel.hide();
+      this.setTool('select');
+      this.message = msg;
+      this.refreshPanel();
+    }
+  }
+
+  // ------------------------------------------------------------------ etap 7f: ulepszanie i przesuwanie
+
+  /** „Ulepsz” z karty obiektu: wyciąg (typ), armatka (typ), trasa (poszerzenie). */
+  upgradeObject(kind: SelKind, id: string, value: string | null): void {
+    const fmt = (v: number) => `${Math.round(v).toLocaleString('pl-PL')} zł`;
+    let next: ResortLayout | null = null;
+    let what = '';
+    if (kind === 'lift' && value) {
+      const l = this.layout.lifts.find((x) => x.id === id);
+      if (!l) return;
+      const chk = liftUpgradeCheck(l, value, this.o.liftParams);
+      if (!chk.ok) {
+        this.message = `Nie da się: ${chk.reason}.`;
+        this.refreshPanel();
+        return;
+      }
+      next = this.clone();
+      next.lifts = next.lifts.map((x) => (x.id === id ? upgradeLift(this.o.grid, this.o.liftParams, l, value) : x));
+      what = `${l.name} → ${liftTypeById(this.o.liftParams, value).name}`;
+    } else if (kind === 'gun' && value) {
+      next = upgradeGun(this.clone(), id, value);
+      what = `armatka ${id} → ${this.o.snowmaking?.guns.find((g) => g.id === value)?.name ?? value}`;
+    } else if (kind === 'piste') {
+      const p = this.layout.pistes.find((x) => x.id === id);
+      if (!p) return;
+      if (!canWiden(p, this.o.pisteParams)) {
+        this.message = `Trasa ${p.name} ma już największą szerokość (${this.o.pisteParams.maxWidthM} m).`;
+        this.refreshPanel();
+        return;
+      }
+      next = this.clone();
+      next.pistes = next.pistes.map((x) => (x.id === id ? widenPiste(x, this.o.pisteParams) : x));
+      what = `trasa ${p.name} szersza o ${this.o.pisteParams.widenStepM} m`;
+    }
+    if (!next) return;
+    const a = this.analyzeLayout(next);
+    if (kind === 'lift') {
+      const la = a.lifts.get(id);
+      const err = la?.issues.find((i) => i.severity === 'error');
+      if (err) {
+        this.message = `Nie da się: ${err.message}.`;
+        this.refreshPanel();
+        return;
+      }
+    }
+    const oldCost = kind === 'lift' ? this.analysis.lifts.get(id)?.cost.totalPln ?? 0 : kind === 'piste' ? this.analysis.pistes.get(id)?.cost.totalPln ?? 0 : this.o.snowmaking?.guns.find((g) => g.id === (this.layout.snowGuns ?? []).find((x) => x.id === id)?.typeId)?.costPln ?? 0;
+    const newCost = kind === 'lift' ? a.lifts.get(id)?.cost.totalPln ?? 0 : kind === 'piste' ? a.pistes.get(id)?.cost.totalPln ?? 0 : this.o.snowmaking?.guns.find((g) => g.id === value)?.costPln ?? 0;
+    const prev = this.o.changePreview?.(next, a, id) ?? null;
+    const text = `Ulepszenie: ${what}. Różnica kosztu ${newCost >= oldCost ? '+' : '−'}${fmt(Math.abs(newCost - oldCost))}${prev ? `; do zapłaty teraz ${fmt(Math.max(0, prev.chargePln))} (z opłatą za przebudowę)${prev.days ? `, przebudowa ok. ${prev.days} dni – w tym czasie obiekt nie działa` : ''}` : ''}.`;
+    if (!confirm(`${text}\n\nWykonać?`)) return;
+    this.commit(next, text);
+  }
+
+  /** „Przesuń” z karty obiektu: budynek (obrót co 90°) albo armatka śmigłowa. */
+  startMove(kind: SelKind, id: string): void {
+    const sp = this.o.snowmaking;
+    if (kind === 'gun') {
+      const g = (this.layout.snowGuns ?? []).find((x) => x.id === id);
+      if (!g || !sp?.guns.find((t) => t.id === g.typeId)?.movable) {
+        this.message = 'Lanca jest stała – usuń ją i postaw nową w innym miejscu.';
+        this.refreshPanel();
+        return;
+      }
+    } else if (kind !== 'base') return;
+    const b = [...this.layout.bases, ...(this.layout.buildings ?? [])].find((x) => x.id === id) as { rotDeg?: number } | undefined;
+    this.setTool('move');
+    this.moving = { kind: kind === 'gun' ? 'gun' : 'base', id, before: this.clone(), rotDeg: b?.rotDeg ?? 0 };
+    this.message = kind === 'gun' ? 'Przesuń armatkę: kliknij wolny hydrant. Esc – anuluj.' : 'Przesuń budynek: kliknij nowe miejsce; R albo prawy przycisk – obrót o 90°; Esc – anuluj.';
+    this.refreshPanel();
+  }
+
+  private cancelMove(): void {
+    const m = this.moving;
+    if (!m) return;
+    this.moving = null;
+    this.layout = m.before;
+    this.reanalyze();
+  }
+
+  private rotateMoving(): void {
+    const m = this.moving;
+    if (!m || m.kind !== 'base') return;
+    m.rotDeg = (m.rotDeg + 90) % 360;
+    const b = (this.layout.buildings ?? []).find((x) => x.id === m.id);
+    if (b) {
+      if (m.rotDeg) b.rotDeg = m.rotDeg;
+      else delete b.rotDeg;
+    }
+    this.drawVersion++;
+  }
+
+  /** Podgląd przesuwanego budynku pod kursorem (bez historii – zatwierdza kliknięcie). */
+  private previewMove(p: PointM): void {
+    const m = this.moving;
+    if (!m || m.kind !== 'base') return;
+    const b = [...this.layout.bases, ...(this.layout.buildings ?? [])].find((x) => x.id === m.id);
+    if (!b) return;
+    b.xM = p.xM;
+    b.yM = p.yM;
+    this.drawVersion++;
+  }
+
+  private placeMoving(xPx: number, yPx: number, p: PointM): void {
+    const m = this.moving;
+    if (!m) return;
+    if (m.kind === 'gun') {
+      const cam = this.o.camera;
+      let best: (Hydrant & { gunId: string | null }) | null = null;
+      let bd = 14;
+      for (const h of this.hydrants(m.before)) {
+        const s2 = cam.worldToScreen(h.xM, h.yM);
+        const d = Math.hypot(s2.xPx - xPx, s2.yPx - yPx);
+        if (d < bd && !h.gunId) {
+          bd = d;
+          best = h;
+        }
+      }
+      if (!best) {
+        this.message = 'Kliknij wolny hydrant (kropka na rurociągu bez armatki).';
+        this.refreshPanel();
+        return;
+      }
+      const next = parseLayout(JSON.parse(serializeLayout(m.before)));
+      const g = (next.snowGuns ?? []).find((x) => x.id === m.id);
+      if (!g) return;
+      g.pipelineId = best.pipelineId;
+      g.hydrant = best.index;
+      this.moving = null;
+      this.layout = m.before;
+      if (this.commit(next, 'Armatkę przestawiono na inny hydrant.')) this.select({ kind: 'gun', id: m.id });
+      this.tool = 'select';
+      this.o.onToolChange('select');
+      return;
+    }
+    const next = moveBuilding(parseLayout(JSON.parse(serializeLayout(m.before))), m.id, Math.round(p.xM), Math.round(p.yM), m.rotDeg);
+    const b = (next.buildings ?? []).find((x) => x.id === m.id);
+    if (b) {
+      const check = this.checkWaterSite(b.typeId, b.xM, b.yM, next);
+      if (check.error) {
+        this.message = check.error;
+        this.refreshPanel();
+        return;
+      }
+    }
+    const prev = this.o.changePreview?.(next, this.analyzeLayout(next), m.id) ?? null;
+    this.moving = null;
+    this.layout = m.before;
+    const name = [...next.bases, ...(next.buildings ?? [])].find((x) => x.id === m.id)?.name ?? '';
+    const ok = this.commit(next, `Przesunięto: ${name}${prev && prev.chargePln > 0 ? ` (przeniesienie ${Math.round(prev.chargePln).toLocaleString('pl-PL')} zł${prev.days ? `, ok. ${prev.days} dni` : ''})` : ''}.`);
+    this.tool = 'select';
+    this.o.onToolChange('select');
+    if (ok) this.select({ kind: 'base', id: m.id });
+    this.refreshPanel();
+  }
+
+  // ------------------------------------------------------------------ etap 7f: nakładka (zlewnia rowu, podgląd naśnieżania)
+
+  private selDitchCache: { key: string; a: DitchAnalysis | null } | null = null;
+
+  private drawOverlay(): void {
+    const cam = this.o.camera;
+    const sel = this.selection;
+    let ditch: DitchAnalysis | null = null;
+    if (this.tool === 'ditch') ditch = this.ditchDraft;
+    else if (sel?.kind === 'ditch') {
+      const key = `${sel.id}|${this.version}`;
+      if (this.selDitchCache?.key !== key) {
+        const d = (this.layout.ditches ?? []).find((x) => x.id === sel.id);
+        this.selDitchCache = { key, a: d ? this.analyzeDitchPts(d.points) : null };
+      }
+      ditch = this.selDitchCache.a;
+    }
+    const key = `${cam.centerXM}|${cam.centerYM}|${cam.metersPerPixel}|${cam.rotated}|${this.drawVersion}|${this.version}|${ditch ? ditch.catchment.cells.length : -1}|${this.autoPlan ? this.autoPlan.guns.length : -1}|${this.autoSel.join(',')}`;
+    if (key === this.overlayKey) return;
+    this.overlayKey = key;
+    const g = this.overlayG.clear();
+    const S = (x: number, y: number) => cam.worldToScreen(x, y);
+    if (ditch && ditch.catchment.cells.length) {
+      // Zlewnia: komórki łączone w pasy wierszy.
+      const W = this.o.grid.widthCells;
+      const cs = this.o.grid.cellSizeM;
+      const rows = new Map<number, number[]>();
+      for (const k of ditch.catchment.cells) {
+        const j = Math.floor(k / W);
+        let r = rows.get(j);
+        if (!r) rows.set(j, (r = []));
+        r.push(k - j * W);
+      }
+      for (const [j, is] of rows) {
+        is.sort((a, b) => a - b);
+        let a0 = is[0];
+        let prev = is[0];
+        const flush = (i0: number, i1: number) => {
+          const p1 = S(i0 * cs, j * cs);
+          const p2 = S((i1 + 1) * cs, j * cs);
+          const p3 = S((i1 + 1) * cs, (j + 1) * cs);
+          const p4 = S(i0 * cs, (j + 1) * cs);
+          g.poly([p1.xPx, p1.yPx, p2.xPx, p2.yPx, p3.xPx, p3.yPx, p4.xPx, p4.yPx]).fill({ color: 0x7cc4f2, alpha: 0.28 });
+        };
+        for (let n = 1; n < is.length; n++) {
+          if (is[n] !== prev + 1) {
+            flush(a0, prev);
+            a0 = is[n];
+          }
+          prev = is[n];
+        }
+        flush(a0, prev);
+      }
+    }
+    if (ditch) {
+      const pts = ditch.oriented.map((q) => S(q.xM, q.yM));
+      if (pts.length >= 2) {
+        g.moveTo(pts[0].xPx, pts[0].yPx);
+        for (const q of pts) g.lineTo(q.xPx, q.yPx);
+        g.stroke({ width: 4, color: ditch.ok ? 0x2563eb : 0xff6b6b, cap: 'round', join: 'round' });
+      }
+    }
+    // „Naśnież trasę”: zaznaczone trasy, rury, hydranty, armatki.
+    if (this.tool === 'autoSnow') {
+      for (const id of this.autoSel) {
+        const p = this.layout.pistes.find((x) => x.id === id);
+        if (!p) continue;
+        const pts = p.points.map((q) => S(q.xM, q.yM));
+        g.moveTo(pts[0].xPx, pts[0].yPx);
+        for (const q of pts) g.lineTo(q.xPx, q.yPx);
+        g.stroke({ width: Math.max(6, (p.points[0]?.widthM ?? 30) / cam.metersPerPixel), color: 0xff7a1a, alpha: 0.22, cap: 'round', join: 'round' });
+      }
+      const plan = this.autoPlan;
+      const sp = this.o.snowmaking;
+      if (plan && sp) {
+        for (const pipe of plan.pipelines) {
+          const pts = pipe.points.map((q) => S(q.xM, q.yM));
+          g.moveTo(pts[0].xPx, pts[0].yPx);
+          for (const q of pts) g.lineTo(q.xPx, q.yPx);
+          g.stroke({ width: 5, color: 0xffffff, alpha: 0.9, cap: 'round', join: 'round' });
+          g.moveTo(pts[0].xPx, pts[0].yPx);
+          for (const q of pts) g.lineTo(q.xPx, q.yPx);
+          g.stroke({ width: 2.5, color: 0xff7a1a, cap: 'round', join: 'round' });
+          for (const h of pipelineHydrants(pipe, sp)) {
+            const q = S(h.xM, h.yM);
+            const gun = plan.guns.find((x) => x.pipelineId === pipe.id && x.hydrant === h.index);
+            const fan = gun && sp.guns.find((t) => t.id === gun.typeId)?.movable;
+            if (fan) g.circle(q.xPx, q.yPx, 5.5).fill({ color: 0x7cc4f2 }).stroke({ width: 1.5, color: 0x0f172a });
+            else g.rect(q.xPx - 3.5, q.yPx - 3.5, 7, 7).fill({ color: 0xeef3f8 }).stroke({ width: 1.5, color: 0x0f172a });
+          }
+        }
+      }
+    }
+  }
+
   // ------------------------------------------------------------------ plik
 
   private exportFile(): void {
@@ -1846,7 +2592,10 @@ export class BuildController {
 
   /** Podgląd linii rysowanej punktami – od razu gładki łuk; ręką – surowy ślad. */
   private draftLine(pts: PointM[]): PointM[] {
-    return !this.handStroke && pts.length >= 3 ? this.densify(pts, this.o.lines.defaultSmooth) : pts;
+    // Etap 7f: punktami – łamana (prosto) albo łuki; podgląd ostatniego odcinka do kursora.
+    const c = this.snapRes?.point ?? this.cursorWorld;
+    if (this.handStroke || !pts.length || !c) return pts;
+    return [...pts, ...(this.arcCtrl ? arcPoints(pts[pts.length - 1], this.arcCtrl, c, this.o.lines.sampleStepM) : [c])];
   }
 
   update(cursor: { xPx: number; yPx: number } | null, timeS = performance.now() / 1000): void {
@@ -1854,9 +2603,17 @@ export class BuildController {
     const key = cursor ? `${Math.round(cursor.xPx)}|${Math.round(cursor.yPx)}|${this.o.camera.centerXM}|${this.o.camera.centerYM}|${this.o.camera.metersPerPixel}` : '';
     if (key !== this.lastCursorKey && cursor) {
       this.lastCursorKey = key;
-      const p = this.world(cursor.xPx, cursor.yPx);
+      this.cursorWorld = this.world(cursor.xPx, cursor.yPx);
+      const p = SNAP_TOOLS.includes(this.tool) ? this.snapAt(cursor.xPx, cursor.yPx) : this.cursorWorld;
+      if (!SNAP_TOOLS.includes(this.tool)) this.snapRes = null;
       if (p && this.liftBottom) this.updateDraftLift(p);
       if (p && (this.tool === 'pisteAxis' || this.tool === 'catwalk') && this.axisPoints.length && !this.handStroke) this.updateDraftPiste(this.axisPoints, p);
+      if (p && this.tool === 'ditch' && this.ditchPoints.length && !this.handStroke) this.updateDitchDraft(p);
+      if (p && this.tool === 'move') this.previewMove(p);
+      if (p && SNAP_TOOLS.includes(this.tool)) {
+        this.computeInfo(p);
+        this.drawVersion++;
+      }
       if (!this.edit) {
         const h = this.tool === 'select' ? this.hitHandle(cursor.xPx, cursor.yPx) : null;
         const k = (x: EditHandle | null) => (x ? `${x.kind}|${x.index}|${x.side ?? 0}` : '');
@@ -1888,6 +2645,7 @@ export class BuildController {
       drawVersion: this.drawVersion,
       timeS,
     });
+    this.drawOverlay();
   }
 }
 

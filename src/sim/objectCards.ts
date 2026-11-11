@@ -20,16 +20,18 @@ import { BIKE_CLASS_NAMES, TRAIL_KIND_NAMES, stormAt } from './summer';
 import type { SummerStats } from './summerGuests';
 import { SLOTS, SLOT_S } from './summerGuests';
 import { formatIsoDate } from './time';
+import { liftUpgradeCheck } from './upgrades';
 
-export type CardKind = 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road' | 'trail';
+export type CardKind = 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road' | 'trail' | 'ditch';
 export type CardStatus = 'budowa' | 'czynny' | 'zamknięty' | 'przegląd' | 'awaria' | 'nieczynny';
 
 export interface CardAction {
-  id: 'toggleOpen' | 'toggleSummer' | 'toggleRacks' | 'demolish' | 'inspection' | 'price' | 'mains';
+  id: 'toggleOpen' | 'toggleSummer' | 'toggleRacks' | 'demolish' | 'inspection' | 'price' | 'mains' | 'upgrade' | 'move' | 'widen';
   label: string;
-  /** Pole daty / ceny (gdy akcja z wartością). */
+  /** Pole daty / ceny (gdy akcja z wartością); etap 7f: lista wyboru (typ po ulepszeniu). */
   value?: string | number;
-  input?: 'date' | 'number';
+  input?: 'date' | 'number' | 'select';
+  options?: { value: string; label: string }[];
   /** Klucz ceny (akcja „price”). */
   priceKey?: string;
 }
@@ -142,6 +144,41 @@ function constructionStatus(c: CardContext, id: string): { status: CardStatus; t
 
 /** Karta obiektu (null – nieznany obiekt). */
 export function objectCard(kind: CardKind, id: string, c: CardContext): ObjectCard | null {
+  const card = objectCardBase(kind, id, c);
+  if (card) withBuildActions(card, kind, id, c);
+  return card;
+}
+
+/**
+ * Etap 7f: „Ulepsz” (wyciąg – inny typ na tej samej linii, armatka – inny typ, trasa – poszerzenie),
+ * „Przesuń” (budynki z obrotem, armatki śmigłowe). Koszt różnicowy pokazuje kontroler budowy przed zmianą.
+ */
+function withBuildActions(card: ObjectCard, kind: CardKind, id: string, c: CardContext): void {
+  const add: CardAction[] = [];
+  if (kind === 'lift') {
+    const l = c.layout.lifts.find((x) => x.id === id);
+    if (l) {
+      const opts = c.lp.types.filter((t) => t.id !== l.typeId && liftUpgradeCheck(l, t.id, c.lp).ok).map((t) => ({ value: t.id, label: `${t.name} – ${f0(t.capacityPerHour)} os./h` }));
+      if (opts.length) add.push({ id: 'upgrade', label: 'Ulepsz: inny typ na tej samej linii', input: 'select', options: opts, value: opts[0].value });
+    }
+  } else if (kind === 'gun') {
+    const g = (c.layout.snowGuns ?? []).find((x) => x.id === id);
+    const guns = c.ep.snowmaking?.guns ?? [];
+    const opts = guns.filter((t) => t.id !== g?.typeId).map((t) => ({ value: t.id, label: `${t.name} – ${pln(t.costPln)}` }));
+    if (g && opts.length) add.push({ id: 'upgrade', label: 'Zamień typ armatki', input: 'select', options: opts, value: opts[0].value });
+    if (g && guns.find((t) => t.id === g.typeId)?.movable) add.push({ id: 'move', label: 'Przesuń na inny hydrant' });
+  } else if (kind === 'piste') {
+    add.push({ id: 'widen', label: 'Ulepsz: poszerz trasę' });
+  } else if (kind === 'base') {
+    add.push({ id: 'move', label: 'Przesuń (R – obrót)' });
+  }
+  if (!add.length) return;
+  const dem = card.actions.findIndex((a) => a.id === 'demolish');
+  if (dem >= 0) card.actions.splice(dem, 0, ...add);
+  else card.actions.push(...add);
+}
+
+function objectCardBase(kind: CardKind, id: string, c: CardContext): ObjectCard | null {
   if (kind === 'lift') return liftCard(id, c);
   if (kind === 'piste') return pisteCard(id, c);
   if (kind === 'trail') return trailCard(id, c);
@@ -152,6 +189,24 @@ export function objectCard(kind: CardKind, id: string, c: CardContext): ObjectCa
     if (!r) return null;
     const cs = constructionStatus(c, id);
     return { title: r.name, kindLabel: 'droga dojazdowa', status: cs?.status ?? 'czynny', statusText: cs?.text ?? (a?.connected === false ? 'nie łączy się z drogą publiczną' : 'przejezdna'), rows: [['długość', `${f0(a?.lengthM ?? 0)} m`], ['nachylenie maks.', `${f0(a?.maxSlopePercent ?? 0)} %`], ['odśnieżanie zimą', c.ep.roads ? `${pln(((a?.lengthM ?? 0) / 1000) * c.ep.roads.plowingPlnPerKmPerDay)}/dzień` : '–']], chart: null, actions: [{ id: 'demolish', label: 'Rozbierz' }] };
+  }
+  if (kind === 'ditch') {
+    const d = (c.layout.ditches ?? []).find((x) => x.id === id);
+    if (!d) return null;
+    let L = 0;
+    for (let i = 1; i < d.points.length; i++) L += Math.hypot(d.points[i].xM - d.points[i - 1].xM, d.points[i].yM - d.points[i - 1].yM);
+    const src = c.infra?.sources.find((x) => x.id === id);
+    const cs = constructionStatus(c, id);
+    return {
+      title: d.name,
+      kindLabel: 'rów zbierający',
+      status: cs?.status ?? (src && !src.problem ? 'czynny' : 'nieczynny'),
+      statusText: cs?.text ?? (src?.problem ?? 'zbiera deszcz i roztopy do zbiornika'),
+      rows: [['długość', `${f0(L)} m`], ['zlewnia (z przepustowością rowu)', src?.catchment ? `${(src.catchment.areaM2 / 1e4).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} ha` : '–']],
+      chart: null,
+      actions: [{ id: 'demolish', label: 'Rozbierz' }],
+      note: 'Zlewnia rowu – niebieskie pole na mapie (obszar powyżej rowu, z którego woda spływa do niego).',
+    };
   }
   if (kind === 'pipeline') {
     const p = (c.layout.pipelines ?? []).find((x) => x.id === id);

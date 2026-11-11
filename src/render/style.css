@@ -2793,3 +2793,157 @@ tr.g-closed td {
 .u-mt-auto {
   margin-top: auto;
 }
+
+/* Etap 7f: okno „Naśnież trasę” (prawa strona, nad dolnym menu). */
+.u-autosnow {
+  position: absolute;
+  right: 16px;
+  bottom: 120px;
+  width: 360px;
+  max-width: calc(100% - 32px);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 30;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.u-autosnow.hidden {
+  display: none;
+}
+
+/* Etap 7f: samouczek naśnieżania (lewa dolna część, nad dolnym menu) i podświetlenie kroku. */
+.u-tutorial {
+  position: absolute;
+  left: 72px;
+  bottom: 120px;
+  width: 360px;
+  max-width: calc(100% - 32px);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 31;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.u-tutorial.hidden {
+  display: none;
+}
+.u-tutorial p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.u-tut-row {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1fr;
+  gap: 8px;
+}
+.u-tut-dots {
+  display: flex;
+  gap: 6px;
+}
+.u-tut-dot {
+  width: 22px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.16);
+}
+.u-tut-dot.ok {
+  background: var(--good, #5fd39a);
+}
+.u-tut-dot.cur {
+  outline: 2px solid var(--accent, #ff7a1a);
+  outline-offset: 1px;
+}
+.u-tut-done {
+  color: var(--good, #5fd39a);
+  font-weight: 600;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.u-tut-hl {
+  outline: 3px solid var(--accent, #ff7a1a) !important;
+  outline-offset: 2px;
+  animation: u-tut-pulse 1.2s ease-in-out infinite;
+}
+@keyframes u-tut-pulse {
+  0%,
+  100% {
+    outline-color: rgba(255, 122, 26, 1);
+  }
+  50% {
+    outline-color: rgba(255, 122, 26, 0.35);
+  }
+}
+.sn-check {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 8px;
+}
+.sn-check li {
+  margin: 3px 0;
+}
+.sn-check li.ok b {
+  color: var(--good, #5fd39a);
+}
+.sn-check li.no b {
+  color: var(--warn, #f5c542);
+}
+.g-warn {
+  color: var(--warn, #f5c542);
+}
+
+/* Etap 7f: tryb kompaktowy dolnego menu budowy – ikony 40 px, niższa paleta (nazwa + cena), zwijanie. */
+.u-build.compact {
+  padding: 4px;
+  border-radius: 12px;
+  gap: 2px;
+}
+.u-build.compact .u-build-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+}
+.u-build.compact .u-build-btn span {
+  display: none;
+}
+.u-build.compact .u-build-btn svg {
+  width: 22px;
+  height: 22px;
+}
+.u-palette.compact {
+  bottom: 68px;
+  padding: 8px;
+  gap: 6px;
+}
+.u-card.compact {
+  width: auto;
+  min-width: 96px;
+  max-width: 170px;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.u-card.compact .u-card-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.u-palette.folded .u-pal-opts {
+  margin: 0;
+}
+.u-pal-title {
+  font-family: var(--cond);
+  font-weight: 700;
+  font-size: 16px;
+  margin-right: 6px;
+}
+.u-fold {
+  margin-left: 4px;
+}

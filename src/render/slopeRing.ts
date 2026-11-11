@@ -13,7 +13,7 @@ import { downhillScreen, ringClass } from './relief';
 const FONT_COND = '"Barlow Condensed", Barlow, sans-serif';
 
 /** Narzędzia budowy, przy których pokazujemy pierścień. */
-export const RING_TOOLS = new Set(['pisteBrush', 'pisteAxis', 'lift', 'road', 'catwalk', 'bikeTrail', 'toboggan']);
+export const RING_TOOLS = new Set(['pisteBrush', 'pisteAxis', 'lift', 'road', 'catwalk', 'bikeTrail', 'toboggan', 'ditch']);
 
 export class SlopeRing {
   readonly root = new Container();

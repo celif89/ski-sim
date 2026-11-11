@@ -133,10 +133,10 @@ export class ObjectCardView {
       const a = this.card.actions[Number(b.dataset.act)];
       if (!a) return;
       if (a.input) {
-        const inp = this.root.querySelector<HTMLInputElement>(`[data-input="${b.dataset.act}"]`);
+        const inp = this.root.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-input="${b.dataset.act}"]`);
         h.onAction(a, inp ? inp.value : null);
       } else {
-        if (a.id === 'demolish' && !confirm(`Rozebrać „${this.card.title}”? Część kosztu budowy przepada.`)) return;
+        if (a.id === 'demolish' && !confirm(`Rozebrać „${this.card.title}”? Wróci tylko część kosztu budowy.`)) return;
         h.onAction(a, null);
       }
     });
@@ -229,7 +229,9 @@ export class ObjectCardView {
     } else {
       const acts = card.actions
         .map((a, i) =>
-          a.input
+          a.input === 'select'
+            ? `<label class="u-field"><span>${esc(a.label)}</span><span class="u-field-row"><select data-input="${i}">${(a.options ?? []).map((o) => `<option value="${esc(o.value)}"${o.value === a.value ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select><button type="button" class="u-btn" data-act="${i}">Ulepsz</button></span></label>`
+            : a.input
             ? `<label class="u-field"><span>${esc(a.label)}</span><span class="u-field-row"><input data-input="${i}" type="${a.input}" value="${a.value ?? ''}" ${a.input === 'number' ? 'min="0" max="400" step="1"' : ''}><button type="button" class="u-btn" data-act="${i}">Ustaw</button></span></label>`
             : a.id === 'demolish'
               ? ''
@@ -238,7 +240,7 @@ export class ObjectCardView {
         .join('');
       const dem = card.actions.findIndex((a) => a.id === 'demolish');
       body += `<div class="u-settings">${smoothCtl}${acts || (smoothCtl ? '' : '<p class="muted">Brak ustawień dla tego obiektu.</p>')}</div>`;
-      if (dem >= 0) body += `<div class="u-danger-zone"><button type="button" class="u-btn danger" data-act="${dem}">${icon('trash', 16)} Rozbierz</button><span class="u-dim">Część kosztu budowy przepada.</span></div>`;
+      if (dem >= 0) body += `<div class="u-danger-zone"><button type="button" class="u-btn danger" data-act="${dem}">${icon('trash', 16)} Rozbierz</button><span class="u-dim">Wraca tylko część kosztu budowy.</span></div>`;
     }
     const html = `<div class="u-card-head"><div class="u-head-icon">${headIcon(kind, card)}</div><div class="u-stack"><span class="u-card-title">${esc(card.title)}</span><span class="u-sub">${esc(card.kindLabel[0].toUpperCase() + card.kindLabel.slice(1))}</span></div><button type="button" class="u-icon-btn u-close" ${tipAttrs('Zamknij kartę', 'Esc')}>${icon('close', 18, 2)}</button></div>
       <div class="u-tabs" role="tablist">${tabs.map(([id, l]) => `<button type="button" role="tab" data-tab="${id}" aria-selected="${this.tab === id}">${l}</button>`).join('')}</div>

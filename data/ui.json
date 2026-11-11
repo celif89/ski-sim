@@ -34,7 +34,13 @@
   },
   "scale": {
     "options": {
-      "value": [0.8, 0.9, 1, 1.15, 1.3],
+      "value": [
+        0.8,
+        0.9,
+        1,
+        1.15,
+        1.3
+      ],
       "unit": "×",
       "source": "polecenie etapu 7c: ekrany od 1366 do 2560 px szerokości"
     },
@@ -106,6 +112,50 @@
       "value": 3.3,
       "unit": "1–5",
       "source": "do kalibracji: średnia ocena dnia uznana za słabą"
+    }
+  },
+  "snapping": {
+    "radiusPx": {
+      "value": 14,
+      "unit": "px",
+      "source": "etap 7f: przyciąganie końca linii do punktu lub odcinka tej samej sieci w promieniu 14 px ekranu; do wyczucia"
+    },
+    "guideRadiusPx": {
+      "value": 9,
+      "unit": "px",
+      "source": "etap 7f: linia pomocnicza (kąt, przedłużenie, równoległa) łapie kursor w promieniu 9 px; do wyczucia"
+    },
+    "angleStepDeg": {
+      "value": 15,
+      "unit": "°",
+      "source": "polecenie etapu 7f: kąt prosty i co 15° względem sąsiedniego obiektu"
+    },
+    "parallelOffsetM": {
+      "value": 5,
+      "unit": "m",
+      "source": "etap 7f: rurociąg i droga wzdłuż trasy 5 m od jej krawędzi (poza ratrakowaną powierzchnią); do kalibracji"
+    },
+    "extendMaxM": {
+      "value": 400,
+      "unit": "m",
+      "source": "etap 7f: przedłużenie istniejącego odcinka najdalej 400 m; do wyczucia"
+    },
+    "angleRefMaxM": {
+      "value": 60,
+      "unit": "m",
+      "source": "etap 7f: kąt liczony względem obiektu najdalej 60 m od punktu startu odcinka; do wyczucia"
+    }
+  },
+  "buildBar": {
+    "compactBelowPx": {
+      "value": 1920,
+      "unit": "px",
+      "source": "polecenie etapu 7f: tryb kompaktowy dolnego menu domyślnie na ekranach węższych niż 1920 px"
+    },
+    "compactIconPx": {
+      "value": 40,
+      "unit": "px",
+      "source": "polecenie etapu 7f: ikony 40 px w trybie kompaktowym"
     }
   }
 }

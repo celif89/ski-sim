@@ -5,7 +5,7 @@
  * Pod paletą (w tym samym oknie): sposób rysowania linii (ręką / klikaniem punktów), szerokość
  * trasy, wyrównanie terenu, cofnij / ponów. Nad paletą – krótkie komunikaty budowy.
  */
-import type { BuildTool } from './buildPanel';
+import type { BuildTool, DrawMode } from './buildPanel';
 import { artSvg, icon } from './ui/icons';
 import { tipAttrs } from './ui/shell';
 
@@ -46,7 +46,7 @@ export interface BuildBarHandlers {
   /** Zamknięcie palety (narzędzie „wybierz”). */
   onClose(): void;
   onAction(action: string): void;
-  onDrawMode(mode: 'hand' | 'click'): void;
+  onDrawMode(mode: DrawMode): void;
   onWidth(widthM: number): void;
   onGradeNew(on: boolean): void;
   onUndo(): void;
@@ -59,7 +59,7 @@ export interface BuildBarState {
   liftTypeId: string;
   buildingTypeId: string;
   gunTypeId: string;
-  drawMode: 'hand' | 'click';
+  drawMode: DrawMode;
   widthM: number;
   minWidthM: number;
   maxWidthM: number;
@@ -68,8 +68,13 @@ export interface BuildBarState {
   canRedo: boolean;
 }
 
+const COMPACT_KEY = 'ski-sim:menu-kompaktowe';
+
 export class BuildBar {
   private readonly nav: HTMLElement;
+  /** Etap 7f: tryb kompaktowy (ikony 40 px, niższa paleta: nazwa + cena) i zwinięta paleta. */
+  private compactValue = false;
+  private folded = false;
   private readonly palette: HTMLElement;
   private readonly toast: HTMLElement;
   private toastTimer = 0;
@@ -77,7 +82,7 @@ export class BuildBar {
   private state: BuildBarState | null = null;
   private lastRender = '';
 
-  constructor(parent: HTMLElement, private readonly cats: BuildCategory[], private readonly h: BuildBarHandlers) {
+  constructor(parent: HTMLElement, private readonly cats: BuildCategory[], private readonly h: BuildBarHandlers, opts: { compactBelowPx: number } = { compactBelowPx: 1920 }) {
     this.palette = document.createElement('section');
     this.palette.className = 'u-panel u-palette hidden';
     parent.appendChild(this.palette);
@@ -97,6 +102,14 @@ export class BuildBar {
       if (id) this.toggleCategory(id);
     });
     this.palette.addEventListener('click', (e) => this.onPaletteClick(e));
+    // Tryb kompaktowy: zapamiętany wybór, inaczej domyślnie na ekranach węższych niż compactBelowPx.
+    let saved: string | null = null;
+    try {
+      saved = window.localStorage.getItem(COMPACT_KEY);
+    } catch {
+      /* bez pamięci przeglądarki */
+    }
+    this.applyCompact(saved === null ? window.innerWidth < opts.compactBelowPx : saved === '1');
     this.palette.addEventListener('input', (e) => {
       const t = e.target as HTMLInputElement;
       if (t.dataset.opt === 'width') {
@@ -109,6 +122,28 @@ export class BuildBar {
 
   get openCategory(): string | null {
     return this.open;
+  }
+
+  get compact(): boolean {
+    return this.compactValue;
+  }
+
+  /** Przełącznik z menu (zapamiętany w przeglądarce). */
+  setCompact(on: boolean): void {
+    try {
+      window.localStorage.setItem(COMPACT_KEY, on ? '1' : '0');
+    } catch {
+      /* bez pamięci przeglądarki */
+    }
+    this.applyCompact(on);
+  }
+
+  private applyCompact(on: boolean): void {
+    this.compactValue = on;
+    this.nav.classList.toggle('compact', on);
+    this.palette.classList.toggle('compact', on);
+    this.lastRender = '';
+    this.render();
   }
 
   /** Otwiera kategorię (i wybiera jej pierwszą dostępną kartę) albo zamyka, gdy już otwarta. */
@@ -187,10 +222,15 @@ export class BuildBar {
     }
     const b = t.closest<HTMLElement>('[data-opt]');
     if (!b) return;
-    if (b.dataset.opt === 'hand' || b.dataset.opt === 'click') this.h.onDrawMode(b.dataset.opt);
+    if (b.dataset.opt === 'hand' || b.dataset.opt === 'straight' || b.dataset.opt === 'arc') this.h.onDrawMode(b.dataset.opt);
     else if (b.dataset.opt === 'undo') this.h.onUndo();
     else if (b.dataset.opt === 'redo') this.h.onRedo();
     else if (b.dataset.opt === 'close') this.close();
+    else if (b.dataset.opt === 'fold') {
+      this.folded = !this.folded;
+      this.lastRender = '';
+      this.render();
+    }
   }
 
   private render(): void {
@@ -203,7 +243,7 @@ export class BuildBar {
     if (!c) return;
     const s = this.state;
     const locks = c.cards.map((k) => (k.lockKey ? this.h.lockReason(k.lockKey) : null));
-    const key = JSON.stringify([this.open, s, locks]);
+    const key = JSON.stringify([this.open, s, locks, this.compactValue, this.folded]);
     if (key === this.lastRender) return;
     this.lastRender = key;
     const cards = c.cards
@@ -211,6 +251,13 @@ export class BuildBar {
         const sel = this.isSelected(k);
         const lock = locks[i];
         const dis = k.disabled || lock;
+        if (this.compactValue) {
+          // Kompaktowo: nazwa i cena; parametr (i blokada) w podpowiedzi.
+          return `<button type="button" class="u-card compact${sel ? ' sel' : ''}${dis ? ' locked' : ''}" data-card="${k.id}" aria-pressed="${sel}" ${dis ? 'aria-disabled="true"' : ''} ${tipAttrs(`${k.tip ?? k.name} · ${lock ? `zablokowane: ${lock}` : k.param}`, k.key)} data-tip-side="top">
+            <span class="u-card-name">${lock ? icon('lock', 12, 2) : ''}${k.name}</span>
+            <span class="u-card-price">${k.price}</span>
+          </button>`;
+        }
         return `<button type="button" class="u-card${sel ? ' sel' : ''}${dis ? ' locked' : ''}" data-card="${k.id}" aria-pressed="${sel}" ${dis ? 'aria-disabled="true"' : ''} ${tipAttrs(k.tip ?? k.name, k.key)} data-tip-side="top">
           ${artSvg(k.art, dis ? '#6F8296' : sel ? '#FFB47A' : '#C9D6E3')}
           <span class="u-card-name">${k.name}</span>
@@ -220,8 +267,9 @@ export class BuildBar {
       })
       .join('');
     const opts = c.options ?? [];
+    const modeBtn = (m: DrawMode, ic: string, label: string, tip: string) => `<button type="button" data-opt="${m}" class="${s?.drawMode === m ? 'active' : ''}" ${tipAttrs(tip, 'O')}>${icon(ic, 16)}${label}</button>`;
     const line = opts.includes('draw') && s
-      ? `<div class="u-seg" role="group" aria-label="Sposób rysowania"><button type="button" data-opt="hand" class="${s.drawMode === 'hand' ? 'active' : ''}" ${tipAttrs('Rysuj ręką: przeciągnij myszą – linia sama się upraszcza i wygładza', 'O')}>${icon('hand', 16)}Ręką</button><button type="button" data-opt="click" class="${s.drawMode === 'click' ? 'active' : ''}" ${tipAttrs('Klikaj punkty: klik = punkt, podwójny klik lub Enter = koniec', 'O')}>${icon('points', 16)}Punktami</button></div>`
+      ? `<div class="u-seg" role="group" aria-label="Sposób rysowania">${modeBtn('straight', 'points', 'Prosto', 'Prosty odcinek: klikaj punkty – łamana; podwójny klik lub Enter = koniec. Shift – bez przyciągania')}${modeBtn('arc', 'arc', 'Łuk', 'Łuk: klik – początek, klik – punkt sterujący (kierunek łuku), klik – koniec; Enter = koniec')}${modeBtn('hand', 'hand', 'Ręką', 'Dowolnie: przeciągnij myszą – linia sama się upraszcza i wygładza')}</div>`
       : '';
     const width = opts.includes('width') && s
       ? `<label class="u-range" ${tipAttrs('Szerokość nowej trasy', '[ ]')}>Szerokość <input type="range" data-opt="width" min="${s.minWidthM}" max="${s.maxWidthM}" step="5" value="${s.widthM}"><span class="u-width-val">${s.widthM} m</span></label>`
@@ -234,7 +282,13 @@ export class BuildBar {
       : '';
     this.palette.setAttribute('aria-label', `Budowa: ${c.label.toLowerCase()}`);
     const opts2 = line || width || grade;
-    this.palette.innerHTML = opts2 ? `<div class="u-cards">${cards}</div><div class="u-pal-opts">${line}${width}${grade}${undo}</div>` : `<div class="u-pal-row"><div class="u-cards">${cards}</div>${undo.replace('u-pal-undo', 'u-pal-undo side')}</div>`;
+    const fold = `<button type="button" class="u-icon-btn u-fold" data-opt="fold" aria-expanded="${!this.folded}" ${tipAttrs(this.folded ? 'Rozwiń paletę' : 'Zwiń paletę (zostają opcje rysowania)')}>${icon(this.folded ? 'plus' : 'minus', 16, 2)}</button>`;
+    this.palette.classList.toggle('folded', this.folded);
+    if (this.folded) {
+      this.palette.innerHTML = `<div class="u-pal-opts"><span class="u-pal-title">${c.label}</span>${line}${width}${undo}${fold}</div>`;
+      return;
+    }
+    this.palette.innerHTML = opts2 ? `<div class="u-cards">${cards}</div><div class="u-pal-opts">${line}${width}${grade}${undo}${fold}</div>` : `<div class="u-pal-row"><div class="u-cards">${cards}</div>${undo.replace('u-pal-undo', 'u-pal-undo side')}${fold}</div>`;
   }
 
   /** Krótka podpowiedź nad paletą (znika po kilku sekundach). */
@@ -243,7 +297,7 @@ export class BuildBar {
     this.toast.textContent = text;
     this.toast.classList.remove('hidden');
     const pal = !this.palette.classList.contains('hidden') && !this.palette.classList.contains('under-profile');
-    this.toast.style.bottom = pal ? `${104 + this.palette.offsetHeight + 10}px` : '';
+    this.toast.style.bottom = pal ? `${(this.compactValue ? 68 : 104) + this.palette.offsetHeight + 10}px` : '';
     window.clearTimeout(this.toastTimer);
     this.toastTimer = window.setTimeout(() => this.toast.classList.add('hidden'), 5000);
   }

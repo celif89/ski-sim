@@ -98,6 +98,10 @@ import { parseMapStyle } from './render/mapStyle';
 import { RELIEF_SLIDERS, getPath, parseReliefParams, setPath } from './render/relief';
 import { ContourLabels } from './render/contourLabels';
 import { RING_TOOLS, SlopeRing } from './render/slopeRing';
+import { parseSnapParams } from './render/snapping';
+import { SnowTutorial } from './render/ui/snowTutorial';
+import { snowChecklist } from './sim/snowChecklist';
+import { SnapOverlay } from './render/snapOverlay';
 import { TopBar, type GameSpeed, type SnowAtPoints } from './render/topBar';
 import { BuildBar } from './render/buildBar';
 import type { BuildCategory, PaletteCard } from './render/buildBar';
@@ -422,6 +426,8 @@ async function start(): Promise<void> {
       panelParent: slotObjects,
       profileParent: ui,
       lines: lineParams,
+      snap: parseSnapParams(uiJson),
+      changePreview: (next, a, id) => game?.changePreview(next, a, id) ?? null,
       onMessage: (text) => buildBar?.showToast(text),
       onState: () => buildBar?.setState(build.barState),
       liftParams,
@@ -515,10 +521,12 @@ async function start(): Promise<void> {
         tip: 'Rurociąg z hydrantami, armatki, woda, zbiorniki, pompownie, przyłącza, ratraki',
         options: ['draw'],
         cards: [
+          { id: 'autoSnow', art: 'fan', name: 'Naśnież trasę', param: 'rury, hydranty, armatki', price: 'jednym kliknięciem', tool: 'autoSnow', tip: 'Zaznacz trasę (albo kilka) – gra zaproponuje rurociąg wzdłuż krawędzi, hydranty, armatki i połączenie z pompownią' },
           { id: 'pipe', art: 'pipeline', name: 'Rurociąg', param: `hydrant co ${snowmakingParams.pipe.hydrantSpacingM} m`, price: `${f0n(snowmakingParams.pipe.costPlnPerM)} zł/m`, tool: 'pipeline', key: 'H', tip: 'Od pompowni wzdłuż trasy; wykop tylko latem (V–X)' },
           { id: 'supply', art: 'supply', name: 'Rura zasilająca', param: 'źródło → zbiornik', price: `${f0n(snowmakingParams.pipe.supplyCostPlnPerM)} zł/m`, tool: 'supply', key: 'F', tip: 'Od ujęcia, studni albo wodociągu do zbiornika' },
           ...snowmakingParams.guns.map((g) => ({ id: `g-${g.id}`, art: g.movable ? 'fan' : 'lance', name: g.name, param: `od ${g.curveWetBulbC[0].toLocaleString('pl-PL')} °C (temp. mokra)`, price: mln(g.costPln), tool: 'gun' as const, sub: { kind: 'gun' as const, id: g.id }, key: 'J', tip: `${g.name}: kliknij hydrant na rurociągu` })),
-          ...snowmakingParams.buildings.map((b) => buildingCard(b.id, b.name, SNOW_ART[b.kind] ?? 'building', `${f0n(b.capacity)} ${SNOW_UNIT[b.kind] ?? ''}${b.summerOnly ? ', budowa V–X' : ''}`, b.costPln)),
+          ...snowmakingParams.buildings.filter((b) => b.kind !== 'catchment').map((b) => buildingCard(b.id, b.name, SNOW_ART[b.kind] ?? 'building', `${f0n(b.capacity)} ${SNOW_UNIT[b.kind] ?? ''}${b.summerOnly ? ', budowa V–X' : ''}`, b.costPln)),
+          { id: 'ditch', art: 'supply', name: 'Rów zbierający', param: 'spływ do zbiornika', price: `${f0n(snowmakingParams.ditch.costPlnPerM)} zł/m`, tool: 'ditch', tip: 'Rów ze spadkiem do zbiornika – zbiera deszcz i roztopy z obszaru powyżej siebie (niebieskie pole). Wykop tylko latem (V–X)' },
         ],
       },
       {
@@ -597,7 +605,7 @@ async function start(): Promise<void> {
       onUndo: () => build.undoLast(),
       onRedo: () => build.redoLast(),
       lockReason: (key) => game?.lockReason(key as 'bike') ?? null,
-    });
+    }, { compactBelowPx: (uiJson as unknown as { buildBar: { compactBelowPx: { value: number } } }).buildBar.compactBelowPx.value });
     buildBar.setState(build.barState);
 
     // ---------------------------------------------------------------- minimapa, menu, okna (etap 7c)
@@ -643,12 +651,14 @@ async function start(): Promise<void> {
         { id: 'prices', icon: 'tag', label: 'Cennik i godziny' },
         { id: 'guests', icon: 'people', label: 'Goście i wyciągi' },
         { id: 'snow', icon: 'snow', label: 'Naśnieżanie i ratraki' },
+        { id: 'tutorial', icon: 'info', label: 'Samouczek naśnieżania' },
         { id: 'objects', icon: 'layers', label: 'Obiekty ośrodka i plik układu' },
         { id: 'history', icon: 'bell', label: 'Historia powiadomień', sep: true },
         { id: 'save', icon: 'save', label: 'Zapisz grę do pliku', sep: true },
         { id: 'load', icon: 'folder', label: 'Wczytaj grę z pliku' },
         { id: 'new', icon: 'play', label: 'Nowa gra' },
         { id: 'scale', icon: 'settings', label: 'Skala interfejsu', sep: true },
+        { id: 'compact', icon: 'layers', label: 'Menu budowy: kompaktowe / pełne' },
         { id: 'keys', icon: 'info', label: 'Skróty klawiszowe' },
         { id: 'dev', icon: 'wrench', label: 'Menu deweloperskie', key: '`' },
       ],
@@ -668,6 +678,11 @@ async function start(): Promise<void> {
         else if (arg === 'finance' || arg === 'guests' || arg === 'snow' || arg === 'objects') drawer.show(arg);
         else if (arg === 'prices') (game?.state ? game.showPrices() : drawer.show('finance'));
         else if (arg === 'history') infoWindow.show('Historia powiadomień', notices.historyHtml());
+        else if (arg === 'tutorial') snowTutorial.start();
+        else if (arg === 'compact') {
+          buildBar.setCompact(!buildBar.compact);
+          buildBar.showToast(buildBar.compact ? 'Menu budowy: tryb kompaktowy.' : 'Menu budowy: pełne karty.');
+        }
         else if (arg === 'save') (game?.state ? game.saveFile() : buildBar.showToast('Najpierw zacznij grę (menu → Nowa gra).'));
         else if (arg === 'load') loadInput.click();
         else if (arg === 'new') void game?.showStart();
@@ -1208,7 +1223,7 @@ async function start(): Promise<void> {
       .map((pts) => ({ xM: pts.reduce((a, q) => a + q.xM, 0) / pts.length, yM: pts.reduce((a, q) => a + q.yM, 0) / pts.length }));
     const waterCtx: WaterContext = { net: streamNet, wp: waterParams, villageBuildings, elevationM: grid.elevationM };
     build.setStreams(streamNet.lines);
-    build.setWater(waterCtx);
+    build.setWater(waterCtx, (zz) => annualPrecipitationMm(climateProfile, zz));
     streamAt = (xM, yM) => {
       const hit = findStream(streamNet, xM, yM, 15, waterParams);
       if (!hit) return null;
@@ -1359,8 +1374,31 @@ async function start(): Promise<void> {
         nightPlanDialog.show(st, planPistes(), snowmakingParams, () => game?.preview ?? null, pisteName);
       },
       onGroomer: (typeId, leased) => game?.acquireGroomer(typeId, leased),
+      onUsedGroomer: (id) => game?.buyUsedGroomer(id),
+      onTutorial: () => snowTutorial.start(),
       onMains: (on) => game?.setMainsOn(on),
     });
+    // Etap 7f: samouczek naśnieżania (kroki sprawdzane na bieżąco, „Pokaż gdzie” podświetla kartę lub przycisk).
+    const tutorialSteps = () => snowChecklist(build.current.layout, game?.state ?? null, snowmakingParams, opsInfra);
+    const snowTutorial = new SnowTutorial(ui, {
+      steps: tutorialSteps,
+      reveal: (step) => {
+        if (step.target.kind === 'panel') {
+          drawer.show('snow');
+          refreshSnowOps(true);
+          return document.querySelector<HTMLElement>(step.target.button === 'plan' ? '.sn-plan' : '[data-groomer]');
+        }
+        openBuild('snow');
+        if (step.target.kind === 'tool') {
+          build.setTool(step.target.tool);
+          return document.querySelector<HTMLElement>(`[data-card="${step.target.tool}"]`);
+        }
+        const infraKind = step.target.infra;
+        const t = snowmakingParams.buildings.find((b) => b.kind === infraKind);
+        return t ? document.querySelector<HTMLElement>(`[data-card="b-${t.id}"]`) : null;
+      },
+    });
+    let tutorialMs = 0;
     snowPanel.setVisible(false);
     function refreshSnowOps(force: boolean): void {
       const st = game?.state;
@@ -1370,7 +1408,7 @@ async function start(): Promise<void> {
       if (!force && now - snowPanelMs < 500) return;
       snowPanelMs = now;
       if (force) opsInfra = game!.infra();
-      snowPanel.update({ state: st, infra: opsInfra, preview: game!.preview, hour: timePanel.hour, sp: snowmakingParams, pisteName, blocked: game!.blockedPistes });
+      snowPanel.update({ state: st, infra: opsInfra, preview: game!.preview, hour: timePanel.hour, sp: snowmakingParams, pisteName, blocked: game!.blockedPistes, checklist: snowChecklist(build.current.layout, st, snowmakingParams, opsInfra), usedOffers: game!.usedOffers() });
       if (force && nightPlanDialog.visible) nightPlanDialog.renderResult();
     }
     function opsFrame(): void {
@@ -1404,6 +1442,9 @@ async function start(): Promise<void> {
       style.flatSlopePercent,
     );
     app.stage.addChild(slopeRing.root);
+    // Etap 7f: przyciąganie, linie pomocnicze i okienko przy kursorze w trakcie budowy.
+    const snapOverlay = new SnapOverlay();
+    app.stage.addChild(snapOverlay.root);
     let reliefPending = false;
     const applyReliefLater = () => {
       if (reliefPending) return;
@@ -1681,8 +1722,12 @@ async function start(): Promise<void> {
       onAction: (a, value) => {
         if (!cardSel) return;
         const sel = cardSel;
-        if (a.id === 'toggleOpen' || a.id === 'toggleSummer' || a.id === 'toggleRacks' || a.id === 'demolish') {
-          build.cardAction(sel.kind as Parameters<typeof build.cardAction>[0], sel.id, a.id);
+        if (a.id === 'toggleOpen' || a.id === 'toggleSummer' || a.id === 'toggleRacks' || a.id === 'demolish' || a.id === 'upgrade' || a.id === 'widen' || a.id === 'move') {
+          build.cardAction(sel.kind as Parameters<typeof build.cardAction>[0], sel.id, a.id, value);
+          if (a.id === 'move') {
+            cardSel = null;
+            cardView.hide();
+          }
           if (a.id === 'demolish') {
             cardSel = null;
             cardView.hide();
@@ -1885,6 +1930,12 @@ async function start(): Promise<void> {
       contourLabels.update(camera);
       slopeRing.update(camera, input.cursor, RING_TOOLS.has(build.currentTool));
       build.update(input.cursor, guestCtl.gameTimeS ?? nowS);
+      snapOverlay.update(camera, input.cursor, build.snapView);
+      if (performance.now() - tutorialMs > 500) {
+        tutorialMs = performance.now();
+        if (buildBar.openCategory === 'snow') snowTutorial.offerOnce();
+        snowTutorial.tick(tutorialMs);
+      }
       hud.update(camera, grid, input.cursor, lastSnow ? { ...lastSnow, ground: build.groundMap, riding: ridingParams } : null);
       const wx = lastState?.top.now;
       weatherFx.update(ticker.deltaMS / 1000, camera.viewportWidthPx, camera.viewportHeightPx, wx && wx.precipitationMm > 0 ? Math.min(1, 0.25 + wx.precipitationMm / 2) : 0, wx?.phase === 'rain', lastState?.cloudFraction ?? 0, wx?.windMs ?? 0);

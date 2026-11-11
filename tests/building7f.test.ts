@@ -14,13 +14,16 @@ import { Rng } from '../src/sim/rng';
 import waterJson from '../data/water.json';
 import { chooseGunType, planPisteSnowmaking } from '../src/sim/autoSnowmaking';
 import { connectPipelines, pipelineCost, pipelineHydrants } from '../src/sim/snowmaking';
-import { ep as epFull, simpleLayout } from './economyFixture';
+import { ep as epFull, simpleLayout, snowmakingLayout } from './economyFixture';
+import { snowChecklist } from '../src/sim/snowChecklist';
 import { fixtureGrid, lp, pp } from './guestFixture';
 import constructionJson from '../data/construction.json';
 import { parseConstructionParams } from '../src/sim/resort';
 import { analyzeResort } from '../src/sim/resort';
 import { designLift } from '../src/sim/lifts';
 import { constructionChargePreview, objectCosts, reconcileConstruction } from '../src/sim/economy';
+import uiJson from '../data/ui.json';
+import { angleGuide, arcPoints, parseSnapParams, snapPoint } from '../src/render/snapping';
 import { liftUpgradeCheck, moveBuilding, upgradeGun, upgradeLift, widenPiste } from '../src/sim/upgrades';
 
 const clearingFixture = parseConstructionParams(constructionJson).clearing;
@@ -283,5 +286,81 @@ describe('Ulepszanie, przesuwanie, rozbiórka (etap 7f)', () => {
     const m = moveBuilding(sl, 'P1', 50, 60, 100).buildings![0];
     expect([m.xM, m.yM, m.rotDeg]).toEqual([50, 60, 90]);
     expect(moveBuilding(sl, 'P1', 50, 60, 360).buildings![0].rotDeg).toBeUndefined();
+  });
+});
+
+describe('Przyciąganie i linie pomocnicze (etap 7f)', () => {
+  const p = parseSnapParams(uiJson);
+  const mpp = 1; // 1 m na piksel
+  const base = { points: [], segments: [], refs: [], parallels: [], anchor: null, prevDir: null, metersPerPixel: mpp, shift: false };
+
+  it('koniec rurociągu w progu łączy się z hydrantem / pompownią; Shift wyłącza', () => {
+    const ctx = { ...base, points: [{ xM: 100, yM: 100, label: 'pompownia' }, { xM: 200, yM: 100, label: 'hydrant' }] };
+    const near = snapPoint({ xM: 100 + p.radiusPx * 0.7, yM: 100 }, ctx, p);
+    expect(near.point).toEqual({ xM: 100, yM: 100 });
+    expect(near.hit?.label).toBe('pompownia');
+    const h = snapPoint({ xM: 205, yM: 96 }, ctx, p);
+    expect(h.point).toEqual({ xM: 200, yM: 100 });
+    // Poza progiem – bez przyciągania.
+    expect(snapPoint({ xM: 100 + p.radiusPx * 1.5, yM: 100 }, ctx, p).hit).toBeNull();
+    // Shift – kursor bez zmian.
+    const c = { xM: 103, yM: 101 };
+    const off = snapPoint(c, { ...ctx, shift: true }, p);
+    expect(off.point).toEqual(c);
+    expect(off.hit).toBeNull();
+    // Odcinek rurociągu – rzut na odcinek.
+    const seg = snapPoint({ xM: 150, yM: 305 }, { ...base, segments: [{ a: { xM: 0, yM: 300 }, b: { xM: 400, yM: 300 }, label: 'rurociąg' }] }, p);
+    expect(seg.point.yM).toBeCloseTo(300, 9);
+    expect(seg.hit?.kind).toBe('segment');
+  });
+
+  it('linia pomocnicza daje dokładnie 90° do sąsiedniego obiektu', () => {
+    // Sąsiednia trasa pod skosem (kierunek 1 : 0,37), start rysowania tuż przy niej.
+    const ref = { a: { xM: 0, yM: 0 }, b: { xM: 500, yM: 185 }, label: 'trasa 1' };
+    const anchor = { xM: 250, yM: 92.5 };
+    const len = Math.hypot(500, 185);
+    const n = { xM: -185 / len, yM: 500 / len };
+    // Kursor prawie prostopadle (2 m obok).
+    const cursor = { xM: anchor.xM + n.xM * 120 + 2 * (500 / len), yM: anchor.yM + n.yM * 120 + 2 * (185 / len) };
+    const r = snapPoint(cursor, { ...base, refs: [ref], anchor }, p);
+    expect(r.guide?.kind).toBe('angle');
+    expect(r.guide?.label.startsWith('90°')).toBe(true);
+    const vx = r.point.xM - anchor.xM;
+    const vy = r.point.yM - anchor.yM;
+    const cos = (vx * 500 + vy * 185) / (Math.hypot(vx, vy) * len);
+    expect(Math.abs(cos)).toBeLessThan(1e-9);
+    // Co 15°: kąt 45° też dokładny.
+    const g = angleGuide({ xM: 70, yM: 72 }, { xM: 0, yM: 0 }, { xM: 1, yM: 0 }, p.angleStepDeg)!;
+    expect(g.angleDeg).toBe(45);
+    expect(g.point.xM).toBeCloseTo(g.point.yM, 9);
+  });
+
+  it('przedłużenie odcinka i równoległa do krawędzi trasy', () => {
+    const ref = { a: { xM: 0, yM: 0 }, b: { xM: 100, yM: 0 }, label: 'droga 1' };
+    const e = snapPoint({ xM: 160, yM: 3 }, { ...base, refs: [ref] }, p);
+    expect(e.guide?.kind).toBe('extend');
+    expect(e.point).toEqual({ xM: 160, yM: 0 });
+    const par = { a: { xM: 0, yM: 50 }, b: { xM: 300, yM: 50 }, label: 'wzdłuż trasy' };
+    const q = snapPoint({ xM: 120, yM: 54 }, { ...base, parallels: [par] }, p);
+    expect(q.guide?.kind).toBe('parallel');
+    expect(q.point.yM).toBeCloseTo(50, 9);
+    // Łuk z punktem sterującym: koniec dokładnie w punkcie końcowym, styczna na starcie w stronę punktu sterującego.
+    const arc = arcPoints({ xM: 0, yM: 0 }, { xM: 100, yM: 0 }, { xM: 100, yM: 100 }, 8);
+    expect(arc[arc.length - 1]).toEqual({ xM: 100, yM: 100 });
+    expect(Math.abs(arc[0].yM)).toBeLessThan(arc[0].xM * 0.2);
+  });
+});
+
+describe('Czego brakuje do naśnieżania (etap 7f)', () => {
+  it('pusty ośrodek – wszystkie kroki do zrobienia; kompletny – wszystkie zrobione', () => {
+    const empty = snowChecklist(simpleLayout(), null, sp);
+    expect(empty.map((s) => s.id)).toEqual(['water', 'reservoir', 'pump', 'grid', 'guns', 'plan', 'groomer']);
+    expect(empty.every((s) => !s.done)).toBe(true);
+    for (const s of empty) expect(s.why.length).toBeGreaterThan(20);
+    const state = newGameState({ mode: 'career', seed: 7, date: { year: 2026, month: 12, day: 1 }, ep });
+    state.ops!.snowPlan.T1 = { targetCm: 50, priority: 1, enabled: true };
+    acquireGroomer(state, 'standard', false, 0, sp);
+    const full = snowChecklist(snowmakingLayout(), state, sp);
+    expect(full.filter((s) => !s.done).map((s) => s.id)).toEqual([]);
   });
 });

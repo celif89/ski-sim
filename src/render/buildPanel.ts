@@ -9,7 +9,10 @@ import type { PisteParams } from '../sim/pistes';
 import type { RealPisteComparison, ResortAnalysis, ResortLayout } from '../sim/resort';
 import type { ThinSegment } from '../sim/snowRiding';
 
-export type BuildTool = 'select' | 'lift' | 'pisteBrush' | 'pisteAxis' | 'base' | 'pipeline' | 'supply' | 'gun' | 'road' | 'catwalk' | 'bikeTrail' | 'walkTrail' | 'toboggan' | 'demolish';
+export type BuildTool = 'select' | 'lift' | 'pisteBrush' | 'pisteAxis' | 'base' | 'pipeline' | 'supply' | 'gun' | 'road' | 'catwalk' | 'bikeTrail' | 'walkTrail' | 'toboggan' | 'demolish' | 'ditch' | 'autoSnow' | 'move';
+
+/** Etap 7f: sposób rysowania linii – prosty odcinek (łamana), łuk z punktem sterującym, dowolny (ręką). */
+export type DrawMode = 'straight' | 'arc' | 'hand';
 
 export interface BuildPanelHandlers {
   onTool(tool: BuildTool): void;
@@ -43,7 +46,7 @@ export interface BuildPanelState {
   showReality: boolean;
   layout: ResortLayout;
   analysis: ResortAnalysis;
-  selection: { kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road' | 'trail'; id: string } | null;
+  selection: { kind: 'lift' | 'piste' | 'base' | 'pipeline' | 'gun' | 'road' | 'trail' | 'ditch'; id: string } | null;
   real: RealPisteComparison[] | null;
   message: string;
   gradeNew: boolean;
