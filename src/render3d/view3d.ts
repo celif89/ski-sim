@@ -4,6 +4,9 @@
  * położenie), cienie kaskadowe (CSM), niebo (Preetham), mgła z odległością i w dolinach, noc
  * z oświetleniem tras; efekty końcowe: przyciemnienie zagłębień (GTAO), mapowanie tonów (ACES),
  * delikatna korekcja barw; trzy ustawienia jakości. Kamera jak w Cities: Skylines (cameraRig.ts).
+ * Etap 3D-3: śnieg z grubością (teren + pokrywa, łata gęstej siatki przy kamerze z rzeźbą warstwy detalu),
+ * czapy na drzewach i dachach wg komórki, okna nocą; światło i obraz z parametrów `map-style.json`
+ * (sekcja render3d) – suwaki w menu Dev; dobór jakości przy pierwszym uruchomieniu.
  */
 import * as THREE from 'three';
 import { CSM } from 'three/addons/csm/CSM.js';
@@ -35,6 +38,9 @@ import type { GovernorState } from './governor';
 import type { PickView } from './picking';
 import { Camera3DAdapter } from './picking';
 import { Terrain3D } from './terrain3d';
+import type { DetailSource } from './terrain3d';
+import type { Look } from './look';
+import { sunDirection } from './look';
 
 export interface View3DSources {
   grid: TerrainGrid;
@@ -63,6 +69,10 @@ export interface View3DSources {
   network: NetworkStatic;
   /** Etap 3D-1: nakładka danych z mapy 2D (płótno, numer zmiany, krycie) albo null. */
   overlay(): { canvas: HTMLCanvasElement; version: number; opacity: number } | null;
+  /** Etap 3D-3: natężenie opadu 0–1 (gęstsza mgiełka). */
+  precip?(): number;
+  /** Etap 3D-3: warstwa detalu 1 m (sztruks, ślady, pryzmy, muldy) i bieżąca godzina gry. */
+  detail?(): { src: DetailSource; gameH: number; fadeH: number; pileDensityKgM3: number } | null;
 }
 
 export interface View3DStats {
@@ -74,6 +84,8 @@ export interface View3DStats {
   treesFar: number;
   people: number;
   carriers: number;
+  /** Etap 3D-3: czas ostatniej przebudowy łaty śniegu przy kamerze [ms]. */
+  patchMs: number;
 }
 
 const COLOR_GRADE = {
@@ -115,48 +127,72 @@ export class View3D {
   private frames = 0;
   private fpsT = performance.now();
   private cpuSum = 0;
-  readonly stats: View3DStats = { fps: 0, frameMs: 0, drawCalls: 0, triangles: 0, treesNear: 0, treesFar: 0, people: 0, carriers: 0 };
+  readonly stats: View3DStats = { fps: 0, frameMs: 0, drawCalls: 0, triangles: 0, treesNear: 0, treesFar: 0, people: 0, carriers: 0, patchMs: 0 };
   private readonly materials: THREE.Material[] = [];
   /** Etap 3D-1: automatyczna płynność (skala rozdzielczości i zasięgu drzew względem jakości). */
   private gov: GovernorState = { resolutionScale: 1, treeScale: 1 };
   private govT = performance.now();
   private govFrames = 0;
   autoQuality = true;
+  /** Etap 3D-3: parametry oprawy (suwaki w menu Dev). */
+  private lookV: Look;
+  private gtao: GTAOPass | null = null;
+  private grade: ShaderPass | null = null;
+  /** Kierunek do Słońca w scenie (jednostkowy; testy, iskrzenie). */
+  readonly sunDir = new THREE.Vector3(0, 1, 0);
+  private readonly shadeU = { uNight: { value: 0 }, uWindowGlow: { value: 1 }, uRoofSnowFull: { value: 0.12 }, uTreeSnowFull: { value: 0.3 } };
+  /** Pomiar przy pierwszym uruchomieniu (dobór jakości): start, liczba klatek, gotowe. */
+  private autoPick: { t0: number; frames: number; done: (q: Quality) => void } | null = null;
   private readonly ownCompile = new WeakMap<THREE.Material, THREE.Material['onBeforeCompile']>();
 
   constructor(
     parent: HTMLElement,
     private readonly src: View3DSources,
     private readonly p: Render3DParams,
+    look: Look,
   ) {
+    this.lookV = { ...look };
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'view3d-canvas';
     parent.appendChild(this.canvas);
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: true });
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = p.atmosphere.exposure;
+    this.renderer.toneMappingExposure = look.exposure;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     const g = src.grid;
     const hf = { widthCells: g.widthCells, heightCells: g.heightCells, cellSizeM: g.cellSizeM, elevationM: g.elevationM };
     this.camera = new THREE.PerspectiveCamera(p.camera.fovDeg, 1, 2, 60000);
     this.terrain = new Terrain3D({ hf, forest: src.forest, shrub: src.shrub, built: src.built, dem: src.dem(), mapWestE: src.mapWestE, mapNorthN: src.mapNorthN }, p);
-    this.forest = src.forest ? new Forest3D(hf, src.forest, src.shrub, p) : null;
+    this.forest = src.forest ? new Forest3D(hf, src.forest, src.shrub, p, { snowU: this.terrain.snowU, uTreeSnowFull: this.shadeU.uTreeSnowFull }) : null;
+    // Obiekty stoją na terenie (dolna część schowana w śniegu); ratraki i ludzie – na powierzchni śniegu.
     const groundAt = (x: number, z: number) => this.terrain.groundAt(x, z);
-    this.objects = new Objects3D({ groundAt, lp: src.lp, p, osmBuildings: src.osmBuildings, forest: src.forest, widthCells: g.widthCells, cellSizeM: g.cellSizeM });
+    const surfaceAt = (x: number, z: number) => this.terrain.surfaceAt(x, z);
+    this.objects = new Objects3D({
+      groundAt,
+      surfaceAt,
+      shade: { snowU: this.terrain.snowU, uNight: this.shadeU.uNight, uWindowGlow: this.shadeU.uWindowGlow, uRoofSnowFull: this.shadeU.uRoofSnowFull },
+      lp: src.lp,
+      p,
+      osmBuildings: src.osmBuildings,
+      forest: src.forest,
+      widthCells: g.widthCells,
+      cellSizeM: g.cellSizeM,
+    });
     this.people = new People3D(p.quality.peopleMax[2], p.people.heightM, p.people.seatHeightM);
-    this.network = new Network3D(groundAt, src.network);
+    this.network = new Network3D(groundAt, src.network, this.terrain.snowU);
     this.liftPreview = new LiftPreview3D(src.lp, groundAt);
     this.scene.add(this.terrain.group, this.objects.group, this.people.group, this.network.group, this.liftPreview.group, this.hemi);
     if (this.forest) this.scene.add(this.forest.group);
     this.sky.scale.setScalar(45000);
     this.scene.add(this.sky);
-    this.scene.fog = new THREE.FogExp2(0xcfd9e6, p.atmosphere.fogDensity);
+    this.scene.fog = new THREE.FogExp2(0xcfd9e6, look.fogDensity);
     // Start: widok na Pilsko od Korbielowa (od północy), z wysoka.
     const W = g.widthCells * g.cellSizeM;
     const H = g.heightCells * g.cellSizeM;
     this.rig = { tx: W / 2, ty: groundAt(W / 2, H / 2) || 1000, tz: H / 2, distanceM: 4200, yawRad: 0, pitchRad: (38 * Math.PI) / 180 };
     this.collectMaterials();
+    this.applyLook();
     this.setQuality(1);
     this.bindInput();
     window.addEventListener('resize', () => this.resize());
@@ -182,8 +218,9 @@ export class View3D {
       const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
       for (const mm of Array.isArray(m) ? m : m ? [m] : []) if (mm instanceof THREE.MeshStandardMaterial && !seen.has(mm)) seen.add(mm);
     });
-    this.materials.push(this.terrain.material);
-    if (this.forest) this.materials.push(this.forest.treeMaterial);
+    this.materials.push(this.terrain.material, this.terrain.patchMaterialNear);
+    if (this.forest) this.materials.push(...this.forest.materials);
+    this.materials.push(...this.objects.materials, ...this.people.materials);
     for (const m of seen) if (!this.materials.includes(m)) this.materials.push(m);
   }
 
@@ -226,16 +263,71 @@ export class View3D {
       m.customProgramCacheKey = () => key;
       m.needsUpdate = true;
     }
+    this.applyShadowSoftness();
+    this.terrain.setPatchQuality(qp.snowPatchM[q], qp.snowPatchStepM[q], this.lookV.patchFadeM);
     this.gov = { resolutionScale: 1, treeScale: 1 };
     this.applyGovernor();
     this.buildComposer();
     this.resize();
   }
 
+  /** Miękkość cieni: promień filtru PCF (jakość niska – ostre brzegi). */
+  private applyShadowSoftness(): void {
+    const soft = this.p.quality.shadowSoftness[this.quality] > 0;
+    for (const l of this.csm?.lights ?? []) l.shadow.radius = soft ? Math.max(1, this.lookV.shadowSoftness) : 1;
+  }
+
+  /** Etap 3D-3: parametry oprawy (z pliku lub suwaków menu Dev). */
+  get look(): Look {
+    return { ...this.lookV };
+  }
+
+  setLook(l: Partial<Look>): void {
+    Object.assign(this.lookV, l);
+    this.applyLook();
+  }
+
+  private applyLook(): void {
+    const l = this.lookV;
+    const u = this.terrain.uniforms;
+    u.uSparkle.value = l.sparkle;
+    u.uIceRough.value = l.iceRoughness;
+    u.uSlushRough.value = l.slushRoughness;
+    u.uCordRelief.value = l.corduroyRelief;
+    u.uTrackRelief.value = l.trackRelief;
+    u.uPisteLight.value = l.pisteLight;
+    u.uFarHaze.value = l.farHaze;
+    this.terrain.setSnowExaggeration(l.snowExaggeration);
+    this.terrain.setPatchQuality(this.p.quality.snowPatchM[this.quality], this.p.quality.snowPatchStepM[this.quality], l.patchFadeM);
+    this.shadeU.uWindowGlow.value = l.windowGlow;
+    this.shadeU.uRoofSnowFull.value = Math.max(0.005, l.roofSnowFullM);
+    this.shadeU.uTreeSnowFull.value = Math.max(0.005, l.treeSnowFullM);
+    if (this.grade) {
+      this.grade.uniforms.uSat.value = l.saturation;
+      this.grade.uniforms.uContrast.value = l.contrast;
+      this.grade.uniforms.uWarm.value = l.warmth;
+    }
+    if (this.gtao) this.gtao.blendIntensity = l.aoIntensity;
+    this.applyShadowSoftness();
+  }
+
   private applyGovernor(): void {
     const qp = this.p.quality;
     if (this.forest) this.forest.nearM = qp.treesNearM[this.quality] * this.gov.treeScale;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * qp.pixelRatio[this.quality] * this.gov.resolutionScale);
+  }
+
+  /**
+   * Etap 3D-3: dobór jakości przy pierwszym uruchomieniu – pomiar klatek przy jakości średniej (po 1 s
+   * rozgrzewki), potem niska / średnia / wysoka wg progów `autoQuality` w render3d.json.
+   */
+  startAutoQuality(done: (q: Quality) => void): void {
+    this.setQuality(1);
+    this.autoPick = { t0: performance.now() + 1000, frames: 0, done };
+  }
+
+  get measuring(): boolean {
+    return this.autoPick !== null;
   }
 
   /** Stan automatycznej płynności (licznik w menu Dev). */
@@ -247,16 +339,20 @@ export class View3D {
     this.composer?.dispose();
     const c = new EffectComposer(this.renderer);
     c.addPass(new RenderPass(this.scene, this.camera));
+    this.gtao = null;
     if (this.p.quality.ao[this.quality]) {
       const g = new GTAOPass(this.scene, this.camera, this.canvas.clientWidth || 1280, this.canvas.clientHeight || 720);
       g.output = GTAOPass.OUTPUT.Default;
-      g.blendIntensity = 0.85;
+      g.blendIntensity = this.lookV.aoIntensity;
       g.updateGtaoMaterial({ radius: 6, distanceExponent: 1.5, thickness: 2, scale: 1 });
       c.addPass(g);
+      this.gtao = g;
     }
     c.addPass(new OutputPass());
-    c.addPass(new ShaderPass(COLOR_GRADE));
+    this.grade = new ShaderPass(COLOR_GRADE);
+    c.addPass(this.grade);
     this.composer = c;
+    this.applyLook();
   }
 
   private resize(): void {
@@ -356,7 +452,7 @@ export class View3D {
       camera: this.camera,
       widthPx: this.canvas.clientWidth || window.innerWidth,
       heightPx: this.canvas.clientHeight || window.innerHeight,
-      groundAt: (x, z) => this.terrain.groundAt(x, z),
+      groundAt: (x, z) => this.terrain.surfaceAt(x, z),
       targetX: this.rig.tx,
       targetZ: this.rig.tz,
     };
@@ -503,9 +599,9 @@ export class View3D {
     if (this.keys.has('KeyR')) pitchRad += rot * 0.6;
     if (this.keys.has('KeyF')) pitchRad -= rot * 0.6;
     // Cel na terenie (wysokość celu łagodnie za terenem).
-    const g = this.terrain.groundAt(tx, tz);
+    const g = this.terrain.surfaceAt(tx, tz);
     const ty = Number.isFinite(g) ? this.rig.ty + (g - this.rig.ty) * Math.min(1, dt * 6) : this.rig.ty;
-    this.rig = keepAboveTerrain({ ...this.rig, tx, tz, ty, yawRad, pitchRad }, cp, (x, z) => this.terrain.groundAt(x, z));
+    this.rig = keepAboveTerrain({ ...this.rig, tx, tz, ty, yawRad, pitchRad }, cp, (x, z) => this.terrain.surfaceAt(x, z));
     const p = cameraPosition(this.rig);
     this.camera.position.set(p.x, p.y, p.z);
     this.camera.lookAt(this.rig.tx, this.rig.ty, this.rig.tz);
@@ -519,10 +615,12 @@ export class View3D {
     const d = this.src.date();
     const utc = localToUtcMs({ year: d.year, month: d.month, day: d.day, hour: this.src.hour() }, this.src.location.timeZone);
     const sp = sunPosition(utc, this.src.location.latDeg, this.src.location.lonDeg);
-    const el = (sp.elevationDeg * Math.PI) / 180;
-    const az = (sp.azimuthDeg * Math.PI) / 180;
     // Kierunek do Słońca: x – wschód, z – południe (północ = −z).
-    const toSun = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el)).normalize();
+    const d3 = sunDirection(sp.azimuthDeg, sp.elevationDeg);
+    const toSun = new THREE.Vector3(d3.x, d3.y, d3.z);
+    this.terrain.uniforms.uSunDir.value.copy(toSun);
+    this.sunDir.copy(toSun);
+    const lk = this.lookV;
     const u = this.sky.material.uniforms;
     u.sunPosition.value.copy(toSun);
     u.turbidity.value = 4;
@@ -536,22 +634,27 @@ export class View3D {
     u.turbidity.value = 4 + 8 * cloud;
     if (this.csm) {
       this.csm.lightDirection.copy(toSun).negate();
+      // Słońce nisko – cieplej (mniej niebieskiego i zielonego), za chmurami – słabiej.
       for (const l of this.csm.lights) {
-        l.intensity = 3.4 * day * (1 - 0.55 * low) * (1 - 0.7 * cloud);
-        l.color.setRGB(1, 1 - 0.18 * low, 1 - 0.38 * low);
+        l.intensity = lk.sunIntensity * day * (1 - 0.55 * low) * (1 - lk.sunCloudDim * cloud);
+        l.color.setRGB(1, 1 - lk.sunWarmLow * 0.47 * low, 1 - lk.sunWarmLow * low);
       }
     }
-    this.hemi.intensity = Math.max(this.p.atmosphere.nightAmbient * 4, (0.8 + 0.5 * cloud) * day + 0.1);
-    this.hemi.color.setRGB(0.75 + 0.2 * day, 0.82 + 0.15 * day, 0.95);
+    // Światło nieba: więcej rozproszonego przy chmurach; niebieskawe (cienie na śniegu) – mniej przy chmurach.
+    this.hemi.intensity = Math.max(this.p.atmosphere.nightAmbient * 4, (lk.skyBase + lk.skyCloudBoost * cloud) * day + 0.1);
+    const blue = lk.skyBlue * (1 - 0.6 * cloud) * day;
+    this.hemi.color.setRGB((0.75 + 0.2 * day) * (1 - 0.35 * blue), (0.82 + 0.15 * day) * (1 - 0.15 * blue), 0.95);
     const fog = this.scene.fog as THREE.FogExp2;
     const dayC = new THREE.Color(0.78, 0.84, 0.92);
     const duskC = new THREE.Color(0.93, 0.78, 0.66);
     const nightC = new THREE.Color(0.03, 0.04, 0.08);
     fog.color.copy(dayC).lerp(new THREE.Color(0.8, 0.82, 0.85), cloud * 0.7).lerp(duskC, 0.7 * low * day * (1 - 0.6 * cloud)).lerp(nightC, night);
-    fog.density = this.p.atmosphere.fogDensity * (1 + 0.6 * night);
+    const precip = Math.max(0, Math.min(1, this.src.precip?.() ?? 0));
+    fog.density = lk.fogDensity * (1 + lk.fogCloudBoost * cloud) * (1 + lk.fogPrecipBoost * precip) * (1 + 0.6 * night);
     this.sky.visible = day > 0.02;
     this.scene.background = day > 0.02 ? null : nightC;
-    this.renderer.toneMappingExposure = this.p.atmosphere.exposure * (0.75 + 0.45 * night);
+    this.renderer.toneMappingExposure = lk.exposure * (0.75 + 0.45 * night);
+    this.shadeU.uNight.value = night;
     // Mgła w dolinach: najgęstsza rano i nocą, w południe słabsza.
     const h = this.src.hour();
     const morning = h < 11 ? 1 - Math.max(0, h - 7) / 4 : 0;
@@ -628,11 +731,13 @@ export class View3D {
     this.syncData(night);
     const cam = this.camera.position;
     const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
+    this.terrain.setDetail(this.src.detail?.() ?? null);
+    this.terrain.updatePatch(this.rig.tx, this.rig.tz, t0);
     this.terrain.update(cam, frustum);
     this.forest?.update(cam);
     const timeS = this.src.gameTimeS();
     this.objects.update(timeS, night, this.src.groomers(), this.src.plumes(), cam);
-    this.people.update(this.src.frame(), timeS, (x, z) => this.terrain.groundAt(x, z), cam, Math.max(600, this.rig.distanceM * 1.5));
+    this.people.update(this.src.frame(), timeS, (x, z) => this.terrain.surfaceAt(x, z), cam, Math.max(600, this.rig.distanceM * 1.5));
     this.network.setFrame(this.pxScale, this.pxScale * this.rig.distanceM, this.scene.fog as THREE.FogExp2);
     this.csm?.update();
     this.renderer.info.reset();
@@ -645,7 +750,19 @@ export class View3D {
     // Automatyczna płynność – co okno pomiaru (tylko w pętli klatek, nie przy zrzutach pojedynczych klatek).
     this.govFrames++;
     const gw = this.p.governor;
-    if (this.autoQuality && this.raf && t1 - this.govT > gw.windowS * 1000) {
+    const ap = this.autoPick;
+    if (ap && this.raf && t1 >= ap.t0) {
+      ap.frames++;
+      const aq = this.p.autoQuality;
+      if (t1 - ap.t0 > aq.measureS * 1000) {
+        const fps = (ap.frames * 1000) / (t1 - ap.t0);
+        const q: Quality = fps >= aq.highFps ? 2 : fps < aq.lowFps ? 0 : 1;
+        this.autoPick = null;
+        this.setQuality(q);
+        ap.done(q);
+      }
+    }
+    if (this.autoQuality && !this.autoPick && this.raf && t1 - this.govT > gw.windowS * 1000) {
       const fps = (this.govFrames * 1000) / (t1 - this.govT);
       const next = governStep(this.gov, fps, gw);
       if (next.resolutionScale !== this.gov.resolutionScale || next.treeScale !== this.gov.treeScale) {
@@ -669,5 +786,6 @@ export class View3D {
     this.stats.treesFar = this.forest?.farCount ?? 0;
     this.stats.people = this.people.drawn;
     this.stats.carriers = this.objects.carrierCount;
+    this.stats.patchMs = this.terrain.patchMs;
   }
 }

@@ -13,6 +13,20 @@ import type { OrientedRect } from './buildingShapes';
 import type { LiftFrame } from './liftGeometry';
 import { carrierPositions, cableStrands, liftFrame, ROPE_HALF_M } from './liftGeometry';
 import type { Render3DParams } from './params';
+import { SNOW_DEPTH_GLSL } from './snowSurface';
+import type { SnowUniforms } from './terrain3d';
+
+/** Etap 3D-3: uniformy oprawy budynków – śnieg na dachu wg grubości w komórce, okna nocą. */
+export interface BuildingShade {
+  snowU: SnowUniforms;
+  uNight: { value: number };
+  uWindowGlow: { value: number };
+  uRoofSnowFull: { value: number };
+}
+
+const SHADE_VERTEX = /* glsl */ `
+  vRW = (modelMatrix * vec4(transformed, 1.0)).xyz;
+  vRN = normalize(mat3(modelMatrix) * objectNormal);`;
 
 const CLASS_COLORS = [0x2f9e44, 0x1c7ed6, 0xe03131, 0x212529];
 
@@ -91,6 +105,9 @@ export function houseGeometries(r: OrientedRect, baseY: number): { walls: THREE.
 
 export interface ObjectsInputs {
   groundAt(x: number, z: number): number;
+  /** Etap 3D-3: powierzchnia śniegu (ratraki jeżdżą po śniegu; podpory, budynki, armatki stoją w nim). */
+  surfaceAt?(x: number, z: number): number;
+  shade?: BuildingShade;
   lp: LiftParams;
   p: Render3DParams;
   /** Budynki z OSM w układzie lokalnym (obrysy). */
@@ -149,7 +166,62 @@ export class Objects3D {
       this.groomerLights.push(l);
       this.dynamic.add(l);
     }
+    if (inp.shade) this.shadeBuildings(inp.shade);
     this.buildOsmBuildings();
+  }
+
+  /** Materiały ze stałymi właściwościami (do cieni kaskadowych w widoku). */
+  get materials(): THREE.Material[] {
+    return Object.values(this.mats).filter((m) => m instanceof THREE.MeshStandardMaterial);
+  }
+
+  /**
+   * Etap 3D-3: dach biały wg grubości śniegu w danej komórce (pełny od `roofSnowFullM`, połacie strome –
+   * mniej); ściany – okna (siatka co 3,2 × 3 m, część zapalona wg skrótu położenia) świecące nocą.
+   */
+  private shadeBuildings(sh: BuildingShade): void {
+    const head = `#include <common>\nvarying vec3 vRW;\nvarying vec3 vRN;`;
+    const vert = (s: THREE.WebGLProgramParametersWithUniforms) => {
+      s.vertexShader = s.vertexShader.replace('#include <common>', head).replace('#include <begin_vertex>', `#include <begin_vertex>${SHADE_VERTEX}`);
+    };
+    this.mats.roof.onBeforeCompile = (s) => {
+      Object.assign(s.uniforms, sh.snowU, { uRoofSnowFull: sh.uRoofSnowFull, uWallColor: { value: this.mats.wall.color } });
+      vert(s);
+      s.fragmentShader = s.fragmentShader
+        .replace('#include <common>', `${head}\nuniform float uRoofSnowFull;\nuniform vec3 uWallColor;\n${SNOW_DEPTH_GLSL}`)
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+  vec3 rn = normalize(vRN);
+  // Szczyty (pionowe trójkąty pod kalenicą) – barwa ścian.
+  if (abs(rn.y) < 0.2) diffuseColor.rgb = uWallColor;
+  float rs = smoothstep(0.0, uRoofSnowFull, snowDepthAt(vRW.xz)) * smoothstep(0.15, 0.45, rn.y);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.93, 0.97), rs);`,
+        );
+    };
+    this.mats.roof.color.setHex(0x7a3b2e);
+    this.mats.wall.onBeforeCompile = (s) => {
+      Object.assign(s.uniforms, { uNight: sh.uNight, uWindowGlow: sh.uWindowGlow });
+      vert(s);
+      s.fragmentShader = s.fragmentShader
+        .replace('#include <common>', `${head}\nuniform float uNight;\nuniform float uWindowGlow;\nfloat wh(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }`)
+        .replace(
+          '#include <emissivemap_fragment>',
+          `#include <emissivemap_fragment>
+  {
+    vec3 n = normalize(vRN);
+    if (abs(n.y) < 0.3) {
+      float u = dot(vRW.xz, vec2(-n.z, n.x));
+      vec2 cell = vec2(floor(u / 3.2), floor(vRW.y / 3.0));
+      vec2 f = vec2(fract(u / 3.2), fract(vRW.y / 3.0));
+      float win = step(0.3, f.x) * step(f.x, 0.7) * step(0.35, f.y) * step(f.y, 0.75);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.16, 0.19, 0.23), win * 0.85);
+      float lit = step(0.35, wh(cell + floor(vRW.xz / 40.0)));
+      totalEmissiveRadiance += vec3(1.0, 0.72, 0.4) * win * lit * uNight * uWindowGlow;
+    }
+  }`,
+        );
+    };
   }
 
   private buildOsmBuildings(): void {
@@ -175,8 +247,9 @@ export class Objects3D {
     }
   }
 
-  /** Śnieg na dachach (0–1). */
+  /** Śnieg na dachach (0–1) – bez uniformów oprawy (z nimi dach wg grubości w komórce). */
   setRoofSnow(s: number): void {
+    if (this.inp.shade) return;
     this.mats.roof.color.setRGB(0.48 + (0.93 - 0.48) * s, 0.23 + (0.95 - 0.23) * s, 0.18 + (0.98 - 0.18) * s);
   }
 
@@ -396,8 +469,9 @@ export class Objects3D {
     // Ratraki.
     const gs = groomers.slice(0, 16);
     let b = 0;
+    const surf = this.inp.surfaceAt ?? this.inp.groundAt;
     gs.forEach((g, i) => {
-      const y = this.inp.groundAt(g.xM, g.yM);
+      const y = surf(g.xM, g.yM);
       q.setFromAxisAngle(up, -g.headingRad);
       m.compose(new THREE.Vector3(g.xM, y, g.yM), q, one);
       this.groomerMesh.setMatrixAt(i, m);
@@ -415,7 +489,7 @@ export class Objects3D {
     this.groomerLights.forEach((l, i) => {
       const g = lit[i];
       l.intensity = g ? 400 * night : 0;
-      if (g) l.position.set(g.xM + Math.cos(g.headingRad) * 8, this.inp.groundAt(g.xM, g.yM) + 3, g.yM + Math.sin(g.headingRad) * 8);
+      if (g) l.position.set(g.xM + Math.cos(g.headingRad) * 8, surf(g.xM, g.yM) + 3, g.yM + Math.sin(g.headingRad) * 8);
     });
     // Armatki: cząsteczki znoszone wiatrem (stały wzór z czasu – bez losowania co klatkę).
     const pts: number[] = [];

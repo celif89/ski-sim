@@ -578,5 +578,143 @@
         "source": "długość strzałki kierunku spadku"
       }
     }
+  },
+  "render3d": {
+    "_opis": "Etap 3D-3: oprawa widoku 3D – śnieg z grubością i światło (tylko rysowanie, symulacja bez zmian). Nastrój jak w grach o ośrodkach narciarskich (np. Ski-E-O!), kolory z palety stylu A. Wszystkie wartości stroić suwakami w menu Dev („Oprawa 3D”) i przenieść tu przyciskiem „Kopiuj ustawienia”.",
+    "snowExaggeration": {
+      "value": 1,
+      "unit": "-",
+      "source": "przewyższenie grubości śniegu na rysunku – 1 = skala prawdziwa (grubość z modelu śniegu); inne wartości tylko do oglądania w menu Dev"
+    },
+    "sunIntensity": {
+      "value": 3.4,
+      "unit": "-",
+      "source": "siła światła Słońca w pogodny dzień (kierunek i wysokość z sim/sun.ts); do wyczucia"
+    },
+    "sunWarmLow": {
+      "value": 0.5,
+      "unit": "-",
+      "source": "ocieplenie barwy Słońca nisko nad horyzontem (rano, wieczorem): ubytek niebieskiego przy wysokości 0°; do wyczucia"
+    },
+    "sunCloudDim": {
+      "value": 0.7,
+      "unit": "-",
+      "source": "osłabienie Słońca przy pełnym zachmurzeniu (zachmurzenie z modelu pogody); do wyczucia"
+    },
+    "skyBase": {
+      "value": 0.8,
+      "unit": "-",
+      "source": "światło nieba w pogodny dzień; do wyczucia"
+    },
+    "skyCloudBoost": {
+      "value": 0.5,
+      "unit": "-",
+      "source": "dodatkowe światło rozproszone przy pełnym zachmurzeniu; do wyczucia"
+    },
+    "skyBlue": {
+      "value": 0.6,
+      "unit": "-",
+      "source": "niebieskawe światło nieba – cienie na śniegu niebieskawe (0 – szare); do wyczucia"
+    },
+    "fogDensity": {
+      "value": 7e-05,
+      "unit": "1/m",
+      "source": "mgiełka z odległością (mgła wykładnicza) w pogodny dzień – widoczność kilkunastu km; do wyczucia"
+    },
+    "fogCloudBoost": {
+      "value": 0.8,
+      "unit": "-",
+      "source": "gęstsza mgiełka przy pełnym zachmurzeniu (×(1 + wartość)); do wyczucia"
+    },
+    "fogPrecipBoost": {
+      "value": 2.5,
+      "unit": "-",
+      "source": "gęstsza mgiełka w czasie opadu (×(1 + wartość · natężenie 0–1)); do wyczucia"
+    },
+    "farHaze": {
+      "value": 0.45,
+      "unit": "-",
+      "source": "dodatkowe zblednięcie dalekich gór (teren okolicy 3–12 km); do wyczucia"
+    },
+    "exposure": {
+      "value": 1.15,
+      "unit": "-",
+      "source": "ekspozycja mapowania tonów (ACES)"
+    },
+    "saturation": {
+      "value": 1.12,
+      "unit": "-",
+      "source": "nasycenie barw w korekcji końcowej"
+    },
+    "contrast": {
+      "value": 1.04,
+      "unit": "-",
+      "source": "kontrast w korekcji końcowej"
+    },
+    "warmth": {
+      "value": 0.015,
+      "unit": "-",
+      "source": "ocieplenie obrazu w korekcji końcowej (+czerwony, −niebieski)"
+    },
+    "sparkle": {
+      "value": 0.8,
+      "unit": "-",
+      "source": "iskrzenie puchu i świeżego śniegu w słońcu (z bliska); do wyczucia"
+    },
+    "iceRoughness": {
+      "value": 0.16,
+      "unit": "-",
+      "source": "szorstkość lodu (mniej – mocniejszy połysk)"
+    },
+    "slushRoughness": {
+      "value": 0.38,
+      "unit": "-",
+      "source": "szorstkość brei (mokry śnieg błyszczy)"
+    },
+    "shadowSoftness": {
+      "value": 2.5,
+      "unit": "px",
+      "source": "rozmycie brzegu cieni kaskadowych (promień próbkowania)"
+    },
+    "aoIntensity": {
+      "value": 0.85,
+      "unit": "-",
+      "source": "siła przyciemnienia zagłębień i styków (GTAO, jakość średnia i wysoka)"
+    },
+    "windowGlow": {
+      "value": 1.6,
+      "unit": "-",
+      "source": "światło z okien budynków nocą; do wyczucia"
+    },
+    "pisteLight": {
+      "value": 0.5,
+      "unit": "-",
+      "source": "oświetlenie tras nocą (świecenie śniegu pod lampami)"
+    },
+    "corduroyRelief": {
+      "value": 0.18,
+      "unit": "-",
+      "source": "sztruks z bliska – nachylenie prążków co 1,2 m (rzeźba w cieniowaniu, z warstwy detalu 1 m)"
+    },
+    "trackRelief": {
+      "value": 0.35,
+      "unit": "-",
+      "source": "rowki śladów nart z bliska (z warstwy detalu 1 m, zasypywane opadem)"
+    },
+    "patchFadeM": {
+      "value": 8,
+      "unit": "m",
+      "source": "szerokość pasa, w którym rzeźba warstwy detalu wygasa na brzegu łaty przy kamerze (bez uskoku)"
+    },
+    "treeSnowFullM": {
+      "value": 0.3,
+      "unit": "m",
+      "source": "grubość śniegu w komórce, przy której drzewa mają pełne czapy (mniej – częściowe)"
+    },
+    "roofSnowFullM": {
+      "value": 0.12,
+      "unit": "m",
+      "source": "grubość śniegu w komórce, przy której dach jest cały biały"
+    }
   }
 }

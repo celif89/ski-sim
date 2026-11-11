@@ -9,6 +9,35 @@ import type { HorizonDem } from '../sim/horizon';
 import type { Render3DParams } from './params';
 import type { ChunkDef, HeightField } from './terrainMesh';
 import { buildChunk, chunkGrid, lodLevel, sampleHeight } from './terrainMesh';
+import type { DepthField } from './snowSurface';
+import { SNOW_DEPTH_GLSL, snowSurfaceAt } from './snowSurface';
+import type { DetailRelief } from './snowPatch';
+import { buildPatch, patchOrigin, reliefFrom } from './snowPatch';
+
+/** Warstwa detalu 1 m (podzbiór DetailLayer z src/sim/detailLayer.ts) do łaty przy kamerze. */
+export interface DetailSource {
+  sub: number;
+  per: number;
+  p: { cellM: number };
+  blockOf: Int32Array;
+  cells: Int32Array;
+  mogul: Float32Array;
+  pile: Float32Array;
+  groomDir: Uint8Array;
+  groomT: Float32Array;
+  tracks: Uint8Array;
+  fresh: Uint8Array;
+  version: number;
+}
+
+/** Etap 3D-3: wspólne uniformy grubości śniegu (teren, drzewa, dachy, linie). */
+export interface SnowUniforms {
+  uDepthTex: { value: THREE.Texture | null };
+  uDepthGrid: { value: THREE.Vector2 };
+  uDepthCell: { value: number };
+  uSnowExag: { value: number };
+  uHasSnow: { value: number };
+}
 
 export interface TerrainInputs {
   hf: HeightField;
@@ -28,12 +57,24 @@ uniform sampler2D uStateTex;  // najbliższy: R – stan śniegu, G – muldy (0
 uniform vec2 uMapSize;
 uniform sampler2D uOverlay;    // etap 3D-1: nakładka danych (jak w 2D), wiersz 0 = północ
 uniform float uOverlayOn;      // krycie nakładki (0 – wyłączona)
-uniform float uHasSnow;
 uniform float uSummer;
 uniform float uNight;
 uniform float uPisteLight;
 uniform float uValleyTop;
 uniform float uValleyFog;
+uniform vec4 uPatchRect;       // etap 3D-3: łata detalu przy kamerze (x0, z0, x1, z1) – tu teren bazowy znika
+uniform float uPatchOn;
+uniform float uIsPatch;
+uniform sampler2D uDetailTex;  // warstwa detalu 1 m w łacie: R – świeżość sztruksu, G – kierunek przejazdu, B – ślady nart, A – świeży śnieg
+uniform vec4 uDetailRect;      // x0, z0, bok [m], 1/bok
+uniform float uDetailOn;
+uniform float uCordRelief;
+uniform float uTrackRelief;
+uniform float uSparkle;
+uniform vec3 uSunDir;
+uniform float uIceRough;
+uniform float uSlushRough;
+uniform float uFarHaze;
 varying vec3 vWorld;
 varying vec3 vNormalW;
 float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
@@ -66,12 +107,45 @@ export class Terrain3D {
     uValleyFog: { value: 0 },
     uOverlay: { value: null as THREE.Texture | null },
     uOverlayOn: { value: 0 },
+    uPatchRect: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uPatchOn: { value: 0 },
+    uDetailTex: { value: null as THREE.Texture | null },
+    uDetailRect: { value: new THREE.Vector4(0, 0, 1, 1) },
+    uDetailOn: { value: 0 },
+    uCordRelief: { value: 0.18 },
+    uTrackRelief: { value: 0.35 },
+    uSparkle: { value: 0.8 },
+    uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+    uIceRough: { value: 0.16 },
+    uSlushRough: { value: 0.38 },
+    uFarHaze: { value: 0.35 },
   };
+  /** Grubość śniegu w komórkach [m] (do rysunku i funkcji powierzchni). */
+  readonly depth: DepthField;
+  private readonly depthTex: THREE.DataTexture;
+  readonly snowU: SnowUniforms;
+  /** Materiał łaty detalu przy kamerze (ta sama barwa co teren, wysokości liczone na procesorze). */
+  readonly patchMaterialNear: THREE.MeshStandardMaterial;
   private overlayTex: THREE.CanvasTexture | null = null;
   private overlayCanvas: HTMLCanvasElement | null = null;
   private overlayVersion = -1;
   /** Liczba trójkątów rysowanych w ostatniej klatce (licznik). */
   triangles = 0;
+  /** Etap 3D-3: łata gęstej siatki przy kamerze (bok, krok [m]; bok 0 – wyłączona). */
+  private patchSizeM = 0;
+  private patchStepM = 1;
+  private patchFadeM = 12;
+  private patch: THREE.Mesh | null = null;
+  private patchCenter = { x: NaN, z: NaN };
+  private patchKey = '';
+  private patchBuiltMs = 0;
+  private snowVersion = 0;
+  private detail: { src: DetailSource; gameH: number; fadeH: number; pileDensityKgM3: number } | null = null;
+  private relief: DetailRelief | null = null;
+  private reliefVersion = -1;
+  private detailTex: THREE.DataTexture | null = null;
+  /** Czas budowy łaty [ms] (menu Dev). */
+  patchMs = 0;
 
   constructor(
     private readonly inp: TerrainInputs,
@@ -98,41 +172,88 @@ export class Terrain3D {
     this.uniforms.uSnowTex.value = this.snowTex;
     this.uniforms.uStateTex.value = this.stateTex;
     this.uniforms.uMapSize.value.set(W * hf.cellSizeM, H * hf.cellSizeM);
-    this.uniforms.uPisteLight.value = p.atmosphere.pisteLightIntensity;
+    // Grubość śniegu [m] w komórkach – tekstura float, filtr najbliższy (interpolacja w shaderze jak w TS).
+    this.depth = { widthCells: W, heightCells: H, cellSizeM: hf.cellSizeM, depthM: new Float32Array(W * H) };
+    this.depthTex = new THREE.DataTexture(this.depth.depthM, W, H, THREE.RedFormat, THREE.FloatType);
+    this.depthTex.magFilter = THREE.NearestFilter;
+    this.depthTex.minFilter = THREE.NearestFilter;
+    this.depthTex.needsUpdate = true;
+    this.snowU = {
+      uDepthTex: { value: this.depthTex },
+      uDepthGrid: { value: new THREE.Vector2(W, H) },
+      uDepthCell: { value: hf.cellSizeM },
+      uSnowExag: { value: 1 },
+      uHasSnow: this.uniforms.uHasSnow,
+    };
     this.material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0 });
-    this.patchMaterial(this.material);
+    this.patchMaterial(this.material, false);
+    this.patchMaterialNear = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0 });
+    this.patchMaterial(this.patchMaterialNear, true);
     this.bgMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 });
     // Tło okolicy: drobne plamki (korony drzew, hale) – bez nich z daleka wygląda jak mgła.
     this.bgMaterial.onBeforeCompile = (shader) => {
+      shader.uniforms.uFarHaze = this.uniforms.uFarHaze;
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', `#include <common>\nvarying vec2 vBgXZ;`)
-        .replace('#include <begin_vertex>', `#include <begin_vertex>\nvBgXZ = (modelMatrix * vec4(transformed, 1.0)).xz;`);
+        .replace('#include <common>', `#include <common>\nvarying vec3 vBgW;`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>\nvBgW = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', `#include <common>\nvarying vec2 vBgXZ;\n${GLSL_COMMON}`)
-        .replace('#include <color_fragment>', `#include <color_fragment>\n  diffuseColor.rgb *= 0.7 + 0.55 * vnoise(vBgXZ * 0.06) * vnoise(vBgXZ * 0.013 + 3.0);`);
+        .replace('#include <common>', `#include <common>\nvarying vec3 vBgW;\n${GLSL_COMMON}`)
+        .replace('#include <color_fragment>', `#include <color_fragment>\n  diffuseColor.rgb *= 0.7 + 0.55 * vnoise(vBgW.xz * 0.06) * vnoise(vBgW.xz * 0.013 + 3.0);`)
+        // Etap 3D-3: dalekie góry bledsze (perspektywa powietrzna ponad zwykłą mgiełkę).
+        .replace(
+          '#include <fog_fragment>',
+          `#include <fog_fragment>\n  #ifdef USE_FOG\n    gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, uFarHaze * smoothstep(3000.0, 12000.0, length(vBgW - cameraPosition)));\n  #endif`,
+        );
     };
     for (const def of chunkGrid(hf, p.terrain.chunkCells)) this.chunks.push({ def, lods: [null, null, null, null], level: -1 });
     this.buildBackground();
   }
 
   /** Materiał terenu: barwa i szorstkość z tekstur danych, nierówności (sztruks, muldy), światło tras nocą. */
-  patchMaterial(m: THREE.MeshStandardMaterial): void {
+  patchMaterial(m: THREE.MeshStandardMaterial, isPatch: boolean): void {
     const prev = m.onBeforeCompile;
     m.onBeforeCompile = (shader, r) => {
       prev?.call(m, shader, r);
-      Object.assign(shader.uniforms, this.uniforms);
+      Object.assign(shader.uniforms, this.uniforms, this.snowU, { uIsPatch: { value: isPatch ? 1 : 0 } });
+      // Etap 3D-3: wierzchołki terenu podniesione o grubość śniegu (teren + śnieg), normalne z nachylenia
+      // pokrywy (zaspy, wywiane grzbiety); łata przy kamerze ma wysokości z procesora (z rzeźbą detalu).
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', `#include <common>\nvarying vec3 vWorld;\nvarying vec3 vNormalW;`)
-        .replace('#include <begin_vertex>', `#include <begin_vertex>\nvWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvNormalW = normalize(mat3(modelMatrix) * objectNormal);`);
+        .replace('#include <common>', `#include <common>\nvarying vec3 vWorld;\nvarying vec3 vNormalW;\nuniform float uIsPatch;\n${SNOW_DEPTH_GLSL}`)
+        .replace(
+          '#include <beginnormal_vertex>',
+          /* glsl */ `#include <beginnormal_vertex>
+  vec2 wxz0 = (modelMatrix * vec4(position, 1.0)).xz;
+  float sDepth = 0.0;
+  if (uIsPatch < 0.5 && uHasSnow > 0.5) {
+    float e = uDepthCell * 0.5;
+    float gx = (snowDepthAt(wxz0 + vec2(e, 0.0)) - snowDepthAt(wxz0 - vec2(e, 0.0))) / (2.0 * e);
+    float gz = (snowDepthAt(wxz0 + vec2(0.0, e)) - snowDepthAt(wxz0 - vec2(0.0, e))) / (2.0 * e);
+    objectNormal = normalize(objectNormal + vec3(-gx, 0.0, -gz) * uSnowExag);
+    sDepth = snowDepthAt(wxz0);
+  }`,
+        )
+        .replace('#include <begin_vertex>', `#include <begin_vertex>\ntransformed.y += uSnowExag * sDepth;\nvWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvNormalW = normalize(mat3(modelMatrix) * objectNormal);`);
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', `#include <common>\n${GLSL_COMMON}`)
+        .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${SNOW_DEPTH_GLSL}`)
         .replace(
           '#include <color_fragment>',
           /* glsl */ `#include <color_fragment>
+  // Teren bazowy pod łatą detalu znika (łata ma tę samą barwę i wysokość na brzegu).
+  if (uIsPatch < 0.5 && uPatchOn > 0.5 && vWorld.x > uPatchRect.x && vWorld.x < uPatchRect.z && vWorld.z > uPatchRect.y && vWorld.z < uPatchRect.w) discard;
   vec2 muv = vWorld.xz / uMapSize;
+  // Warstwa detalu 1 m (tylko w łacie): świeżość sztruksu, kierunek przejazdu, ślady nart, świeży śnieg.
+  vec4 dt = vec4(0.0);
+  float inDet = 0.0;
+  if (uDetailOn > 0.5) {
+    vec2 du = (vWorld.xz - uDetailRect.xy) * uDetailRect.w;
+    if (du.x > 0.0 && du.y > 0.0 && du.x < 1.0 && du.y < 1.0) {
+      dt = texture2D(uDetailTex, du);
+      inDet = 1.0;
+    }
+  }
   vec4 sd = texture2D(uSnowTex, muv);
   vec4 st = texture2D(uStateTex, muv);
-  float depthCm = sd.r * 255.0 * uHasSnow;
+  float depthCm = snowDepthAt(vWorld.xz) * 100.0;
   int q = int(st.r * 255.0 + 0.5);
   float slope = 1.0 - clamp(vNormalW.y, 0.0, 1.0);
   float n1 = vnoise(vWorld.xz * 0.08) * 0.6 + vnoise(vWorld.xz * 0.5) * 0.4;
@@ -155,8 +276,8 @@ export class Terrain3D {
   if (q == 1) { snowC = vec3(0.98, 0.99, 1.0); rough = 0.95; }
   else if (q == 2) { snowC = vec3(0.94, 0.96, 0.99); rough = 0.8; }
   else if (q == 4) { snowC = vec3(0.90, 0.91, 0.93); rough = 0.7; }
-  else if (q == 5) { snowC = vec3(0.80, 0.82, 0.81); rough = 0.45; }
-  else if (q == 6) { snowC = vec3(0.80, 0.88, 0.96); rough = 0.22; }
+  else if (q == 5) { snowC = vec3(0.80, 0.82, 0.81); rough = uSlushRough; }
+  else if (q == 6) { snowC = vec3(0.80, 0.88, 0.96); rough = uIceRough; }
   snowC *= 0.96 + 0.04 * n1;
   diffuseColor.rgb = mix(ground, snowC, cover);
   float gRough = mix(0.95, rough, cover);`,
@@ -172,10 +293,24 @@ export class Terrain3D {
     if (near > 0.0 && cover > 0.5) {
       vec2 dh = normalize(-vNormalW.xz + vec2(1e-5));
       vec2 ac = vec2(-dh.y, dh.x);
-      // Sztruks: prążki co 1,2 m w poprzek przejazdu ratraka (wzdłuż linii spadku) – na ubitych trasach.
-      if (sd.g > 0.3 && (q == 2 || q == 3 || q == 4)) {
+      if (inDet > 0.5) {
+        // Z warstwy detalu 1 m: sztruks w kierunku ostatniego przejazdu ratraka, blednący z czasem
+        // i pod świeżym śniegiem; rowki śladów nart wzdłuż spadku (zasypywane opadem).
+        float a = dt.g * 3.14159;
+        vec2 gd = vec2(cos(a), sin(a));
+        vec2 gc = vec2(-gd.y, gd.x);
+        float ph = dot(vWorld.xz, gc) * 6.2831 / 1.2;
+        dW.xz += gc * cos(ph) * uCordRelief * dt.r * near;
+        float tr = dt.b * (1.0 - dt.a);
+        if (tr > 0.02) {
+          vec2 tp = vec2(dot(vWorld.xz, ac) * 7.0, dot(vWorld.xz, dh) * 0.25);
+          float gr = vnoise(tp) - 0.5;
+          dW.xz += ac * gr * uTrackRelief * tr * near;
+        }
+      } else if (sd.g > 0.3 && (q == 2 || q == 3 || q == 4)) {
+        // Poza łatą: sztruks wzdłuż linii spadku (jak w 3D-0).
         float ph = dot(vWorld.xz, ac) * 6.2831 / 1.2;
-        dW.xz += ac * cos(ph) * 0.18 * near;
+        dW.xz += ac * cos(ph) * uCordRelief * near;
       }
       // Muldy: garby co 5 m.
       float mg = st.g * 255.0 / 15.0;
@@ -207,7 +342,19 @@ export class Terrain3D {
   }
   // Oświetlenie tras nocą: plamy światła lamp (szum co ok. 25 m), łagodny brzeg.
   float lamp = 0.45 + 0.55 * smoothstep(0.3, 0.8, vnoise(vWorld.xz * 0.04 + 5.0));
-  totalEmissiveRadiance += vec3(1.0, 0.84, 0.58) * smoothstep(0.55, 1.0, sd.g) * lamp * uNight * uPisteLight * mix(0.25, 1.0, cover);`,
+  totalEmissiveRadiance += vec3(1.0, 0.84, 0.58) * smoothstep(0.55, 1.0, sd.g) * lamp * uNight * uPisteLight * mix(0.25, 1.0, cover);
+  // Iskrzenie puchu i świeżego śniegu w słońcu: drobne błyski zależne od położenia kamery (mrugają przy ruchu).
+  {
+    float fresh = (q == 1 ? 1.0 : 0.0) + dt.a * inDet;
+    float sunUp = clamp(uSunDir.y * 4.0, 0.0, 1.0) * (1.0 - uNight);
+    float camD2 = length(vWorld - cameraPosition);
+    if (fresh > 0.05 && sunUp > 0.0 && camD2 < 220.0) {
+      vec2 cellS = floor(vWorld.xz * 5.0 + floor(cameraPosition.xz * 0.7));
+      float g = step(1.0 - 0.006 * uSparkle, h21(cellS));
+      float facing = clamp(dot(normalize(vNormalW), uSunDir), 0.0, 1.0);
+      totalEmissiveRadiance += vec3(1.0, 0.98, 0.94) * g * fresh * sunUp * facing * cover * (1.0 - smoothstep(80.0, 220.0, camD2)) * 3.0;
+    }
+  }`,
         );
     };
     m.needsUpdate = true;
@@ -302,18 +449,24 @@ export class Terrain3D {
   setSnow(s: { depthCm: Float32Array; quality: Uint8Array; moguls?: Uint8Array | null } | null): void {
     const n = this.inp.hf.widthCells * this.inp.hf.heightCells;
     this.uniforms.uHasSnow.value = s ? 1 : 0;
+    this.snowVersion++;
     if (!s) {
-      // Lato: tło bez śniegu.
+      // Lato: tło bez śniegu, powierzchnia = sam teren.
+      this.depth.depthM.fill(0);
+      this.depthTex.needsUpdate = true;
       this.colorBackground(null);
       return;
     }
     for (let k = 0; k < n; k++) {
+      const cm = s.depthCm[k];
+      this.depth.depthM[k] = Number.isFinite(cm) && cm > 0 ? cm / 100 : 0;
       this.snowData[k * 4] = Math.max(0, Math.min(255, Math.round(s.depthCm[k] || 0)));
       this.stateData[k * 4] = s.quality[k];
       this.stateData[k * 4 + 1] = s.moguls ? s.moguls[k] & 15 : 0;
     }
     this.snowTex.needsUpdate = true;
     this.stateTex.needsUpdate = true;
+    this.depthTex.needsUpdate = true;
     // Linia śniegu dla tła: najniższy pas wysokości ze średnio ≥ 10 cm.
     const hf = this.inp.hf;
     const bands = new Map<number, { s: number; n: number }>();
@@ -414,7 +567,150 @@ export class Terrain3D {
       box.copy(m.geometry.boundingBox!);
       if (frustum.intersectsBox(box)) tris += m.userData.tris as number;
     }
-    this.triangles = tris + (this.bg ? (this.bg.geometry.index!.count / 3) : 0);
+    this.triangles = tris + (this.bg ? (this.bg.geometry.index!.count / 3) : 0) + (this.patch?.visible ? (this.patch.userData.tris as number) : 0);
+  }
+
+  /** Przewyższenie grubości śniegu (1 – skala prawdziwa; suwak tylko w menu Dev). */
+  setSnowExaggeration(v: number): void {
+    if (v === this.snowU.uSnowExag.value) return;
+    this.snowU.uSnowExag.value = v;
+    this.snowVersion++;
+  }
+
+  get snowExaggeration(): number {
+    return this.snowU.uSnowExag.value;
+  }
+
+  /** Jakość: bok łaty gęstej siatki przy kamerze i jej krok [m] (bok 0 – bez łaty, rzeźba tylko w cieniowaniu). */
+  setPatchQuality(sizeM: number, stepM: number, fadeM: number): void {
+    if (sizeM === this.patchSizeM && stepM === this.patchStepM && fadeM === this.patchFadeM) return;
+    this.patchSizeM = sizeM;
+    this.patchStepM = stepM;
+    this.patchFadeM = fadeM;
+    this.patchKey = '';
+  }
+
+  /** Warstwa detalu 1 m (sztruks, ślady, świeży śnieg, muldy, pryzmy) albo null. */
+  setDetail(d: { src: DetailSource; gameH: number; fadeH: number; pileDensityKgM3: number } | null): void {
+    this.detail = d;
+  }
+
+  /**
+   * Powierzchnia śniegu w punkcie: teren + grubość (ten sam wzór co shader, dwuliniowo ze środków komórek);
+   * poza mapą – teren okolicy. Ludzie, linie, wskazywanie myszą i kamera stoją na tej powierzchni.
+   */
+  surfaceAt(x: number, z: number): number {
+    const hf = this.inp.hf;
+    if (x >= 0 && z >= 0 && x <= hf.widthCells * hf.cellSizeM && z <= hf.heightCells * hf.cellSizeM) {
+      const h = snowSurfaceAt(hf, this.uniforms.uHasSnow.value > 0.5 ? this.depth : null, this.snowU.uSnowExag.value, x, z);
+      if (Number.isFinite(h)) return h;
+    }
+    return this.groundAt(x, z);
+  }
+
+  /**
+   * Co klatkę: łata gęstej siatki wokół celu kamery – przebudowa przy przesunięciu o ćwierć boku, nowym
+   * śniegu albo zmianie warstwy detalu (najwyżej raz na 8 s).
+   */
+  updatePatch(cx: number, cz: number, nowMs: number): void {
+    if (this.patchSizeM <= 0 || this.uniforms.uHasSnow.value < 0.5 || !Number.isFinite(cx)) {
+      if (this.patch) this.patch.visible = false;
+      this.uniforms.uPatchOn.value = 0;
+      this.uniforms.uDetailOn.value = 0;
+      return;
+    }
+    const size = this.patchSizeM;
+    const moved = !Number.isFinite(this.patchCenter.x) || Math.hypot(cx - this.patchCenter.x, cz - this.patchCenter.z) > size / 4;
+    const dv = this.detail?.src.version ?? -1;
+    // Przesunięcie, nowy śnieg, zmiana jakości – od razu; sama warstwa detalu (ślady, ratrak) i upływ
+    // czasu (blednięcie sztruksu) – najwyżej co 8 s (przebudowa łaty to ok. 25–35 ms pracy procesora).
+    const hard = `${size}|${this.patchStepM}|${this.patchFadeM}|${this.snowVersion}`;
+    const soft = `${dv}|${this.detail ? Math.floor(this.detail.gameH * 3) : 0}`;
+    const key = `${hard}#${soft}`;
+    if (!moved && key === this.patchKey) return;
+    if (!moved && this.patchKey.startsWith(`${hard}#`) && nowMs - this.patchBuiltMs < 8000) return;
+    const t0 = performance.now();
+    this.patchKey = key;
+    this.patchBuiltMs = nowMs;
+    const hf = this.inp.hf;
+    const o = patchOrigin(cx, cz, size, hf.cellSizeM);
+    this.patchCenter = { x: cx, z: cz };
+    if (this.detail && dv !== this.reliefVersion) {
+      this.relief = reliefFrom(this.detail.src, this.detail.pileDensityKgM3);
+      this.reliefVersion = dv;
+    }
+    const pg = buildPatch(hf, this.depth, this.snowU.uSnowExag.value, this.detail ? this.relief : null, o.x0, o.z0, size, this.patchStepM, this.patchFadeM);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pg.positions, 3));
+    geo.setIndex(new THREE.BufferAttribute(pg.indices, 1));
+    geo.computeVertexNormals();
+    geo.computeBoundingBox();
+    geo.computeBoundingSphere();
+    if (!this.patch) {
+      this.patch = new THREE.Mesh(geo, this.patchMaterialNear);
+      this.patch.receiveShadow = true;
+      this.patch.castShadow = true;
+      this.patch.frustumCulled = false;
+      this.group.add(this.patch);
+    } else {
+      this.patch.geometry.dispose();
+      this.patch.geometry = geo;
+    }
+    this.patch.visible = true;
+    this.patch.userData.tris = pg.indices.length / 3;
+    // Wysokości z NaN (poza mapą) – łata tylko tam, gdzie jest siatka gry: teren bazowy znika w prostokącie.
+    this.uniforms.uPatchRect.value.set(o.x0, o.z0, o.x0 + size, o.z0 + size);
+    this.uniforms.uPatchOn.value = 1;
+    this.fillDetailTexture(o.x0, o.z0, size);
+    this.patchMs = performance.now() - t0;
+  }
+
+  /** Tekstura detalu 1 m w łacie: R – widoczność sztruksu, G – kierunek przejazdu, B – ślady nart, A – świeży śnieg. */
+  private fillDetailTexture(x0: number, z0: number, size: number): void {
+    const d = this.detail;
+    if (!d) {
+      this.uniforms.uDetailOn.value = 0;
+      return;
+    }
+    const L = d.src;
+    const S = Math.max(1, Math.round(size / L.p.cellM));
+    if (!this.detailTex || this.detailTex.image.width !== S) {
+      this.detailTex?.dispose();
+      this.detailTex = new THREE.DataTexture(new Uint8Array(S * S * 4), S, S, THREE.RGBAFormat);
+      this.detailTex.magFilter = THREE.NearestFilter;
+      this.detailTex.minFilter = THREE.NearestFilter;
+      this.uniforms.uDetailTex.value = this.detailTex;
+    }
+    const buf = this.detailTex.image.data as Uint8Array;
+    buf.fill(0);
+    const hf = this.inp.hf;
+    const W = hf.widthCells;
+    const cs = hf.cellSizeM;
+    for (let bi = 0; bi < L.cells.length; bi++) {
+      const k = L.cells[bi];
+      const bx = (k % W) * cs;
+      const bz = Math.floor(k / W) * cs;
+      if (bx + cs < x0 || bz + cs < z0 || bx >= x0 + size || bz >= z0 + size) continue;
+      for (let r = 0; r < L.per; r++) {
+        const wx = bx + ((r % L.sub) + 0.5) * L.p.cellM;
+        const wz = bz + (Math.floor(r / L.sub) + 0.5) * L.p.cellM;
+        const px = Math.floor((wx - x0) / L.p.cellM);
+        const pz = Math.floor((wz - z0) / L.p.cellM);
+        if (px < 0 || pz < 0 || px >= S || pz >= S) continue;
+        const idx = bi * L.per + r;
+        const age = d.gameH - L.groomT[idx];
+        const vis = age >= 0 && age < 1e8 ? Math.exp(-age / d.fadeH) : 0;
+        const fresh = L.fresh[idx] / 255;
+        const o = (pz * S + px) * 4;
+        buf[o] = Math.round(255 * vis * (1 - fresh));
+        buf[o + 1] = L.groomDir[idx];
+        buf[o + 2] = L.tracks[idx];
+        buf[o + 3] = L.fresh[idx];
+      }
+    }
+    this.detailTex.needsUpdate = true;
+    this.uniforms.uDetailRect.value.set(x0, z0, size, 1 / size);
+    this.uniforms.uDetailOn.value = 1;
   }
 
   /** Wysokość terenu w punkcie (siatka gry; poza nią teren okolicy). */

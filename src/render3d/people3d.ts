@@ -37,6 +37,8 @@ function merge(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
 }
 
 export class People3D {
+  /** Materiały (do cieni kaskadowych). */
+  readonly materials: THREE.Material[];
   readonly group = new THREE.Group();
   private readonly jacket: THREE.InstancedMesh;
   private readonly dark: THREE.InstancedMesh;
@@ -61,6 +63,7 @@ export class People3D {
     this.dark = new THREE.InstancedMesh(darkG, matD, max);
     this.skis = new THREE.InstancedMesh(skiG, matG, max);
     this.boards = new THREE.InstancedMesh(boardG, matG, max);
+    this.materials = [matJ, matD, matG];
     for (const m of [this.jacket, this.dark, this.skis, this.boards]) {
       m.count = 0;
       m.castShadow = true;

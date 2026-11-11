@@ -7,6 +7,8 @@
  * głębokości odwrócony) – przerywana i półprzezroczysta (podglądy budowy, zaznaczenie).
  */
 import * as THREE from 'three';
+import { SNOW_DEPTH_GLSL } from './snowSurface';
+import type { SnowUniforms } from './terrain3d';
 
 export interface P2 {
   xM: number;
@@ -81,6 +83,7 @@ attribute vec2 aDash;
 uniform float uPxScale;
 uniform float uLift;
 uniform float uMppTarget;
+${SNOW_DEPTH_GLSL}
 varying float vAlong;
 varying vec3 vColor;
 varying vec2 vDash;
@@ -92,7 +95,8 @@ void main() {
   float hw = max(aHalfM, aMinPx * 0.5 * mpp);
   vec2 n = vec2(-aDir.y, aDir.x);
   p.xz += n * aSide * hw;
-  p.y += 0.25 + d * uLift;
+  // Etap 3D-3: linia leży na śniegu (teren + grubość pokrywy, ten sam wzór co teren).
+  p.y += 0.25 + d * uLift + uSnowExag * snowDepthAt(p.xz);
   vAlong = aAlong;
   vColor = aColor;
   vDash = aDash * uMppTarget;
@@ -120,7 +124,14 @@ void main() {
   #include <fog_fragment>
 }`;
 
-function makeMaterial(hidden: boolean): THREE.ShaderMaterial {
+/** Bez danych o śniegu – grubość 0 (tekstura 1 × 1). */
+const NO_SNOW: SnowUniforms = (() => {
+  const t = new THREE.DataTexture(new Float32Array([0]), 1, 1, THREE.RedFormat, THREE.FloatType);
+  t.needsUpdate = true;
+  return { uDepthTex: { value: t }, uDepthGrid: { value: new THREE.Vector2(1, 1) }, uDepthCell: { value: 1 }, uSnowExag: { value: 0 }, uHasSnow: { value: 0 } };
+})();
+
+function makeMaterial(hidden: boolean, snowU: SnowUniforms): THREE.ShaderMaterial {
   const m = new THREE.ShaderMaterial({
     vertexShader: VERT,
     fragmentShader: FRAG,
@@ -140,6 +151,8 @@ function makeMaterial(hidden: boolean): THREE.ShaderMaterial {
     depthWrite: !hidden,
     side: THREE.DoubleSide,
   });
+  // Uniformy śniegu wspólne z terenem (merge kopiuje – przypisane po utworzeniu).
+  Object.assign(m.uniforms, snowU);
   if (hidden) m.depthFunc = THREE.GreaterDepth;
   return m;
 }
@@ -150,8 +163,8 @@ function makeMaterial(hidden: boolean): THREE.ShaderMaterial {
  */
 export class LineBatch {
   readonly group = new THREE.Group();
-  private readonly mat = makeMaterial(false);
-  private readonly hiddenMat = makeMaterial(true);
+  private readonly mat: THREE.ShaderMaterial;
+  private readonly hiddenMat: THREE.ShaderMaterial;
   private mesh: THREE.Mesh | null = null;
   private hiddenMesh: THREE.Mesh | null = null;
   private pos: number[] = [];
@@ -170,7 +183,11 @@ export class LineBatch {
     private readonly groundAt: (x: number, z: number) => number,
     private readonly showHidden: boolean,
     private readonly renderOrder = 2,
-  ) {}
+    snowU: SnowUniforms = NO_SNOW,
+  ) {
+    this.mat = makeMaterial(false, snowU);
+    this.hiddenMat = makeMaterial(true, snowU);
+  }
 
   /** Uniformy wspólne dla klatki: skala pikseli, metry na piksel przy celu kamery. */
   setFrame(pxScale: number, mppTarget: number, fog: THREE.FogExp2 | null): void {

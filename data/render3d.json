@@ -132,6 +132,33 @@
       ],
       "unit": "os.",
       "source": "najwięcej postaci rysowanych naraz"
+    },
+    "snowPatchM": {
+      "value": [
+        0,
+        192,
+        288
+      ],
+      "unit": "m",
+      "source": "etap 3D-3: bok łaty gęstej siatki śniegu wokół celu kamery (prawdziwa rzeźba pryzm, muld, wałów); 0 – bez łaty (rzeźba tylko w cieniowaniu)"
+    },
+    "snowPatchStepM": {
+      "value": [
+        2,
+        1,
+        1
+      ],
+      "unit": "m",
+      "source": "etap 3D-3: krok siatki w łacie (warstwa detalu ma 1 m)"
+    },
+    "shadowSoftness": {
+      "value": [
+        0,
+        1,
+        1
+      ],
+      "unit": "0/1",
+      "source": "etap 3D-3: miękkie cienie (filtr PCF z rozmyciem `shadowSoftness` z map-style.json); 0 – ostre brzegi"
     }
   },
   "camera": {
@@ -182,11 +209,6 @@
     }
   },
   "atmosphere": {
-    "fogDensity": {
-      "value": 0.00007,
-      "unit": "1/m",
-      "source": "mgła wykładnicza – widoczność kilkunastu km w pogodny dzień; do wyczucia"
-    },
     "valleyFogTopM": {
       "value": 820,
       "unit": "m n.p.m.",
@@ -197,20 +219,10 @@
       "unit": "-",
       "source": "siła mgły w dolinach"
     },
-    "exposure": {
-      "value": 1.15,
-      "unit": "-",
-      "source": "ekspozycja mapowania tonów (ACES)"
-    },
     "nightAmbient": {
       "value": 0.06,
       "unit": "-",
       "source": "jasność nocnego nieba"
-    },
-    "pisteLightIntensity": {
-      "value": 0.5,
-      "unit": "-",
-      "source": "jasność oświetlonych tras nocą (emisja)"
     }
   },
   "people": {
@@ -278,6 +290,24 @@
       "value": 0.1,
       "unit": "-",
       "source": "krok zmiany skali"
+    }
+  },
+  "autoQuality": {
+    "_opis": "etap 3D-3: dobór jakości przy pierwszym uruchomieniu widoku 3D – pomiar klatek na sekundę przy jakości średniej, wynik zapamiętany w przeglądarce",
+    "measureS": {
+      "value": 4,
+      "unit": "s",
+      "source": "czas pomiaru (po 1 s rozgrzewki)"
+    },
+    "highFps": {
+      "value": 58,
+      "unit": "kl./s",
+      "source": "co najmniej tyle przy średniej → wysoka"
+    },
+    "lowFps": {
+      "value": 40,
+      "unit": "kl./s",
+      "source": "mniej niż tyle przy średniej → niska"
     }
   }
 }

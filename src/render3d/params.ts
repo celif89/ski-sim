@@ -32,11 +32,12 @@ export const QUALITY_NAMES = ['niska', 'średnia', 'wysoka'] as const;
 export interface Render3DParams {
   terrain: { chunkCells: number; lodDistancesM: number[]; skirtM: number; backgroundStepCells: number; backgroundDropM: number; snowLineWidthM: number };
   forest: { spacingM: number; heightM: number; shrubSpacingM: number; shrubHeightM: number; variants: number; seed: number };
-  quality: { shadowCascades: number[]; shadowMapPx: number[]; shadowFarM: number[]; treesNearM: number[]; ao: number[]; pixelRatio: number[]; peopleMax: number[] };
+  quality: { shadowCascades: number[]; shadowMapPx: number[]; shadowFarM: number[]; treesNearM: number[]; ao: number[]; pixelRatio: number[]; peopleMax: number[]; snowPatchM: number[]; snowPatchStepM: number[]; shadowSoftness: number[] };
   camera: { fovDeg: number; minDistanceM: number; maxDistanceM: number; minPitchDeg: number; maxPitchDeg: number; minClearanceM: number; panSpeed: number; rotateSpeedDegS: number; zoomStep: number };
-  atmosphere: { fogDensity: number; valleyFogTopM: number; valleyFogStrength: number; exposure: number; nightAmbient: number; pisteLightIntensity: number };
+  atmosphere: { valleyFogTopM: number; valleyFogStrength: number; nightAmbient: number };
   people: { heightM: number; seatHeightM: number };
   pistes: { poleSpacingM: number; poleHeightM: number; netSlopePercent: number; netHeightM: number };
+  autoQuality: { measureS: number; highFps: number; lowFps: number };
   governor: { targetFps: number; lowFps: number; windowS: number; minResolutionScale: number; minTreeScale: number; step: number };
 }
 
@@ -54,11 +55,12 @@ export function parseRender3DParams(raw: unknown): Render3DParams {
   return {
     terrain: { ...nums(t, 'terrain', ['chunkCells', 'skirtM', 'backgroundStepCells', 'backgroundDropM', 'snowLineWidthM'] as const), lodDistancesM: arr(t, 'lodDistancesM', 'terrain') },
     forest: nums(f, 'forest', ['spacingM', 'heightM', 'shrubSpacingM', 'shrubHeightM', 'variants', 'seed'] as const),
-    quality: { shadowCascades: q3('shadowCascades'), shadowMapPx: q3('shadowMapPx'), shadowFarM: q3('shadowFarM'), treesNearM: q3('treesNearM'), ao: q3('ao'), pixelRatio: q3('pixelRatio'), peopleMax: q3('peopleMax') },
+    quality: { shadowCascades: q3('shadowCascades'), shadowMapPx: q3('shadowMapPx'), shadowFarM: q3('shadowFarM'), treesNearM: q3('treesNearM'), ao: q3('ao'), pixelRatio: q3('pixelRatio'), peopleMax: q3('peopleMax'), snowPatchM: q3('snowPatchM'), snowPatchStepM: q3('snowPatchStepM'), shadowSoftness: q3('shadowSoftness') },
     camera: nums(c, 'camera', ['fovDeg', 'minDistanceM', 'maxDistanceM', 'minPitchDeg', 'maxPitchDeg', 'minClearanceM', 'panSpeed', 'rotateSpeedDegS', 'zoomStep'] as const),
-    atmosphere: nums(a, 'atmosphere', ['fogDensity', 'valleyFogTopM', 'valleyFogStrength', 'exposure', 'nightAmbient', 'pisteLightIntensity'] as const),
+    atmosphere: nums(a, 'atmosphere', ['valleyFogTopM', 'valleyFogStrength', 'nightAmbient'] as const),
     people: nums(pe, 'people', ['heightM', 'seatHeightM'] as const),
     pistes: nums(pi, 'pistes', ['poleSpacingM', 'poleHeightM', 'netSlopePercent', 'netHeightM'] as const),
+    autoQuality: nums(sec(r, 'autoQuality'), 'autoQuality', ['measureS', 'highFps', 'lowFps'] as const),
     governor: nums(sec(r, 'governor'), 'governor', ['targetFps', 'lowFps', 'windowS', 'minResolutionScale', 'minTreeScale', 'step'] as const),
   };
 }

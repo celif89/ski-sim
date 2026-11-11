@@ -97,6 +97,9 @@ tests/         testy Vitest
     lineTools; inna tylko zamiana ekran ↔ teren), linie przyklejone do terenu (za wzgórzem przerywane),
     podgląd wyciągu w prawdziwej wysokości, „widok z góry” nad miejscem rysowania, uchwyty, przyciąganie,
     okienko i pierścień nachylenia jak w 2D; test: punkt wskazany w 3D = punkt mapy ±0,5 m.
+3D-3. Oprawa 3D (zrobiony): śnieg z grubością (teren + pokrywa z modelu, łata 1 m przy kamerze z rzeźbą
+    pryzm i muld), czapy drzew i dachy wg komórki, światło i obraz z parametrów (`map-style.json`, sekcja
+    `render3d`, suwaki w menu Dev), jakość niska / średnia / wysoka z doborem przy pierwszym uruchomieniu.
 8. Anomalie, awarie, ratownicy, reputacja, konkurencja (po 3D-1 i 3D-2).
 9. Dopracowanie, zapis gry, druga lokalizacja.
 
@@ -852,6 +855,55 @@ Kryteria odbioru każdego etapu są w dokumencie koncepcji. Pracować etapami, n
     co 30°, pochylenia 12–88°), piksel → mapa → piksel, za mały prześwit tylko poza strefą stacji;
     sprawdzenie w przeglądarce: wyciąg zbudowany dwoma kliknięciami w 3D (błąd wskazania 1 mm), droga
     narysowana ręką (349 m), widok z góry (89°) i powrót.
+- **Etap 3D-3 – zrobiony** (listopad 2026): oprawa 3D – śnieg z grubością i światło (tylko `src/render3d`,
+  symulacja bez zmian).
+  - parametry `data/map-style.json` sekcja `render3d` (27 wartości z jednostką i opisem: Słońce, niebo,
+    mgiełka, obraz, śnieg, okna, czapy), `render3d/look.ts` (`parseLook`, `LOOK_SLIDERS`, `lookToJson`,
+    `sunDirection`); menu `Dev` → „Oprawa 3D (etap 3D-3)”: suwaki (zmiana od razu, także przed włączeniem
+    3D), „Kopiuj ustawienia”, „Przywróć z pliku”; z `render3d.json` usunięte dawne `atmosphere.exposure`,
+    `fogDensity`, `pisteLightIntensity` (teraz w `map-style.json`);
+  - powierzchnia śniegu (`render3d/snowSurface.ts`): teren + grubość z modelu (siatka 10 m, wartości
+    w środkach komórek, dwuliniowo – bez schodków), ten sam wzór w TS (`snowSurfaceAt`) i GLSL
+    (`SNOW_DEPTH_GLSL`, tekstura float, `texelFetch`); wierzchołki terenu podniesione w shaderze, normalne
+    z nachylenia pokrywy (zaspy, wywiane grzbiety); przewyższenie tylko w menu Dev (1 = skala prawdziwa);
+    linie (`lines3d.ts`) dostają grubość w shaderze (leżą na śniegu także po zmianie dnia); ludzie, ratraki,
+    cel kamery i wskazywanie myszą – `Terrain3D.surfaceAt`; podpory, stacje, budynki, armatki, drzewa,
+    hydranty – na terenie (dolna część schowana w śniegu);
+  - łata gęstej siatki przy kamerze (`render3d/snowPatch.ts`, `Terrain3D.updatePatch`): bok 192 m (średnia)
+    / 288 m (wysoka), krok 1 m, wokół celu kamery; teren bazowy pod łatą odrzucany w shaderze; brzeg łaty na
+    liniach przez środki komórek (dokładnie wysokość terenu bazowego – bez szczeliny), rzeźba warstwy detalu
+    (muldy, pryzmy – odchylenie od średniej komórki 10 m, masa zachowana; pryzmy rozmyte ok. 2 m) wygasa
+    w pasie `patchFadeM`; przebudowa ok. 25–35 ms – przy przesunięciu o ćwierć boku / nowym śniegu od razu,
+    przy zmianie samej warstwy detalu najwyżej co 8 s; tekstura detalu 1 m w łacie (sztruks w kierunku
+    przejazdu ratraka, blednący w 18 h, ślady nart, świeży śnieg – zasypuje); dalej od kamery rzeźba tylko
+    w cieniowaniu (jak w 3D-0);
+  - czapy drzew (`forest3d.ts`) wg grubości w komórce drzewa (`treeSnowFullM`), dachy (`objects3d.ts`) wg
+    grubości w komórce (`roofSnowFullM`), szczyty dachów w barwie ścian, okna na ścianach (siatka 3,2 × 3 m,
+    część zapalona) świecące nocą (`windowGlow`);
+  - światło: kierunek Słońca z `sim/sun.ts` (`sunDirection`), siła i barwa wg wysokości (ciepłe nisko,
+    `sunWarmLow`) i zachmurzenia (`sunCloudDim`), światło nieba wg zachmurzenia (`skyBase`, `skyCloudBoost`)
+    z niebieskawymi cieniami (`skyBlue`), mgiełka gęstsza przy chmurach i opadzie (`fogCloudBoost`,
+    `fogPrecipBoost`; opad z `EnvironmentState`), dalekie góry bledsze (`farHaze`), iskrzenie puchu,
+    połysk lodu i brei (szorstkość), ACES + korekta (ekspozycja, nasycenie, kontrast, ciepło), miękkie
+    cienie PCF (`shadowSoftness`, jakość niska – ostre), GTAO (`aoIntensity`); wszystkie materiały
+    obiektów, ludzi i lasu z cieniami kaskadowymi;
+  - jakość (`render3d.json` → `quality`: `snowPatchM` 0/192/288 m, `snowPatchStepM`, `shadowSoftness`):
+    przy pierwszym uruchomieniu 3D pomiar kl./s przy średniej (1 s rozgrzewki + 4 s, `autoQuality`:
+    ≥ 58 – wysoka, < 40 – niska), wynik w `localStorage` `ski-sim:jakosc3d`; zmiana przyciskiem „Jakość”;
+  - testy `tests/render3d3.test.ts` (11): powierzchnia = teren + grubość ±1 cm w punktach kontrolnych,
+    bez schodków, bez śniegu = teren, przewyższenie; łata – brzeg = teren bazowy, rzeźba w środku, średnia
+    komórki zachowana, łata tylko przy śniegu; kierunek Słońca = azymut i wysokość z `sun.ts`; parametry
+    z opisem i suwakiem; ustawienia jakości nie zmieniają sezonu (ten sam seed), rysowanie nie zmienia
+    danych śniegu; `src/sim` i `src/worker` nie sięgają do `render3d`, `three` ani `map-style.json`;
+  - zrzuty przed / po: `docs/ui/3d-oprawa/` (README.md): dolna stacja rano, pryzmy armatek, budynek po
+    śnieżycy, zachód słońca, noc z ratrakiem;
+  - pomiar (kontener bez karty graficznej, SwiftShader, 1600 × 900, średnia): praca kodu na klatkę 5–10 ms,
+    z przebudową łaty 25–40 ms (raz przy przesunięciu); 520–670 wywołań rysowania, 6–14 mln trójkątów;
+    miarodajne kl./s (cel: średnia ≥ 50 przy ok. 2000 gości) – pomiar właściciela na Macu (menu Dev; nowy
+    wiersz „łata śniegu przy kamerze: przebudowa … ms”);
+  - obserwacja (symulacja, nie rysunek): przy dolnym końcu naśnieżanej trasy w scenie zrzutów pryzmy rosną
+    noc po nocy (średnio ok. 3,2 m wody w komórce 10 m ≈ 6 m śniegu) – ratrak ich nie rozgarnia; do
+    sprawdzenia w modelu ratraków (etap 7).
 - **Następny: etap 8 – anomalie, awarie, ratownicy, reputacja, konkurencja.**
 
 Uwagi techniczne:
@@ -934,6 +986,12 @@ Uwagi techniczne:
   zlewnia rowu i kolejki rysowane w pikselach ekranu (proste odcinki między punktami terenu co 50 m /
   komórkami 10 m); linie dróg i rur rozjaśnia mapowanie tonów (ACES) – kolory nieco jaśniejsze niż w 2D;
   wybór gościa na krzesełku (w powietrzu) – po punkcie terenu pod nim; minimapa w 3D schowana.
+- Oprawa 3D (3D-3): wartości oprawy „do wyczucia” – stroić suwakami na Macu i przenieść do pliku; cienie
+  terenu bez grubości śniegu (mapa cieni z gołego terenu – różnica do ok. 1 m); dach bez grubości warstwy
+  śniegu (tylko barwa); czapy drzew wg grubości na ziemi (nie z opadu i temperatury); łata przy kamerze
+  liczona na procesorze w głównym wątku (25–35 ms – do przeniesienia do Web Workera, jeśli na Macu będzie
+  widać szarpnięcie); poza łatą rzeźba pryzm i muld tylko w cieniowaniu; okna – wzór z położenia (bez
+  pięter i drzwi z modelu budynku); iskrzenie zależne od położenia kamery (miga przy ruchu).
 - Budowa w 3D (3D-2): klawisze E, Q, F, R sterują kamerą – te narzędzia tylko z palety; zlewnia rowu,
   podgląd „Naśnież trasę”, przesuwany budynek i działki rysowane w pikselach ekranu (odcinki między
   punktami terenu); podgląd trasy narciarskiej to pas stałej szerokości po terenie (bez obrysu

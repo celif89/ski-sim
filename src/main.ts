@@ -99,6 +99,8 @@ import type { TipContent } from './render/cursorTip';
 import { MapInput } from './render/input';
 import { parseMapStyle } from './render/mapStyle';
 import { RELIEF_SLIDERS, getPath, parseReliefParams, setPath } from './render/relief';
+import { LOOK_SLIDERS, lookToJson, parseLook } from './render3d/look';
+import { parseDetailRenderParams } from './render/detailRenderer';
 import { ContourLabels } from './render/contourLabels';
 import { RING_TOOLS, SlopeRing } from './render/slopeRing';
 import { parseSnapParams } from './render/snapping';
@@ -1580,6 +1582,15 @@ async function start(): Promise<void> {
     // ---------------------------------------------------------------- etap 3D-0: widok 3D (Three.js, ładowany przy pierwszym użyciu)
     let view3d: import('./render3d/view3d').View3D | null = null;
     let view3dLoading = false;
+    // Etap 3D-3: oprawa 3D (map-style.json, sekcja render3d) – suwaki w menu Dev działają też przed włączeniem 3D.
+    const look3d = parseLook(mapStyleJson);
+    const corduroyFadeH = parseDetailRenderParams(detailJson).corduroyFadeH;
+    const techSnowDensity = (snowmakingJson as { snow: { densityAtStartKgM3: { value: number } } }).snow.densityAtStartKgM3.value;
+    const QUALITY_KEY = 'ski-sim:jakosc3d';
+    const QNAMES = ['niska', 'średnia', 'wysoka'];
+    const setQualityLabel = (q: number) => {
+      bar3d.querySelector('[data-3d="quality"]')!.textContent = `Jakość: ${QNAMES[q]}`;
+    };
     const devInfo3d = devMenu.addInfo('Widok 3D');
     const bar3d = document.createElement('div');
     bar3d.className = 'u-panel u-3d-bar hidden';
@@ -1591,9 +1602,15 @@ async function start(): Promise<void> {
       if (a === 'top') view3d.toggleTopDown();
       else if (a === 'back') void toggle3D();
       else if (a === 'quality') {
+        if (view3d.measuring) return;
         const q = ((view3d.qualityLevel + 1) % 3) as 0 | 1 | 2;
         view3d.setQuality(q);
-        bar3d.querySelector('[data-3d="quality"]')!.textContent = `Jakość: ${['niska', 'średnia', 'wysoka'][q]}`;
+        setQualityLabel(q);
+        try {
+          localStorage.setItem(QUALITY_KEY, String(q));
+        } catch {
+          /* bez pamięci przeglądarki – jakość tylko na tę sesję */
+        }
       }
     });
     async function toggle3D(): Promise<void> {
@@ -1660,9 +1677,35 @@ async function start(): Promise<void> {
               drawState: () => build.drawState,
               overlay: () => (overlay3d ? { canvas: overlay3d.canvas, version: overlay3d.version(), opacity: style.overlayOpacity } : null),
               network: network3d,
+              precip: () => Math.min(1, (lastState?.top.now.precipitationMm ?? 0) / 2),
+              detail: () => ({ src: detail.layer, gameH: detail.gameH, fadeH: corduroyFadeH, pileDensityKgM3: techSnowDensity }),
             },
             parseRender3DParams((r3json as { default: unknown }).default),
+            look3d,
           );
+          // Jakość: zapamiętana w przeglądarce, a przy pierwszym uruchomieniu – dobór wg pomiaru kl./s.
+          let savedQ: string | null = null;
+          try {
+            savedQ = localStorage.getItem(QUALITY_KEY);
+          } catch {
+            savedQ = null;
+          }
+          const v3q = view3d;
+          if (savedQ === '0' || savedQ === '1' || savedQ === '2') {
+            v3q.setQuality(Number(savedQ) as 0 | 1 | 2);
+            setQualityLabel(Number(savedQ));
+          } else if (new URLSearchParams(window.location.search).get('r3d') !== 'manual') {
+            bar3d.querySelector('[data-3d="quality"]')!.textContent = 'Jakość: pomiar…';
+            v3q.startAutoQuality((q) => {
+              setQualityLabel(q);
+              buildBar.showToast(`Widok 3D: jakość ${QNAMES[q]} (dobrana wg płynności – zmiana przyciskiem „Jakość”)`);
+              try {
+                localStorage.setItem(QUALITY_KEY, String(q));
+              } catch {
+                /* jw. */
+              }
+            });
+          }
           (window as unknown as { __view3d?: unknown }).__view3d = view3d;
         } catch (e) {
           console.error(e);
@@ -1705,7 +1748,7 @@ async function start(): Promise<void> {
     setInterval(() => {
       if (!view3d?.active) return;
       const s3 = view3d.stats;
-      devInfo3d.innerHTML = `${s3.fps.toFixed(1)} kl./s · praca kodu ${s3.frameMs.toFixed(1)} ms/kl.<br>${s3.drawCalls} wywołań rysowania, ${(s3.triangles / 1e6).toFixed(2)} mln trójkątów<br>drzewa 3D ${s3.treesNear.toLocaleString('pl-PL')}, obrazki ${s3.treesFar.toLocaleString('pl-PL')}<br>postacie ${s3.people}, krzesełka ${s3.carriers}; jakość ${['niska', 'średnia', 'wysoka'][view3d.qualityLevel]}<br>automatyczna płynność: rozdzielczość ×${view3d.governor.resolutionScale.toFixed(1)}, zasięg drzew ×${view3d.governor.treeScale.toFixed(1)}`;
+      devInfo3d.innerHTML = `${s3.fps.toFixed(1)} kl./s · praca kodu ${s3.frameMs.toFixed(1)} ms/kl.<br>${s3.drawCalls} wywołań rysowania, ${(s3.triangles / 1e6).toFixed(2)} mln trójkątów<br>drzewa 3D ${s3.treesNear.toLocaleString('pl-PL')}, obrazki ${s3.treesFar.toLocaleString('pl-PL')}<br>postacie ${s3.people}, krzesełka ${s3.carriers}; jakość ${['niska', 'średnia', 'wysoka'][view3d.qualityLevel]}<br>automatyczna płynność: rozdzielczość ×${view3d.governor.resolutionScale.toFixed(1)}, zasięg drzew ×${view3d.governor.treeScale.toFixed(1)}<br>łata śniegu przy kamerze: przebudowa ${s3.patchMs.toFixed(0)} ms${view3d.measuring ? ' · pomiar jakości…' : ''}`;
     }, 500);
     // Etap 7e: pierścień nachylenia przy budowie (na ekranie, nad wszystkim) i suwaki rzeźby w menu Dev.
     const slopeRing = new SlopeRing(
@@ -1733,6 +1776,20 @@ async function start(): Promise<void> {
         slopeRing.setParams(relief.buildRing);
       });
     };
+    devMenu.addSliders(
+      'Oprawa 3D (etap 3D-3)',
+      LOOK_SLIDERS,
+      (path) => look3d[path as keyof typeof look3d],
+      (path, v) => {
+        look3d[path as keyof typeof look3d] = v;
+        view3d?.setLook(look3d);
+      },
+      () => lookToJson(look3d),
+      () => {
+        Object.assign(look3d, parseLook(mapStyleJson));
+        view3d?.setLook(look3d);
+      },
+    );
     devMenu.addSliders(
       'Rzeźba terenu (etap 7e)',
       RELIEF_SLIDERS,

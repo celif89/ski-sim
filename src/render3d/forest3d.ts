@@ -2,13 +2,25 @@
  * Etap 3D-0: las – świerki i kosodrzewina z warstwy pokrycia (ESA WorldCover), rozmieszczone tak jak
  * w 2D (`treesInRect` z illustration.ts, to samo ziarno i siatka). Blisko kamery instancjonowane modele
  * niskopoligonowe generowane kodem (kilka wariantów, z cieniem), dalej skrzyżowane płaskie obrazki.
- * Zimą śnieg na gałęziach (biel na górnych płaszczyznach wg grubości śniegu).
+ * Zimą śnieg na gałęziach (biel na górnych płaszczyznach wg grubości śniegu). Etap 3D-3: czapy każdego
+ * drzewa wg grubości śniegu w jego komórce (pełne od `treeSnowFullM`); pień stoi w śniegu.
  */
 import * as THREE from 'three';
 import { treesInRect } from '../render/illustration';
 import type { Render3DParams } from './params';
 import type { HeightField } from './terrainMesh';
 import { sampleHeight } from './terrainMesh';
+import { SNOW_DEPTH_GLSL } from './snowSurface';
+import type { SnowUniforms } from './terrain3d';
+
+/** Grubość śniegu pod drzewem (środek instancji) → czapa 0–1 (GLSL, shader wierzchołków). */
+const TREE_SNOW_VERTEX = /* glsl */ `
+  #ifdef USE_INSTANCING
+    vec4 ipW = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+  #else
+    vec4 ipW = modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+  #endif
+  vCap = uTreeSnow * smoothstep(0.0, uTreeSnowFull, snowDepthAt(ipW.xz));`;
 
 const CHUNK_M = 500;
 
@@ -148,26 +160,41 @@ export class Forest3D {
   nearCount = 0;
   farCount = 0;
 
-  constructor(hf: HeightField, forest: Float32Array, shrub: Float32Array | null, private readonly p: Render3DParams) {
+  constructor(
+    hf: HeightField,
+    forest: Float32Array,
+    shrub: Float32Array | null,
+    private readonly p: Render3DParams,
+    snow?: { snowU: SnowUniforms; uTreeSnowFull: { value: number } },
+  ) {
     const fp = p.forest;
     this.spruces = Array.from({ length: fp.variants }, (_, v) => spruceGeometry(v));
     this.shrub = shrubGeometry();
     this.cross = crossQuad();
     this.treeMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
     const snowU = this.snowU;
+    // Bez danych o grubości (testy) – czapa wspólna dla całego lasu (uTreeSnow).
+    const capV = snow ? TREE_SNOW_VERTEX : 'vCap = uTreeSnow;';
+    const capHead = snow ? `uniform float uTreeSnow;\nuniform float uTreeSnowFull;\n${SNOW_DEPTH_GLSL}` : 'uniform float uTreeSnow;';
+    const capU = () => (snow ? { uTreeSnow: snowU, uTreeSnowFull: snow.uTreeSnowFull, ...snow.snowU } : { uTreeSnow: snowU });
     this.treeMaterial.onBeforeCompile = (s) => {
-      s.uniforms.uTreeSnow = snowU;
-      s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying float vUp;').replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvUp = objectNormal.y;');
+      Object.assign(s.uniforms, capU());
+      s.vertexShader = s.vertexShader
+        .replace('#include <common>', `#include <common>\nvarying float vUp;\nvarying float vCap;\n${capHead}`)
+        .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>\nvUp = objectNormal.y;\n${capV}`);
       s.fragmentShader = s.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform float uTreeSnow;\nvarying float vUp;')
-        .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.93, 0.97), uTreeSnow * 0.85 * smoothstep(0.25, 0.55, vUp));');
+        .replace('#include <common>', '#include <common>\nvarying float vUp;\nvarying float vCap;')
+        .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.93, 0.97), vCap * 0.85 * smoothstep(0.25, 0.55, vUp));');
     };
     this.farMaterial = new THREE.MeshStandardMaterial({ map: impostorTexture(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1 });
     this.farMaterial.onBeforeCompile = (s) => {
-      s.uniforms.uTreeSnow = snowU;
+      Object.assign(s.uniforms, capU());
+      s.vertexShader = s.vertexShader
+        .replace('#include <common>', `#include <common>\nvarying float vCap;\n${capHead}`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>\n${capV}`);
       s.fragmentShader = s.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform float uTreeSnow;')
-        .replace('#include <map_fragment>', '#include <map_fragment>\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.9, 0.95), uTreeSnow * 0.45 * step(0.5, fract(vMapUv.y * 6.0)));');
+        .replace('#include <common>', '#include <common>\nvarying float vCap;')
+        .replace('#include <map_fragment>', '#include <map_fragment>\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.9, 0.95), vCap * 0.45 * step(0.5, fract(vMapUv.y * 6.0)));');
     };
     const W = hf.widthCells * hf.cellSizeM;
     const H = hf.heightCells * hf.cellSizeM;
@@ -228,6 +255,11 @@ export class Forest3D {
       c.far = null;
       c.state = 'none';
     }
+  }
+
+  /** Materiały (do cieni kaskadowych). */
+  get materials(): THREE.Material[] {
+    return [this.treeMaterial, this.farMaterial];
   }
 
   setSnow(onBranches: number): void {

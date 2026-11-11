@@ -186,7 +186,7 @@ i pracujące, trasy zamknięte przez pryzmy, flota ratraków, przewidywany konie
 - Raport sezonu: śnieg (m³), woda, energia, paliwo, koszty naśnieżania i ratraków, **dni otwarte dzięki
   naśnieżaniu**.
 
-### Widok 3D (etapy 3D-0 – 3D-2)
+### Widok 3D (etapy 3D-0 – 3D-3)
 
 - **F3** albo menu ☰ → „Widok 3D” – przełącza na widok 3D; **F3** lub przycisk „Mapa 2D” wraca (mapa 2D
   pokazuje to samo miejsce).
@@ -200,11 +200,22 @@ i pracujące, trasy zamknięte przez pryzmy, flota ratraków, przewidywany konie
 - Kamera: **W A S D** / strzałki albo przeciąganie lewym przyciskiem – przesuwanie; **Q E** albo prawy /
   środkowy przycisk – obrót; **R F** – pochylenie (od widoku z góry do niemal poziomego); kółko – zbliżenie
   do miejsca pod kursorem; przycisk „Widok z góry”. Kamera nie wchodzi pod teren.
-- „Jakość: niska / średnia / wysoka” – cienie, zasięg drzew 3D, przyciemnienie zagłębień, rozdzielczość.
+- „Jakość: niska / średnia / wysoka” – cienie (niska – ostre), zasięg drzew 3D, przyciemnienie zagłębień,
+  rozdzielczość, gęsta siatka śniegu przy kamerze (niska – bez). Przy pierwszym włączeniu 3D gra mierzy
+  płynność ok. 5 s i sama wybiera jakość (napis „Jakość: pomiar…”); wybór zapamiętuje przeglądarka.
+- Etap 3D-3 – śnieg z grubością: powierzchnia = teren + grubość z modelu śniegu (prawdziwa skala); zaspy
+  i wywiane grzbiety widać jako różnicę wysokości; z bliska (ok. 200–300 m wokół celu kamery) prawdziwa
+  rzeźba pryzm armatek i muld z warstwy 1 m; ludzie, ratraki, linie i wskazywanie myszą – na śniegu;
+  podpory, budynki, armatki i drzewa stoją w śniegu; dachy i czapy drzew białe wg grubości w ich komórce;
+  nocą świecą okna. Światło: Słońce z modelu (ciepłe rano i wieczorem), niebo wg zachmurzenia,
+  niebieskawe cienie, mgiełka gęstsza przy chmurach i opadzie, dalekie góry bledsze, iskrzenie puchu.
+- Menu `Dev` → „Oprawa 3D (etap 3D-3)”: suwaki wszystkich parametrów oprawy (zmiana od razu),
+  „Kopiuj ustawienia” – JSON do wklejenia w `data/map-style.json` (sekcja `render3d`), „Przywróć z pliku”.
+  Suwak „Przewyższenie śniegu” tylko do oglądania (1 = skala prawdziwa).
 - Menu `Dev` – licznik klatek, czas pracy kodu, liczba wywołań rysowania, trójkątów, drzew i postaci,
   stan automatycznej płynności (przy spadku poniżej 50 kl./s gra sama zmniejsza rozdzielczość i zasięg
   drzew 3D, potem wraca do wybranej jakości).
-- Zrzuty i opis: `docs/3d/README.md`.
+- Zrzuty i opis: `docs/3d/README.md`; przed / po etapie 3D-3: `docs/ui/3d-oprawa/README.md`.
 
 ### Sterowanie
 

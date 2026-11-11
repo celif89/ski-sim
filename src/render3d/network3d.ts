@@ -6,6 +6,7 @@
  * Kolory i szerokości jak w 2D; dane z tego samego stanu rysowania (`ResortDrawState`).
  */
 import * as THREE from 'three';
+import type { SnowUniforms } from './terrain3d';
 import type { ResortDrawState } from '../render/resortLayer';
 import { liftPath } from '../sim/lifts';
 import type { P2 } from './lines3d';
@@ -118,11 +119,12 @@ export class Network3D {
   constructor(
     private readonly groundAt: (x: number, z: number) => number,
     data: NetworkStatic,
+    snowU?: SnowUniforms,
   ) {
-    this.fixed = new LineBatch(groundAt, false, 1);
-    this.hikingLines = new LineBatch(groundAt, false, 2);
-    this.layoutLines = new LineBatch(groundAt, false, 3);
-    this.draft = new LineBatch(groundAt, true, 4);
+    this.fixed = new LineBatch(groundAt, false, 1, snowU);
+    this.hikingLines = new LineBatch(groundAt, false, 2, snowU);
+    this.layoutLines = new LineBatch(groundAt, false, 3, snowU);
+    this.draft = new LineBatch(groundAt, true, 4, snowU);
     this.group.add(this.fixed.group, this.hikingLines.group, this.layoutLines.group, this.draft.group, this.badges);
     const hg = new THREE.CylinderGeometry(0.25, 0.3, 1.2, 6);
     hg.translate(0, 0.6, 0);
