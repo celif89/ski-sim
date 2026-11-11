@@ -14,8 +14,16 @@ import { Rng } from '../src/sim/rng';
 import waterJson from '../data/water.json';
 import { chooseGunType, planPisteSnowmaking } from '../src/sim/autoSnowmaking';
 import { connectPipelines, pipelineCost, pipelineHydrants } from '../src/sim/snowmaking';
-import { simpleLayout } from './economyFixture';
-import { fixtureGrid } from './guestFixture';
+import { ep as epFull, simpleLayout } from './economyFixture';
+import { fixtureGrid, lp, pp } from './guestFixture';
+import constructionJson from '../data/construction.json';
+import { parseConstructionParams } from '../src/sim/resort';
+import { analyzeResort } from '../src/sim/resort';
+import { designLift } from '../src/sim/lifts';
+import { constructionChargePreview, objectCosts, reconcileConstruction } from '../src/sim/economy';
+import { liftUpgradeCheck, moveBuilding, upgradeGun, upgradeLift, widenPiste } from '../src/sim/upgrades';
+
+const clearingFixture = parseConstructionParams(constructionJson).clearing;
 import { analyzeDitch, buildStreamNet, legacyDitchPoints, parseWaterParams } from '../src/sim/water';
 import { groomerTypeById, gunTypeById, parseSnowmakingParams } from '../src/sim/snowmakingParams';
 
@@ -214,5 +222,66 @@ describe('„Naśnież trasę” (etap 7f)', () => {
     expect(chooseGunType(20, 20, 0, sp)).toBe('lance');
     expect(chooseGunType(50, 60, 0, sp)).toBe('lance');
     expect(chooseGunType(50, 20, 0.8, sp)).toBe('lance');
+  });
+});
+
+describe('Ulepszanie, przesuwanie, rozbiórka (etap 7f)', () => {
+  const grid = fixtureGrid();
+
+  it('ulepszenie wyciągu zachowuje linię, przelicza podpory i liczy koszt różnicowy', () => {
+    const layout = simpleLayout();
+    const lift = layout.lifts[0];
+    expect(liftUpgradeCheck(lift, 'kanapa4d', lp).ok).toBe(true);
+    const up = upgradeLift(grid, lp, lift, 'kanapa4d');
+    expect(up.bottom).toEqual(lift.bottom);
+    expect(up.top).toEqual(lift.top);
+    expect(up.bends ?? []).toEqual(lift.bends ?? []);
+    expect(up.typeId).toBe('kanapa4d');
+    // Podpory od nowa dla nowego typu (kolej linowa ma inne przęsła i wysokości niż orczyk).
+    const fresh = designLift(grid, lp, 'X', 'kanapa4d', 'X', lift.bottom, lift.top);
+    expect(up.towers).toEqual(fresh.towers);
+    expect(up.towers).not.toEqual(lift.towers);
+    // Koszt różnicowy: gotowy orczyk → kanapa = różnica + opłata za przebudowę (lato, bez dopłaty zimowej).
+    const state = newGameState({ mode: 'career', seed: 3, date: { year: 2026, month: 6, day: 1 }, ep: epFull });
+    const ctx = { grid, lifts: lp, pistes: pp, clearing: clearingFixture, forest: null, shrub: null };
+    const before = objectCosts(layout, analyzeResort(layout, ctx), epFull);
+    reconcileConstruction(state, before, epFull);
+    state.construction = {};
+    const after = { ...layout, lifts: [up] };
+    const objs = objectCosts(after, analyzeResort(after, ctx), epFull);
+    const oldCost = before.find((o) => o.id === 'W1')!.costPln;
+    const newCost = objs.find((o) => o.id === 'W1')!.costPln;
+    expect(newCost).toBeGreaterThan(oldCost);
+    const charge = constructionChargePreview(state, objs, epFull);
+    expect(charge).toBeCloseTo(newCost - oldCost + newCost * epFull.costs.rebuildFeeShare, 2);
+    const r = reconcileConstruction(state, objs, epFull);
+    const days = state.construction.W1;
+    expect(days.totalDays).toBe(Math.max(1, Math.round(objs.find((o) => o.id === 'W1')!.buildDays * epFull.costs.rebuildDaysShare)));
+    expect(r.messages.join(' ')).toMatch(/Przebudowa/);
+  });
+
+  it('rozbiórka gotowego obiektu zwraca część kosztu (z pliku danych)', () => {
+    const layout = simpleLayout();
+    const state = newGameState({ mode: 'career', seed: 3, date: { year: 2026, month: 6, day: 1 }, ep: epFull });
+    const ctx = { grid, lifts: lp, pistes: pp, clearing: clearingFixture, forest: null, shrub: null };
+    const objs = objectCosts(layout, analyzeResort(layout, ctx), epFull);
+    reconcileConstruction(state, objs, epFull);
+    state.construction = {};
+    const t2 = objs.find((o) => o.id === 'T2')!;
+    const without = objs.filter((o) => o.id !== 'T2');
+    expect(constructionChargePreview(state, without, epFull)).toBeCloseTo(-t2.costPln * epFull.costs.demolishRefundShare, 2);
+  });
+
+  it('poszerzenie trasy, zamiana armatki, przesunięcie budynku z obrotem co 90°', () => {
+    const layout = simpleLayout();
+    const w = widenPiste(layout.pistes[0], pp);
+    expect(w.points.map((q) => q.widthM)).toEqual(layout.pistes[0].points.map((q) => Math.min(pp.maxWidthM, q.widthM + pp.widenStepM)));
+    expect(w.points.map((q) => [q.xM, q.yM])).toEqual(layout.pistes[0].points.map((q) => [q.xM, q.yM]));
+    const sl = { ...layout, snowGuns: [{ id: 'A1', typeId: 'fan', pipelineId: 'R1', hydrant: 2 }], buildings: [{ id: 'P1', typeId: 'pump300', name: 'P', xM: 10, yM: 10 }] };
+    const g = upgradeGun(sl, 'A1', 'lance').snowGuns![0];
+    expect(g).toEqual({ id: 'A1', typeId: 'lance', pipelineId: 'R1', hydrant: 2 });
+    const m = moveBuilding(sl, 'P1', 50, 60, 100).buildings![0];
+    expect([m.xM, m.yM, m.rotDeg]).toEqual([50, 60, 90]);
+    expect(moveBuilding(sl, 'P1', 50, 60, 360).buildings![0].rotDeg).toBeUndefined();
   });
 });

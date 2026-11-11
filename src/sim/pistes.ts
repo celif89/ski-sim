@@ -33,6 +33,8 @@ export interface PisteParams {
   minWidthM: number;
   maxWidthM: number;
   brushPointSpacingM: number;
+  /** Etap 7f: krok poszerzenia trasy („Ulepsz”) [m]. */
+  widenStepM: number;
   gradingCostPlnPerM2: number;
   gradingDaysPerHectare: number;
   buildDaysBase: number;
@@ -75,6 +77,7 @@ export function parsePisteParams(raw: unknown): PisteParams {
     minWidthM: n(d, 'minWidthM', { min: 1 }),
     maxWidthM: n(d, 'maxWidthM', { min: 1 }),
     brushPointSpacingM: n(d, 'brushPointSpacingM', { min: 1 }),
+    widenStepM: n(d, 'widenStepM', { min: 0.5 }),
     gradingCostPlnPerM2: n(k, 'gradingCostPlnPerM2', { min: 0 }),
     gradingDaysPerHectare: n(k, 'gradingDaysPerHectare', { min: 0 }),
     buildDaysBase: n(k, 'buildDaysBase', { min: 0 }),

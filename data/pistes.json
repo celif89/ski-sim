@@ -89,6 +89,11 @@
       "value": 10,
       "unit": "m",
       "source": "odstęp punktów osi przy malowaniu pędzlem"
+    },
+    "widenStepM": {
+      "value": 5,
+      "unit": "m",
+      "source": "etap 7f: „Ulepsz” – poszerzenie trasy o 5 m na całej długości (wycinka i wyrównanie pasa); do kalibracji"
     }
   },
   "costs": {
