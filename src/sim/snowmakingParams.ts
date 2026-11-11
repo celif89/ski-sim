@@ -109,6 +109,22 @@ export interface SnowmakingParams {
   };
   /** Etap 7f: rowy zbierające wodę – koszt. */
   ditch: { costPlnPerM: number; metersPerDay: number };
+  /** Etap 7f: „Naśnież trasę” – reguły propozycji. */
+  autoPlan: {
+    edgeOffsetM: number;
+    sampleStepM: number;
+    simplifyToleranceM: number;
+    searchMarginM: number;
+    forestCostFactor: number;
+    steepCostPerPercent: number;
+    fanMinWidthM: number;
+    fanMaxSlopePercent: number;
+    lanceForestShare: number;
+    forestRadiusM: number;
+    designWetBulbC: number;
+    firstCoverDepthM: number;
+    hoursPerDay: number;
+  };
   calibration: { waterM3PerHa: number; energyKWhPerHa: number; energyKWhPerVisit: number; costEurPerM3: number; plnPerEur: number };
 }
 
@@ -178,6 +194,10 @@ export function parseSnowmakingParams(raw: unknown): SnowmakingParams {
       used: readAll(readSection(gr, 'used', FILE), ['offersPerSeason', 'ageMinYears', 'ageMaxYears', 'priceShareOfNew', 'priceConditionSpread', 'conditionBreakdownFactor'] as const, { min: 0 }),
     },
     ditch: readAll(readSection(raw, 'ditch', FILE), ['costPlnPerM', 'metersPerDay'] as const, { min: 0.01 }),
+    autoPlan: {
+      ...readAll(readSection(raw, 'autoPlan', FILE), ['edgeOffsetM', 'sampleStepM', 'simplifyToleranceM', 'searchMarginM', 'forestCostFactor', 'steepCostPerPercent', 'fanMinWidthM', 'fanMaxSlopePercent', 'lanceForestShare', 'forestRadiusM', 'firstCoverDepthM', 'hoursPerDay'] as const, { min: 0 }),
+      designWetBulbC: readNumber(readSection(raw, 'autoPlan', FILE), 'designWetBulbC', FILE),
+    },
     calibration: readAll(ca, ['waterM3PerHa', 'energyKWhPerHa', 'energyKWhPerVisit', 'costEurPerM3', 'plnPerEur'] as const, { min: 0 }),
   };
 }

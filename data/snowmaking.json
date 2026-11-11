@@ -896,5 +896,72 @@
       "unit": "m/dzień",
       "source": "tempo kopania koparką z umocnieniem dna; do kalibracji"
     }
+  },
+  "autoPlan": {
+    "edgeOffsetM": {
+      "value": 3,
+      "unit": "m",
+      "source": "rura w wykopie ok. 3 m za krawędzią trasy (poza ratrakowaną powierzchnią); do kalibracji"
+    },
+    "sampleStepM": {
+      "value": 10,
+      "unit": "m",
+      "source": "krok próbkowania osi trasy przy wyznaczaniu krawędzi = rozdzielczość siatki"
+    },
+    "simplifyToleranceM": {
+      "value": 4,
+      "unit": "m",
+      "source": "uproszczenie przebiegu rury (Douglas–Peucker) – jak tolerancja rysowania (data/ui.json)"
+    },
+    "searchMarginM": {
+      "value": 400,
+      "unit": "m",
+      "source": "zapas obszaru szukania drogi rury od pompowni do trasy; do kalibracji"
+    },
+    "forestCostFactor": {
+      "value": 1.5,
+      "unit": "-",
+      "source": "droga rury przez las liczona jako (1 + 1,5 × udział lasu) dłuższa – wycinka pod wykop; do kalibracji"
+    },
+    "steepCostPerPercent": {
+      "value": 0.01,
+      "unit": "1/%",
+      "source": "droga rury: +1 % długości na każdy % nachylenia (wykop w stromym terenie droższy); do kalibracji"
+    },
+    "fanMinWidthM": {
+      "value": 30,
+      "unit": "m",
+      "source": "armatka śmigłowa tam, gdzie trasa ma co najmniej 30 m szerokości (rzut 30 m pokrywa szerokość); węższe – lanca; do kalibracji"
+    },
+    "fanMaxSlopePercent": {
+      "value": 35,
+      "unit": "%",
+      "source": "armatka śmigłowa na płaskich i umiarkowanych odcinkach (do 35 %), stromsze – lanca (stała, mniej wywiewana); do kalibracji"
+    },
+    "lanceForestShare": {
+      "value": 0.3,
+      "unit": "-",
+      "source": "lanca przy lesie: udział lasu ≥ 30 % w promieniu forestRadiusM od hydrantu (mniej hałasu, rzut nie trafia w drzewa); do kalibracji"
+    },
+    "forestRadiusM": {
+      "value": 25,
+      "unit": "m",
+      "source": "promień sprawdzania lasu wokół hydrantu; do kalibracji"
+    },
+    "designWetBulbC": {
+      "value": -6,
+      "unit": "°C",
+      "source": "wydajność propozycji podawana przy temperaturze mokrej −6 °C (typowa noc naśnieżania w XII); do kalibracji"
+    },
+    "firstCoverDepthM": {
+      "value": 0.4,
+      "unit": "m",
+      "source": "pierwsze zaśnieżenie: 40 cm ubitego śniegu technicznego na całej trasie (próg otwarcia z zapasem); do kalibracji"
+    },
+    "hoursPerDay": {
+      "value": 20,
+      "unit": "h/dobę",
+      "source": "przed otwarciem trasy armatki pracują ok. 20 h na dobę (przestawianie, przerwy); do kalibracji"
+    }
   }
 }

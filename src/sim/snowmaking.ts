@@ -72,6 +72,8 @@ export interface PipelineDesign {
   /** Etap 7c (edycja, tylko widok): punkty kontrolne linii i gładkość łuku (0 – łamana, 1 – łuk); `points` to gęsty przebieg z nich liczony. */
   ctrl?: PointM[];
   smooth?: number;
+  /** Etap 7f: hydranty dopiero od tej odległości od początku [m] (odcinek dojściowy od pompowni bez hydrantów). */
+  hydrantsFromM?: number;
 }
 
 export interface SnowGunDesign {
@@ -112,13 +114,16 @@ function pointAt(points: PointM[], d: number): PointM {
   return points[points.length - 1];
 }
 
-/** Hydranty co `hydrantSpacingM` wzdłuż rurociągu (pierwszy w połowie odstępu od początku). */
+/**
+ * Hydranty co `hydrantSpacingM` wzdłuż rurociągu (pierwszy w połowie odstępu od początku, a przy
+ * odcinku dojściowym – w połowie odstępu od `hydrantsFromM`).
+ */
 export function pipelineHydrants(pipe: PipelineDesign, p: SnowmakingParams): Hydrant[] {
   if (pipe.supply) return [];
   const L = polylineLengthM(pipe.points);
   const sp = p.pipe.hydrantSpacingM;
   const out: Hydrant[] = [];
-  for (let d = sp / 2, i = 0; d <= L + 1e-6; d += sp, i++) {
+  for (let d = (pipe.hydrantsFromM ?? 0) + sp / 2, i = 0; d <= L + 1e-6; d += sp, i++) {
     const q = pointAt(pipe.points, d);
     out.push({ pipelineId: pipe.id, index: i, xM: q.xM, yM: q.yM, alongM: d });
   }

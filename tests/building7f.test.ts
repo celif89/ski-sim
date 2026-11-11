@@ -12,8 +12,12 @@ import { breakdownChance, breakdownTonight, planNight } from '../src/sim/groomin
 import { acquireGroomer, acquireUsedGroomer, shelteredGroomers, usedGroomerOffers } from '../src/sim/operations';
 import { Rng } from '../src/sim/rng';
 import waterJson from '../data/water.json';
+import { chooseGunType, planPisteSnowmaking } from '../src/sim/autoSnowmaking';
+import { connectPipelines, pipelineCost, pipelineHydrants } from '../src/sim/snowmaking';
+import { simpleLayout } from './economyFixture';
+import { fixtureGrid } from './guestFixture';
 import { analyzeDitch, buildStreamNet, legacyDitchPoints, parseWaterParams } from '../src/sim/water';
-import { groomerTypeById, parseSnowmakingParams } from '../src/sim/snowmakingParams';
+import { groomerTypeById, gunTypeById, parseSnowmakingParams } from '../src/sim/snowmakingParams';
 
 const sp = parseSnowmakingParams(snowmakingJson);
 const ep = parseEconomyParams(economyJson);
@@ -156,5 +160,59 @@ describe('Rowy zbierające wodę (etap 7f)', () => {
     const a = analyzeDitch(pts, vnet, V, [{ id: 'Z1', xM: 300, yM: 700 }], wp);
     expect(a.ok).toBe(true);
     expect(a.lengthM).toBeGreaterThan(wp.ditches.legacyLengthM * 0.8);
+  });
+});
+
+describe('„Naśnież trasę” (etap 7f)', () => {
+  const grid = fixtureGrid();
+  const forest = new Float32Array(grid.widthCells * grid.heightCells);
+  // Las wokół drugiej trasy (x ≥ 170 m) – trasa wycięta w lesie.
+  for (let j = 0; j < grid.heightCells; j++) for (let i = 0; i < grid.widthCells; i++) if ((i + 0.5) * grid.cellSizeM >= 170) forest[j * grid.widthCells + i] = 1;
+  const layout = simpleLayout();
+  let next = 100;
+  const pump = { xM: 100, yM: 1340 };
+  const plan = planPisteSnowmaking({ grid, forest, pistes: layout.pistes, pipelines: [], pump, pumpCapacityM3h: 300, newId: (p) => `${p}${next++}` }, sp);
+
+  it('hydranty co odstęp z danych, armatka przy każdym', () => {
+    expect(plan.pipelines).toHaveLength(2);
+    let total = 0;
+    for (const pipe of plan.pipelines) {
+      const h = pipelineHydrants(pipe, sp);
+      expect(h.length).toBeGreaterThan(5);
+      expect(h[0].alongM).toBeCloseTo((pipe.hydrantsFromM ?? 0) + sp.pipe.hydrantSpacingM / 2, 6);
+      for (let i = 1; i < h.length; i++) expect(h[i].alongM - h[i - 1].alongM).toBeCloseTo(sp.pipe.hydrantSpacingM, 6);
+      total += h.length;
+    }
+    expect(plan.guns).toHaveLength(total);
+  });
+
+  it('wszystkie armatki podłączone do pompowni', () => {
+    const conn = connectPipelines(plan.pipelines, pump, sp);
+    for (const g of plan.guns) expect(conn.has(g.pipelineId)).toBe(true);
+    expect(plan.perPiste.every((p) => p.connected)).toBe(true);
+    // Druga rura może dołączyć do pierwszej zamiast iść do pompowni.
+    expect(plan.issues.filter((s) => /pompowni/.test(s) && !/nadąży/.test(s))).toHaveLength(0);
+  });
+
+  it('koszt = suma elementów (rury, hydranty, armatki)', () => {
+    let sum = 0;
+    for (const p of plan.pipelines) sum += pipelineCost(p, sp).costPln;
+    for (const g of plan.guns) sum += gunTypeById(sp, g.typeId).costPln;
+    expect(plan.costPln).toBeCloseTo(sum, 6);
+    expect(plan.cost.pipesPln + plan.cost.hydrantsPln + plan.cost.gunsPln).toBeCloseTo(sum, 6);
+    expect(plan.snowM3h).toBeGreaterThan(0);
+    expect(plan.firstCoverDays).toBeGreaterThan(0);
+    expect(Number.isFinite(plan.firstCoverDays)).toBe(true);
+  });
+
+  it('śmigłowe na szerokich odcinkach, lance przy lesie i na wąskich', () => {
+    const t1 = plan.perPiste.find((p) => p.pisteId === 'T1')!;
+    const t2 = plan.perPiste.find((p) => p.pisteId === 'T2')!;
+    expect(t1.fans).toBeGreaterThan(t1.lances);
+    expect(t2.lances).toBeGreaterThan(0);
+    expect(chooseGunType(50, 20, 0, sp)).toBe('fan');
+    expect(chooseGunType(20, 20, 0, sp)).toBe('lance');
+    expect(chooseGunType(50, 60, 0, sp)).toBe('lance');
+    expect(chooseGunType(50, 20, 0.8, sp)).toBe('lance');
   });
 });
